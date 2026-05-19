@@ -1,0 +1,216 @@
+# Galio Kernel Makefile
+
+CC = gcc
+AS = nasm
+LD = ld
+
+# Include paths
+INCLUDES = -Iinclude \
+           -Iinclude/arch/x86 \
+           -Iinclude/drivers \
+           -Iinclude/fs \
+           -Iinclude/lib \
+           -Iinclude/mm \
+           -Iinclude/process \
+           -Iinclude/syscall \
+           -Itools/shell/include \
+           -Itools/shell/commands \
+           -Itools/shell/editor
+
+CFLAGS = -m32 -ffreestanding -O2 -Wall -Wextra $(INCLUDES) -Wno-array-bounds
+ASFLAGS = -f elf32
+LDFLAGS = -m elf_i386 -T kernel/arch/x86/boot/linker.ld
+
+# Source files
+SRCS = kernel/kmain.c \
+       kernel/auth.c \
+       kernel/lib/kernel.c \
+       kernel/lib/kprintf.c \
+       kernel/lib/string.c \
+       kernel/lib/mem_test.c \
+       kernel/arch/x86/cpu/gdt.c \
+       kernel/arch/x86/cpu/idt.c \
+       kernel/arch/x86/cpu/irq.c \
+       kernel/arch/x86/cpu/isr.c \
+       kernel/mm/paging.c \
+       kernel/mm/pmem.c \
+       kernel/mm/heap.c \
+       kernel/mm/memory.c \
+       kernel/process/process.c \
+       kernel/process/scheduler.c \
+       kernel/process/elf.c \
+       kernel/syscall/syscall.c \
+       kernel/fs/vfs/vfs_core.c \
+       kernel/fs/vfs/vfs_wrapper.c \
+       kernel/fs/ext2/ext2.c \
+       kernel/drivers/ata/ata.c \
+       kernel/drivers/keyboard/keyboard.c \
+       kernel/drivers/serial/serial.c \
+       kernel/drivers/timer/pit.c \
+       kernel/drivers/video/vga.c \
+       init/init.c \
+       tools/shell/shell.c \
+       tools/shell/commands/file.c \
+       tools/shell/commands/new.c \
+       tools/shell/commands/show.c \
+       tools/shell/commands/write.c \
+       tools/shell/commands/recycle.c \
+       tools/shell/commands/clean.c \
+       tools/shell/commands/delete.c \
+       tools/shell/editor/editor.c
+
+# Object files
+OBJS = $(SRCS:.c=.o) \
+       kernel/arch/x86/cpu/asm.o \
+       kernel/arch/x86/cpu/isr_asm.o \
+       kernel/arch/x86/boot/boot.o
+
+# Binary targets
+TEST_ELF = test_elf.bin
+INITRD_IMAGE = initrd.bin
+DISK_IMAGE = disk.img
+KERNEL_BIN = galio.bin
+KERNEL_ISO = galio.iso
+
+# Default target
+.PHONY: all clean run disk help
+
+all: $(KERNEL_BIN) $(KERNEL_ISO) $(DISK_IMAGE)
+	@echo "=========================================="
+	@echo "Build complete!"
+	@echo "  Kernel: $(KERNEL_BIN)"
+	@echo "  ISO:    $(KERNEL_ISO)"
+	@echo "  Disk:   $(DISK_IMAGE)"
+	@echo "=========================================="
+
+# Link kernel
+$(KERNEL_BIN): $(OBJS)
+	$(LD) $(LDFLAGS) -o $@ $(OBJS)
+	@echo "Kernel linked: $@"
+
+# Boot sector
+kernel/arch/x86/boot/boot.o: kernel/arch/x86/boot/boot.S
+	@mkdir -p kernel/arch/x86/boot
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Assembly files
+kernel/arch/x86/cpu/asm.o: kernel/arch/x86/cpu/asm.s
+	@mkdir -p kernel/arch/x86/cpu
+	$(AS) $(ASFLAGS) $< -o $@
+
+kernel/arch/x86/cpu/isr_asm.o: kernel/arch/x86/cpu/isr_asm.s
+	@mkdir -p kernel/arch/x86/cpu
+	$(AS) $(ASFLAGS) $< -o $@
+
+# C files pattern rule
+%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# mkiofs tool
+MKIOFS = tools/mkiofs/mkiofs
+$(MKIOFS): tools/mkiofs/mkiofs.c
+	@mkdir -p tools/mkiofs
+	gcc -o $@ $<
+
+# Initrd image
+$(INITRD_IMAGE): $(MKIOFS)
+	./$(MKIOFS) $@
+
+# Disk image
+$(DISK_IMAGE):
+	@echo "Creating 64MB disk image..."
+	@dd if=/dev/zero of=$(DISK_IMAGE) bs=1M count=64 2>/dev/null || { echo "Error: Failed to create disk image"; exit 1; }
+	@if command -v mkfs.ext2 >/dev/null 2>&1; then \
+		mkfs.ext2 -F -q $(DISK_IMAGE) 2>/dev/null; \
+	elif command -v mke2fs >/dev/null 2>&1; then \
+		mke2fs -t ext2 -F -q $(DISK_IMAGE) 2>/dev/null; \
+	else \
+		echo "Error: mkfs.ext2 or mke2fs not found in PATH"; exit 1; \
+	fi
+	@echo "Disk image created and formatted as ext2"
+
+# ISO image
+$(KERNEL_ISO): $(KERNEL_BIN)
+	@command -v grub-mkrescue >/dev/null 2>&1 || { echo "Error: grub-mkrescue not found in PATH"; exit 1; }
+	@rm -rf iso
+	@mkdir -p iso/boot/grub
+	@cp $(KERNEL_BIN) iso/boot/galio.bin
+	@printf '%s\n' 'set timeout=0' 'set default=0' '' \
+		'menuentry "Galio Kernel" {' \
+		'  multiboot /boot/galio.bin' \
+		'  boot' \
+		'}' > iso/boot/grub/grub.cfg
+	@echo "Creating galio.iso..."
+	@grub-mkrescue -o $(KERNEL_ISO) iso 2>/dev/null
+	@echo "ISO created: $(KERNEL_ISO)"
+
+# Clean build artifacts
+clean:
+	@echo "Cleaning build files..."
+	rm -f $(KERNEL_BIN) $(KERNEL_ISO) $(DISK_IMAGE)
+	rm -f $(MKIOFS) $(INITRD_IMAGE) $(TEST_ELF)
+	rm -f $(OBJS)
+	rm -f tools/shell/*.o
+	rm -f tools/shell/commands/*.o
+	rm -f tools/shell/editor/*.o
+	rm -f kernel/**/*.o kernel/*/*.o kernel/*/*/*.o 2>/dev/null
+	rm -rf iso
+	@echo "Clean complete"
+
+# Deep clean
+distclean: clean
+	@echo "Deep cleaning..."
+	rm -rf iso
+	@echo "Deep clean complete"
+
+# Run in QEMU
+run: $(KERNEL_ISO) $(DISK_IMAGE)
+	@if [ -f ./scripts/run.sh ]; then \
+		./scripts/run.sh; \
+	else \
+		echo "run.sh not found, running default QEMU..."; \
+		qemu-system-i386 -cdrom $(KERNEL_ISO) -drive file=$(DISK_IMAGE),format=raw,if=ide,index=0,media=disk -m 128M -serial stdio; \
+	fi
+
+# Run in fullscreen
+run-fullscreen: $(KERNEL_ISO) $(DISK_IMAGE)
+	@if [ -f ./scripts/run_fullscreen.sh ]; then \
+		./scripts/run_fullscreen.sh; \
+	else \
+		qemu-system-i386 -cdrom $(KERNEL_ISO) -drive file=$(DISK_IMAGE),format=raw,if=ide,index=0,media=disk -m 128M -full-screen -vga std -display gtk,zoom-to-fit=on -serial stdio; \
+	fi
+
+# Help
+help:
+	@echo "=========================================="
+	@echo "Galio Kernel Build System"
+	@echo "=========================================="
+	@echo "Targets:"
+	@echo "  make all          - Build kernel, ISO, and disk image"
+	@echo "  make clean        - Remove build artifacts"
+	@echo "  make distclean    - Deep clean (remove all objects)"
+	@echo "  make run          - Run in QEMU (normal mode)"
+	@echo "  make run-fullscreen - Run in QEMU (fullscreen)"
+	@echo "  make help         - Show this help"
+	@echo ""
+	@echo "Directory structure:"
+	@echo "  kernel/           - Core kernel sources"
+	@echo "  include/          - Header files"
+	@echo "  init/             - Init process"
+	@echo "  tools/            - Build tools and shell"
+	@echo "  scripts/          - Run scripts"
+	@echo "=========================================="
+
+# Create necessary directories
+$(shell mkdir -p kernel/arch/x86/boot kernel/arch/x86/cpu kernel/mm kernel/process)
+$(shell mkdir -p kernel/fs/vfs kernel/fs/ext2 kernel/drivers/ata kernel/drivers/keyboard)
+$(shell mkdir -p kernel/drivers/serial kernel/drivers/timer kernel/drivers/video)
+$(shell mkdir -p kernel/lib kernel/syscall include/arch/x86 include/drivers include/fs)
+$(shell mkdir -p include/lib include/mm include/process include/syscall tools/mkiofs)
+$(shell mkdir -p tools/shell/include tools/shell/commands tools/shell/editor)
+
+# Override boot.o rule to use the boot.S in kernel/arch/x86/boot/
+kernel/arch/x86/boot/boot.o: kernel/arch/x86/boot/boot.S
+	@mkdir -p kernel/arch/x86/boot
+	$(CC) $(CFLAGS) -c $< -o $@

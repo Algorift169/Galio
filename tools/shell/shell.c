@@ -1,0 +1,814 @@
+/* shell.c - Interactive kernel shell (POLLING MODE, NO IRQs) */
+#include "shell.h"
+#include "vga.h"
+#include "kprintf.h"
+#include "string.h"
+#include <string.h>
+#include <stddef.h>
+#include "arch/x86/cpu.h"
+#include "vfs.h"
+#include "auth.h"
+#include "new.h"
+#include "file.h"
+#include "write.h"
+#include "show.h"
+#include "recycle.h"
+#include "clean.h"
+#include "delete.h"
+#include "editor.h"
+
+#define SHELL_BUFFER_SIZE 256
+#define HISTORY_SIZE 10
+#define HISTORY_BUFFER_SIZE 256
+#define DIR_HISTORY_SIZE 32
+#define DIR_PATH_SIZE 256
+#define ROOT_DIR "/"
+#define HOME_DIR "/home"
+
+/*
+ * Shell color helpers — VGA attribute bytes (bg nibble | fg nibble):
+ *   0x0A = light green on black  → command prompt / success labels
+ *   0x0C = light red   on black  → error messages
+ *   0x0E = yellow      on black  → normal output
+ *   0x0F = white       on black  → default (user typing)
+ */
+#define SHELL_COLOR_CMD()    vga_set_color(0x0A)
+#define SHELL_COLOR_ERR()    vga_set_color(0x0C)
+#define SHELL_COLOR_OUT()    vga_set_color(0x0E)
+#define SHELL_COLOR_RESET()  vga_set_color(0x0F)
+
+/* ASCII lookup table for scancodes */
+static const u8 ascii_table[] = {
+    0,  27,  '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b', '\t',
+    'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n', 0, 'a', 's',
+    'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`', 0, '\\', 'z', 'x', 'c', 'v',
+    'b', 'n', 'm', ',', '.', '/', 0, '*', 0, ' ', 0, 0, 0, 0, 0, 0,
+};
+static const u8 ascii_table_shift[] = {
+    0,  27,  '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '\b', '\t',
+    'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', '\n', 0, 'A', 'S',
+    'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~', 0, '|', 'Z', 'X', 'C', 'V',
+    'B', 'N', 'M', '<', '>', '?', 0, '*', 0, ' ', 0, 0, 0, 0, 0, 0,
+};
+static u8 shift_pressed = 0;
+
+typedef struct {
+    char buffer[SHELL_BUFFER_SIZE];
+    u32 len;
+} shell_input_t;
+
+typedef struct {
+    char history[HISTORY_SIZE][HISTORY_BUFFER_SIZE];
+    u32 count;
+    u32 index;
+} shell_history_t;
+
+typedef struct {
+    char stack[DIR_HISTORY_SIZE][DIR_PATH_SIZE];
+    u32 sp;
+} dir_history_t;
+
+static shell_input_t input;
+static shell_history_t history = {0};
+static dir_history_t dir_history = {0};
+static u8 extended_key = 0;
+static char current_dir[256] = HOME_DIR;
+
+static void shell_add_history(const char *cmd) {
+    if (input.len == 0) return;
+    u32 idx = history.count % HISTORY_SIZE;
+    strncpy(history.history[idx], cmd, HISTORY_BUFFER_SIZE - 1);
+    history.history[idx][HISTORY_BUFFER_SIZE - 1] = 0;
+    if (history.count < HISTORY_SIZE) history.count++;
+    history.index = history.count;
+}
+
+static void shell_clear_line(void) {
+    for (u32 i = 0; i < input.len; i++) {
+        vga_putch('\b');
+        vga_putch(' ');
+        vga_putch('\b');
+    }
+}
+
+static void shell_print_buffer(void) {
+    for (u32 i = 0; i < input.len; i++) {
+        vga_putch(input.buffer[i]);
+    }
+}
+
+static const char *shell_basename(const char *path) {
+    const char *base = path;
+    while (*path) {
+        if (*path == '/') base = path + 1;
+        path++;
+    }
+    return base;
+}
+
+static void shell_parent_dir(const char *path, char *out_parent) {
+    const char *last = path;
+    const char *scan = path;
+    while (*scan) {
+        if (*scan == '/') last = scan + 1;
+        scan++;
+    }
+    if (last == path) {
+        strncpy(out_parent, "/", DIR_PATH_SIZE - 1);
+        out_parent[DIR_PATH_SIZE - 1] = 0;
+        return;
+    }
+    u32 len = last - path;
+    if (len >= DIR_PATH_SIZE) len = DIR_PATH_SIZE - 1;
+    memcpy(out_parent, path, len);
+    out_parent[len] = 0;
+}
+
+static u8 shell_find_ancestor_dir(const char *path, const char *target, char *out_match) {
+    if (!path || !target || !*target) return 0;
+    if (strcmp(target, "/") == 0) return 0;
+
+    char candidate[DIR_PATH_SIZE];
+    strncpy(candidate, path, DIR_PATH_SIZE - 1);
+    candidate[DIR_PATH_SIZE - 1] = 0;
+
+    while (strcmp(candidate, "/") != 0) {
+        char base[DIR_PATH_SIZE];
+        const char *bn = shell_basename(candidate);
+        strncpy(base, bn, DIR_PATH_SIZE - 1);
+        base[DIR_PATH_SIZE - 1] = 0;
+        if (strcmp(base, target) == 0) {
+            strncpy(out_match, candidate, DIR_PATH_SIZE - 1);
+            out_match[DIR_PATH_SIZE - 1] = 0;
+            return 1;
+        }
+        shell_parent_dir(candidate, candidate);
+    }
+
+    return 0;
+}
+
+static u8 shell_ensure_directories(const char *path) {
+    if (!path || strcmp(path, "/") == 0) return 1;
+
+    char current[DIR_PATH_SIZE];
+    current[0] = '/';
+    current[1] = 0;
+    const char *cursor = path;
+    if (*cursor == '/') cursor++;
+
+    while (*cursor) {
+        char segment[DIR_PATH_SIZE];
+        u32 len = 0;
+        while (cursor[len] && cursor[len] != '/' && len + 1 < sizeof(segment)) {
+            segment[len++] = cursor[len];
+        }
+        segment[len] = 0;
+
+        char next[DIR_PATH_SIZE];
+        if (strcmp(current, "/") == 0) {
+            strncpy(next, "/", DIR_PATH_SIZE - 1);
+            next[DIR_PATH_SIZE - 1] = 0;
+            strncat(next, segment, DIR_PATH_SIZE - strlen(next) - 1);
+        } else {
+            strncpy(next, current, DIR_PATH_SIZE - 1);
+            next[DIR_PATH_SIZE - 1] = 0;
+            strncat(next, "/", DIR_PATH_SIZE - strlen(next) - 1);
+            strncat(next, segment, DIR_PATH_SIZE - strlen(next) - 1);
+        }
+
+        if (!vfs_is_dir(next)) {
+            vfs_entry_t *entry = vfs_find(next);
+            if (entry) return 0;
+            if (!vfs_mkdir(next, 1)) return 0;
+        }
+
+        strncpy(current, next, DIR_PATH_SIZE - 1);
+        current[DIR_PATH_SIZE - 1] = 0;
+
+        if (cursor[len] == '/') cursor += len + 1;
+        else break;
+    }
+
+    return 1;
+}
+
+static u8 is_root_child_path(const char *path) {
+    char parent[256];
+    const char *last = path;
+    const char *scan = path;
+
+    while (*scan) {
+        if (*scan == '/') last = scan + 1;
+        scan++;
+    }
+
+    if (last == path) {
+        return 0;
+    }
+
+    if (last - path >= (int)sizeof(parent)) {
+        return 0;
+    }
+
+    memcpy(parent, path, last - path);
+    parent[last - path] = 0;
+    return strcmp(parent, "/") == 0;
+}
+
+u8 shell_dir_command(const char *args, const char *current_dir, u8 replace, u8 privileged) {
+    if (!args || *args == 0) {
+        SHELL_COLOR_CMD();
+        // Optional: show usage if desired, but keeping original style
+        SHELL_COLOR_RESET();
+        return 0;
+    }
+
+    char local[512];
+    strncpy(local, args, sizeof(local) - 1);
+    local[sizeof(local) - 1] = 0;
+
+    char *ptr = local;
+    u8 any_success = 0;
+
+    while (*ptr) {
+        while (*ptr == ' ') ptr++;
+        if (*ptr == 0) break;
+
+        char *end = ptr;
+        while (*end && *end != ' ') end++;
+
+        char saved_char = *end;
+        *end = 0;
+
+        char fullpath[256];
+        if (ptr[0] == '/') {
+            strncpy(fullpath, ptr, sizeof(fullpath) - 1);
+            fullpath[sizeof(fullpath) - 1] = 0;
+        } else {
+            strncpy(fullpath, current_dir, sizeof(fullpath) - 1);
+            fullpath[sizeof(fullpath) - 1] = 0;
+            int len = strlen(fullpath);
+            if (len > 0 && fullpath[len - 1] != '/') {
+                strncat(fullpath, "/", sizeof(fullpath) - len - 1);
+            }
+            strncat(fullpath, ptr, sizeof(fullpath) - strlen(fullpath) - 1);
+        }
+
+        /* Ensure parent directories exist */
+        char parent[256];
+        const char *parent_path = fullpath;
+        int parent_len = strlen(parent_path) - 1;
+        while (parent_len > 0 && parent_path[parent_len] != '/') parent_len--;
+        if (parent_len <= 0) {
+            strncpy(parent, "/", sizeof(parent) - 1);
+            parent[sizeof(parent) - 1] = 0;
+        } else {
+            if (parent_len >= (int)sizeof(parent)) parent_len = sizeof(parent) - 1;
+            memcpy(parent, parent_path, parent_len);
+            parent[parent_len] = 0;
+        }
+
+        if (!privileged && is_root_child_path(fullpath)) {
+            SHELL_COLOR_ERR();
+            kprintf("[DIR] Permission denied: use 'rex dir %s' to create root-level directories\n", fullpath);
+            SHELL_COLOR_RESET();
+            *end = saved_char;
+            ptr = end + 1;
+            continue;
+        }
+
+        if (!vfs_is_dir(parent)) {
+            if (!shell_ensure_directories(parent)) {
+                SHELL_COLOR_ERR();
+                kprintf("[DIR] Cannot create parent directories: %s\n", parent);
+                SHELL_COLOR_RESET();
+                *end = saved_char;
+                ptr = end + 1;
+                continue;
+            }
+        }
+
+        vfs_entry_t *existing = vfs_find(fullpath);
+        if (existing) {
+            if (!existing->is_dir) {
+                SHELL_COLOR_ERR();
+                kprintf("[DIR] Path exists and is not a directory: %s\n", fullpath);
+                SHELL_COLOR_RESET();
+            } else {
+                /* Directory already exists – treat as success (no error) */
+                any_success = 1;
+            }
+        } else {
+            if (vfs_mkdir(fullpath, replace)) {
+                any_success = 1;
+            }
+        }
+
+        *end = saved_char;
+        ptr = end + 1;
+    }
+
+    return any_success;
+}
+/* Parse and execute command */
+/* Parse and execute command */
+static void shell_execute_command(void) {
+    if (input.len == 0) return;
+
+    input.buffer[input.len] = 0;
+    shell_add_history(input.buffer);
+    kprintf("\n");
+
+    /* Handle rex (sudo-like) commands */
+    if (strncmp(input.buffer, "rex ", 4) == 0) {
+        /* Check if already authorized in this session */
+        if (!auth_is_authorized()) {
+            /* Not authorized - prompt for password */
+            SHELL_COLOR_CMD();
+            kprintf("[REX] Privileged command requires authentication\n");
+            SHELL_COLOR_RESET();
+            
+            char password[INPUT_BUFFER_SIZE];
+            if (!auth_prompt_password("Password: ", password, INPUT_BUFFER_SIZE)) {
+                SHELL_COLOR_ERR();
+                kprintf("[REX] Authentication cancelled\n");
+                SHELL_COLOR_RESET();
+                SHELL_COLOR_CMD();
+                kprintf(" ~[ G ]   < %s >   ", current_dir);
+                SHELL_COLOR_RESET();
+                input.len = 0;
+                return;
+            }
+            
+            /* Verify password against kernel_auth credentials */
+            if (!auth_verify_password(kernel_auth.username, password)) {
+                SHELL_COLOR_ERR();
+                kprintf("[REX] Access denied: Invalid password\n");
+                SHELL_COLOR_RESET();
+                SHELL_COLOR_CMD();
+                kprintf(" ~[ G ]   < %s >   ", current_dir);
+                SHELL_COLOR_RESET();
+                input.len = 0;
+                return;
+            }
+            
+            /* Password correct - authorize for this session */
+            auth_authorize();
+            SHELL_COLOR_CMD();
+            kprintf("[REX] Password accepted. Privileged mode enabled for this session.\n");
+            SHELL_COLOR_RESET();
+        }
+        
+        /* Now execute the privileged command (already authorized) */
+        const char *cmd = input.buffer + 4;
+        
+        /* Skip leading spaces */
+        while (*cmd == ' ') cmd++;
+        
+        if (strlen(cmd) == 0) {
+            SHELL_COLOR_ERR();
+            kprintf("[REX] Usage: rex <command> [args...]\n");
+            kprintf("[REX] Available commands: goto, file, new file, dir, new dir, mkdir, write, recycle, delete, clean\n");
+            SHELL_COLOR_RESET();
+        } else if (strncmp(cmd, "goto ", 5) == 0) {
+            const char *path = cmd + 5;
+            while (*path == ' ') path++;
+            if (path[0] == '/') {
+                strncpy(current_dir, path, 255);
+            } else {
+                char fullpath[256];
+                strncpy(fullpath, current_dir, 255);
+                fullpath[255] = 0;
+                int len = strlen(fullpath);
+                if (len > 0 && fullpath[len-1] != '/') {
+                    strncat(fullpath, "/", 255 - len - 1);
+                }
+                strncat(fullpath, path, 255 - strlen(fullpath) - 1);
+                strncpy(current_dir, fullpath, 255);
+            }
+            current_dir[255] = 0;
+            SHELL_COLOR_CMD();
+            kprintf("[REX] Changed to: %s\n", current_dir);
+            SHELL_COLOR_RESET();
+        } else if (strncmp(cmd, "file", 4) == 0 && (cmd[4] == ' ' || cmd[4] == '\0')) {
+            const char *file_args = cmd + 4;
+            if (*file_args == ' ') file_args++;
+            SHELL_COLOR_OUT();
+            shell_file_command(file_args, current_dir, 1, 1);
+            SHELL_COLOR_RESET();
+        } else if (strncmp(cmd, "new file", 8) == 0) {
+            const char *file_args = cmd + 8;
+            if (*file_args == ' ') file_args++;
+            SHELL_COLOR_OUT();
+            shell_file_command(file_args, current_dir, 1, 1);
+            SHELL_COLOR_RESET();
+        } else if (strncmp(cmd, "dir", 3) == 0 && (cmd[3] == ' ' || cmd[3] == '\0')) {
+            const char *dir_args = cmd + 3;
+            if (*dir_args == ' ') dir_args++;
+            shell_dir_command(dir_args, current_dir, 1, 1);
+        } else if (strncmp(cmd, "new dir", 7) == 0) {
+            const char *dir_args = cmd + 7;
+            if (*dir_args == ' ') dir_args++;
+            shell_dir_command(dir_args, current_dir, 1, 1);
+        } else if (strncmp(cmd, "mkdir", 5) == 0 && (cmd[5] == ' ' || cmd[5] == '\0')) {
+            const char *dir_args = cmd + 5;
+            if (*dir_args == ' ') dir_args++;
+            shell_dir_command(dir_args, current_dir, 1, 1);
+        } else if (strncmp(cmd, "new mkdir", 9) == 0) {
+            const char *dir_args = cmd + 9;
+            if (*dir_args == ' ') dir_args++;
+            shell_dir_command(dir_args, current_dir, 1, 1);
+        } else if (strncmp(cmd, "write", 5) == 0 && (cmd[5] == ' ' || cmd[5] == '\0')) {
+            const char *write_args = cmd + 5;
+            if (*write_args == ' ') write_args++;
+            SHELL_COLOR_OUT();
+            shell_write_command(write_args, current_dir, 1);
+            SHELL_COLOR_RESET();
+        } else if (strncmp(cmd, "recycle", 7) == 0 && (cmd[7] == ' ' || cmd[7] == '\0')) {
+            const char *recycle_args = cmd + 7;
+            if (*recycle_args == ' ') recycle_args++;
+            SHELL_COLOR_OUT();
+            shell_recycle_command(recycle_args, current_dir, 1);
+            SHELL_COLOR_RESET();
+        } else if (strncmp(cmd, "delete", 6) == 0 && (cmd[6] == ' ' || cmd[6] == '\0')) {
+            const char *delete_args = cmd + 6;
+            if (*delete_args == ' ') delete_args++;
+            SHELL_COLOR_OUT();
+            shell_delete_command(delete_args, current_dir, 1);
+            SHELL_COLOR_RESET();
+        } else if (strncmp(cmd, "clean", 5) == 0 && (cmd[5] == ' ' || cmd[5] == '\0')) {
+            const char *clean_args = cmd + 5;
+            if (*clean_args == ' ') clean_args++;
+            SHELL_COLOR_OUT();
+            shell_clean_command(clean_args, current_dir);
+            SHELL_COLOR_RESET();
+        } else {
+            SHELL_COLOR_ERR();
+            kprintf("[REX] Unknown privileged command: %s\n", cmd);
+            kprintf("[REX] Available: goto, file, new file, dir, new dir, mkdir, write, recycle, delete, clean\n");
+            SHELL_COLOR_RESET();
+        }
+    } else if (strncmp(input.buffer, "new ", 4) == 0) {
+        SHELL_COLOR_OUT();
+        shell_new_command(input.buffer + 4, current_dir, 0);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "new") == 0) {
+        SHELL_COLOR_OUT();
+        shell_new_command("", current_dir, 0);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "file ", 5) == 0) {
+        SHELL_COLOR_OUT();
+        shell_file_command(input.buffer + 5, current_dir, 0, 0);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "file") == 0) {
+        SHELL_COLOR_OUT();
+        shell_file_command("", current_dir, 0, 0);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "write ", 6) == 0) {
+        SHELL_COLOR_OUT();
+        shell_write_command(input.buffer + 6, current_dir, 0);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "write") == 0) {
+        SHELL_COLOR_OUT();
+        shell_write_command("", current_dir, 0);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "show ", 5) == 0) {
+        SHELL_COLOR_OUT();
+        shell_show_command(input.buffer + 5, current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "show") == 0) {
+        SHELL_COLOR_CMD();
+        kprintf("[SHOW] Usage: show <filepath>\n");
+        kprintf("[SHOW] Example: show /home/Desktop/file.txt\n");
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "recycle ", 8) == 0) {
+        SHELL_COLOR_OUT();
+        shell_recycle_command(input.buffer + 8, current_dir, 0);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "recycle") == 0) {
+        SHELL_COLOR_OUT();
+        shell_recycle_command("", current_dir, 0);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "delete ", 7) == 0) {
+        SHELL_COLOR_OUT();
+        shell_delete_command(input.buffer + 7, current_dir, 0);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "delete") == 0) {
+        SHELL_COLOR_OUT();
+        shell_delete_command("", current_dir, 0);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "clean ", 6) == 0) {
+        SHELL_COLOR_OUT();
+        shell_clean_command(input.buffer + 6, current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "clean") == 0) {
+        SHELL_COLOR_OUT();
+        shell_clean_command("", current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "clear", 5) == 0) {
+        vga_clear();
+        SHELL_COLOR_OUT();
+        kprintf("                                GSH                                  \n");
+        kprintf("                                                                     \n");
+        kprintf("                                                                     \n");
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "help", 4) == 0) {
+        SHELL_COLOR_OUT();
+        kprintf("\n____________________________________________________________________\n");
+        kprintf(" |                     GSH  - Available Commands:                   |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" |  ls       - List directory contents                              |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" |  dir      - Create directory (usage: dir <path1> [path2] ...)     |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" |  rmdir    - Remove directory (usage: rmdir <path>)               |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" |  file     - Create file (usage: file <name>[.ext] [name...])     |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" |  new file - Create or replace file (usage: new file <name>...)   |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" |  new dir  - Create directory (usage: new dir <name> [name...])    |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" |  write    - Write/edit file (usage: write <name> [path])         |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" |  show     - Display file contents (usage: show <filepath>)       |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" | recycle  - Move to recycle bin (usage: recycle <path1> [path2])  |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" | clean    - Clean recycle bin (usage: clean rbin)                 |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" | delete   - Permanently delete (usage: delete <path1> [path2])    |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" | clear    - Clear the screen                                      |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" | echo     - Echo text (usage: echo <text>)                        |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" | uname    - Show system name                                      |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" | pwd      - Print current directory                               |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" | goto     - Change directory (usage: goto <path>)                 |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" | back     - Go back to previous dir (usage: back [dirname])       |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" | rex      - Privileged command (like sudo)                        |\n");
+        kprintf(" |           Usage: rex <cmd> [args]                                |\n");
+        kprintf(" |           Password required once per session                     |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" |  Use UP/DOWN arrows to navigate history                          |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf("\n");
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "ls", 2) == 0) {
+        SHELL_COLOR_OUT();
+        vfs_listdir(current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "dir ", 4) == 0) {
+        shell_dir_command(input.buffer + 4, current_dir, 0, 0);
+    } else if (strcmp(input.buffer, "dir") == 0) {
+        shell_dir_command("", current_dir, 0, 0);
+    } else if (strncmp(input.buffer, "mkdir ", 6) == 0) {
+        shell_dir_command(input.buffer + 6, current_dir, 0, 0);
+    } else if (strcmp(input.buffer, "mkdir") == 0) {
+        shell_dir_command("", current_dir, 0, 0);
+    } else if (strncmp(input.buffer, "rmdir ", 6) == 0) {
+        const char *dirname = input.buffer + 6;
+        char fullpath[256];
+
+        if (dirname[0] == '/') {
+            strncpy(fullpath, dirname, 255);
+            fullpath[255] = 0;
+        } else {
+            strncpy(fullpath, current_dir, 255);
+            fullpath[255] = 0;
+            int len = strlen(fullpath);
+            if (len > 0 && fullpath[len-1] != '/') {
+                strncat(fullpath, "/", 255 - len - 1);
+            }
+            strncat(fullpath, dirname, 255 - strlen(fullpath) - 1);
+        }
+        SHELL_COLOR_OUT();
+        vfs_rmdir(fullpath);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "pwd", 3) == 0) {
+        SHELL_COLOR_OUT();
+        kprintf("%s\n", current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "goto ", 5) == 0) {
+        const char *dirname = input.buffer + 5;
+        char fullpath[256];
+
+        if (dirname[0] == '/') {
+            strncpy(fullpath, dirname, 255);
+            fullpath[255] = 0;
+        } else {
+            strncpy(fullpath, current_dir, 255);
+            fullpath[255] = 0;
+            int len = strlen(fullpath);
+            if (len > 0 && fullpath[len-1] != '/') {
+                strncat(fullpath, "/", 255 - len - 1);
+            }
+            strncat(fullpath, dirname, 255 - strlen(fullpath) - 1);
+        }
+
+        if (strcmp(fullpath, ROOT_DIR) == 0) {
+            SHELL_COLOR_ERR();
+            kprintf("Permission denied: use 'rex goto /' to access root\n");
+            SHELL_COLOR_RESET();
+        } else if (vfs_is_dir(fullpath)) {
+            if (dir_history.sp < DIR_HISTORY_SIZE) {
+                strncpy(dir_history.stack[dir_history.sp], current_dir, DIR_PATH_SIZE - 1);
+                dir_history.stack[dir_history.sp][DIR_PATH_SIZE - 1] = 0;
+                dir_history.sp++;
+            }
+            strncpy(current_dir, fullpath, 255);
+            current_dir[255] = 0;
+        } else {
+            SHELL_COLOR_ERR();
+            kprintf("Directory not found: %s\n", fullpath);
+            SHELL_COLOR_RESET();
+        }
+    } else if (strncmp(input.buffer, "back", 4) == 0) {
+        const char *target = input.buffer + 4;
+        while (*target == ' ') target++;
+
+        if (*target == 0) {
+            if (dir_history.sp > 0) {
+                dir_history.sp--;
+                strncpy(current_dir, dir_history.stack[dir_history.sp], 255);
+                current_dir[255] = 0;
+            } else {
+                SHELL_COLOR_ERR();
+                kprintf("No previous directory\n");
+                SHELL_COLOR_RESET();
+            }
+        } else {
+            if (strcmp(target, "/") == 0) {
+                SHELL_COLOR_ERR();
+                kprintf("Permission denied: use 'rex goto /' to access root\n");
+                SHELL_COLOR_RESET();
+            } else {
+                u32 found = 0;
+                for (u32 i = dir_history.sp; i > 0; i--) {
+                    u32 idx = i - 1;
+                    if (strcmp(dir_history.stack[idx], target) == 0 ||
+                        strcmp(shell_basename(dir_history.stack[idx]), target) == 0) {
+                        dir_history.sp = idx;
+                        strncpy(current_dir, dir_history.stack[idx], 255);
+                        current_dir[255] = 0;
+                        found = 1;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    char match[DIR_PATH_SIZE];
+                    if (shell_find_ancestor_dir(current_dir, target, match)) {
+                        strncpy(current_dir, match, 255);
+                        current_dir[255] = 0;
+                        found = 1;
+                    }
+                }
+
+                if (!found) {
+                    SHELL_COLOR_ERR();
+                    kprintf("Directory not in history: %s\n", target);
+                    SHELL_COLOR_RESET();
+                }
+            }
+        }
+    } else if (strncmp(input.buffer, "echo ", 5) == 0) {
+        SHELL_COLOR_OUT();
+        kprintf("%s\n", input.buffer + 5);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "uname", 5) == 0) {
+        SHELL_COLOR_OUT();
+        kprintf("Galio v1.0\n");
+        SHELL_COLOR_RESET();
+    } else if (input.len > 0) {
+        SHELL_COLOR_ERR();
+        kprintf("Unknown command: %s\nType 'help' for available commands\n", input.buffer);
+        SHELL_COLOR_RESET();
+    }
+
+    SHELL_COLOR_CMD();
+    kprintf(" ~[ G ]   < %s >   ", current_dir);
+    SHELL_COLOR_RESET();
+    input.len = 0;
+}
+
+/* Poll keyboard for input (no IRQs) */
+static void shell_poll_keyboard(void) {
+    u8 status = inb(0x64);
+
+    if (status & 0x01) {
+        u8 scancode = inb(0x60);
+
+        if (scancode == 0xE0) {
+            extended_key = 1;
+            return;
+        }
+
+        u8 is_pressed = !(scancode & 0x80);
+        u8 raw_scancode = scancode & 0x7F;
+
+        if (raw_scancode == 0x2A || raw_scancode == 0x36) {
+            shift_pressed = is_pressed;
+            return;
+        }
+
+        if (!is_pressed) {
+            if (extended_key) extended_key = 0;
+            return;
+        }
+
+        if (extended_key) {
+            extended_key = 0;
+            if (raw_scancode == 0x48) {
+                if (history.index > 0) {
+                    history.index--;
+                    shell_clear_line();
+                    strncpy(input.buffer, history.history[history.index], SHELL_BUFFER_SIZE - 1);
+                    input.len = strlen(input.buffer);
+                    shell_print_buffer();
+                }
+                return;
+            } else if (raw_scancode == 0x50) {
+                if (history.index < history.count - 1) {
+                    history.index++;
+                    shell_clear_line();
+                    strncpy(input.buffer, history.history[history.index], SHELL_BUFFER_SIZE - 1);
+                    input.len = strlen(input.buffer);
+                    shell_print_buffer();
+                } else if (history.index == history.count - 1) {
+                    history.index = history.count;
+                    shell_clear_line();
+                    input.len = 0;
+                }
+                return;
+            } else if (raw_scancode == 0x49) {
+                vga_scrollback_up();
+                return;
+            } else if (raw_scancode == 0x51) {
+                vga_scrollback_down();
+                return;
+            }
+            return;
+        }
+
+        if (raw_scancode >= sizeof(ascii_table)) return;
+
+        u8 c = shift_pressed ? ascii_table_shift[raw_scancode] : ascii_table[raw_scancode];
+        if (c == 0) return;
+
+        if (c == '\b') {
+            if (input.len > 0) {
+                input.len--;
+                vga_putch('\b');
+                vga_putch(' ');
+                vga_putch('\b');
+            }
+        } else if (c == '\n') {
+            vga_putch('\n');
+            shell_execute_command();
+        } else if (c == '\t') {
+            return;
+        } else if (c >= 32 && c < 127) {
+            if (input.len < SHELL_BUFFER_SIZE - 1) {
+                input.buffer[input.len] = c;
+                input.len++;
+                vga_putch(c);
+            }
+        }
+    }
+}
+
+void shell_run(void) {
+    input.len = 0;
+
+    vga_clear();
+
+    strncpy(current_dir, HOME_DIR, sizeof(current_dir) - 1);
+    current_dir[sizeof(current_dir) - 1] = 0;
+
+    vfs_cleanup_old_recycle_bin("/home/desktop/recycle", 259200000);
+
+    SHELL_COLOR_OUT();
+    kprintf("                          Welcome to GSh                 ");
+    kprintf("                                                             ");
+    kprintf("                                                             ");
+    kprintf("                                                             ");
+    //kprintf("                                                             ");
+    
+    SHELL_COLOR_RESET();
+
+    SHELL_COLOR_CMD();
+    kprintf(" ~[ G ]   < %s >   ", current_dir);
+    SHELL_COLOR_RESET();
+
+    for (;;) {
+        shell_poll_keyboard();
+        for (volatile int i = 0; i < 100; i++);
+    }
+}

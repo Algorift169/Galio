@@ -1,0 +1,21 @@
+# Build artifacts
+*.o
+*.bin
+*.iso
+*.elf
+*.img
+*.log
+
+build/
+dist/
+
+serial.log
+build.log
+
+.vscode/
+.idea/
+*.swp
+*~
+
+.DS_Store
+Thumbs.db
