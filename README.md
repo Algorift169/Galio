@@ -98,54 +98,47 @@ make clean && rm -rf galio.iso && make all || make galio.bin && ./iso.sh && ./ru
 - `galio.bin` — Linked kernel image
 - `galio.iso` — Bootable GRUB ISO
 - `README.md` — This documentation
+- `initrd.bin` — Initial RAM disk image
+- `disk.img` — Disk image for persistent storage
 
 **Directories**
 
-- `boot/` — Boot code and linker script
-  - `boot.S` — Multiboot header and entry point
-  - `linker.ld` — Linker script for ELF layout
+- `kernel/` — Core kernel sources
+  - `arch/x86/boot/` — Boot code (boot.S, linker.ld)
+  - `arch/x86/cpu/` — CPU management (GDT, IDT, IRQ, ISR)
+  - `drivers/` — Device drivers (ATA, keyboard, serial, timer, VGA)
+  - `fs/` — Filesystem drivers (EXT2, VFS)
+  - `lib/` — Kernel libraries (kprintf, string, mem_test)
+  - `mm/` — Memory management (paging, PMM, heap)
+  - `process/` — Process management and ELF loader
+  - `syscall/` — System call interface
+  - `auth.c` — User authentication
+  - `kmain.c` — Kernel entry point
 
 - `include/` — Public headers
-  - `common.h` — Common types and utilities
-  - `cpu.h` — CPU structures and I/O functions
-  - `vga.h` — VGA driver interface
-  - `serial.h` — Serial driver interface
-  - `gdt.h` — GDT management
-  - `idt.h` — IDT management
-  - `irq.h` — Interrupt handling
-  - `pmem.h` — Physical memory manager
-  - `paging.h` — Virtual memory paging
-  - `heap.h` — Heap allocator
-  - `pit.h` — Timer driver
-  - `keyboard.h` — Keyboard driver
-  - `process.h` — Process management
-  - `syscall.h` — System call interface
-  - `vfs.h` — Virtual filesystem
-  - `kprintf.h` — Kernel printf
+  - `arch/x86/` — Architecture headers (cpu, gdt, idt, irq)
+  - `drivers/` — Driver headers (ata, keyboard, pit, serial, vga)
+  - `fs/` — Filesystem headers (ext2, vfs, vfs_core)
+  - `lib/` — Library headers (kprintf, string)
+  - `mm/` — Memory management headers (heap, memory, paging, pmem)
+  - `process/` — Process headers (elf, preempt, process, scheduler)
+  - `syscall/` — Syscall header
+  - `auth.h`, `common.h`, `init.h`
 
-- `src/` — Kernel source files
-  - `asm.s` — Assembly utilities (GDT/IDT loading)
-  - `isr_asm.s` — ISR/IRQ assembly stubs
-  - `kernel.c` — Core utilities and panic
-  - `kmain.c` — Main kernel entry and initialization
-  - `vga.c` — VGA text driver
-  - `serial.c` — Serial port driver
-  - `gdt.c` — GDT setup
-  - `idt.c` — IDT setup
-  - `irq.c` — PIC and interrupt management
-  - `isr.c` — ISR/IRQ handlers
-  - `pmem.c` — Physical memory allocation
-  - `paging.c` — Virtual memory paging
-  - `heap.c` — Kernel heap
-  - `pit.c` — Timer driver
-  - `keyboard.c` — Keyboard input
-  - `process.c` — Process management
-  - `syscall.c` — System calls
-  - `vfs.c` — Filesystem layer
-  - `string.c` — String utilities
-  - `elf.c` — ELF loading utilities
+- `init/` — Init process
+  - `init.c`
 
----
+- `tools/` — Build tools
+  - `mkiofs/` — Initrd generator
+  - `shell/` — User shell with commands and editor
+
+- `scripts/` — Utility scripts
+  - `run.sh` — QEMU runner
+  - `run_fullscreen.sh` — QEMU fullscreen runner
+  - `iso.sh` — ISO creation script
+
+- `test/` — Test programs
+  - `test_elf.c` — ELF test binary
 
 ### Notes
 
