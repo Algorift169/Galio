@@ -59,46 +59,24 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/delete.c \
        tools/shell/editor/editor.c
 
-# Object files (explicitly list them)
-OBJS = src/embedded_test.o src/embedded_initrd.o kernel/kmain.o \
-       kernel/auth.o \
-       kernel/lib/kernel.o \
-       kernel/lib/kprintf.o \
-       kernel/lib/string.o \
-       kernel/lib/mem_test.o \
-       kernel/arch/x86/cpu/gdt.o \
-       kernel/arch/x86/cpu/idt.o \
-       kernel/arch/x86/cpu/irq.o \
-       kernel/arch/x86/cpu/isr.o \
-       kernel/mm/paging.o \
-       kernel/mm/pmem.o \
-       kernel/mm/heap.o \
-       kernel/mm/memory.o \
-       kernel/process/process.o \
-       kernel/process/scheduler.o \
-       kernel/process/elf.o \
+# Object files
+OBJS = src/embedded_test.o src/embedded_initrd.o \
+       kernel/kmain.o kernel/auth.o \
+       kernel/lib/kernel.o kernel/lib/kprintf.o kernel/lib/string.o kernel/lib/mem_test.o \
+       kernel/arch/x86/cpu/gdt.o kernel/arch/x86/cpu/idt.o \
+       kernel/arch/x86/cpu/irq.o kernel/arch/x86/cpu/isr.o \
+       kernel/mm/paging.o kernel/mm/pmem.o kernel/mm/heap.o kernel/mm/memory.o \
+       kernel/process/process.o kernel/process/scheduler.o kernel/process/elf.o \
        kernel/syscall/syscall.o \
-       kernel/fs/vfs/vfs_core.o \
-       kernel/fs/vfs/vfs_wrapper.o \
-       kernel/fs/ext2/ext2.o \
-       kernel/drivers/ata/ata.o \
-       kernel/drivers/keyboard/keyboard.o \
-       kernel/drivers/serial/serial.o \
-       kernel/drivers/timer/pit.o \
-       kernel/drivers/video/vga.o \
+       kernel/fs/vfs/vfs_core.o kernel/fs/vfs/vfs_wrapper.o kernel/fs/ext2/ext2.o \
+       kernel/drivers/ata/ata.o kernel/drivers/keyboard/keyboard.o \
+       kernel/drivers/serial/serial.o kernel/drivers/timer/pit.o kernel/drivers/video/vga.o \
        init/init.o \
        tools/shell/shell.o \
-       tools/shell/commands/file.o \
-       tools/shell/commands/new.o \
-       tools/shell/commands/show.o \
-       tools/shell/commands/write.o \
-       tools/shell/commands/recycle.o \
-       tools/shell/commands/clean.o \
-       tools/shell/commands/delete.o \
-       tools/shell/editor/editor.o \
-       kernel/arch/x86/cpu/asm.o \
-       kernel/arch/x86/cpu/isr_asm.o \
-       kernel/arch/x86/boot/boot.o
+       tools/shell/commands/file.o tools/shell/commands/new.o tools/shell/commands/show.o \
+       tools/shell/commands/write.o tools/shell/commands/recycle.o tools/shell/commands/clean.o \
+       tools/shell/commands/delete.o tools/shell/editor/editor.o \
+       kernel/arch/x86/cpu/asm.o kernel/arch/x86/cpu/isr_asm.o kernel/arch/x86/boot/boot.o
 
 # Binary targets
 TEST_ELF = test_elf.bin
@@ -166,6 +144,18 @@ $(KERNEL_ISO): $(KERNEL_BIN)
 	@grub-mkrescue -o $(KERNEL_ISO) iso 2>/dev/null
 	@echo "ISO created"
 
+# Embedded objects
+src/embedded_test.o: test_elf.bin
+	@mkdir -p src
+	objcopy -I binary -O elf32-i386 -B i386 $< $@
+
+src/embedded_initrd.o: $(INITRD_IMAGE)
+	@mkdir -p src
+	objcopy -I binary -O elf32-i386 -B i386 $< $@
+
+test_elf.bin: test/test_elf.c
+	gcc -m32 -ffreestanding -nostdlib -Wl,--entry=_start -Wl,-Ttext=0x10000 $< -o $@
+
 # Clean
 clean:
 	@echo "Cleaning build files..."
@@ -185,13 +175,3 @@ help:
 	@echo "  make all    - Build everything"
 	@echo "  make clean  - Clean build files"
 	@echo "  make run    - Run in QEMU"
-
-# Embedded objects
-src/embedded_test.o: test_elf.bin
-	objcopy -I binary -O elf32-i386 -B i386 $< $@
-
-src/embedded_initrd.o: initrd.bin
-	objcopy -I binary -O elf32-i386 -B i386 $< $@
-
-test_elf.bin: test/test_elf.c
-	gcc -m32 -ffreestanding -nostdlib -Wl,--entry=_start -Wl,-Ttext=0x10000 $< -o $@
