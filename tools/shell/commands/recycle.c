@@ -166,11 +166,6 @@ static u8 recycle_single_path(const char *fullpath, u8 privileged) {
     char dest[VFS_MAX_PATH];
     make_recycle_target(base, dest);
 
-    if (entry->is_dir) {
-        kprintf("[RECYCLE] Directories are not supported by recycle yet: %s\n", fullpath);
-        return 0;
-    }
-
     if (!vfs_move(fullpath, dest)) {
         kprintf("[RECYCLE] Filesystem move failed: %s -> %s\n", fullpath, dest);
         return 0;
