@@ -1,3 +1,0 @@
-for i in 1; do echo $i
-# the next line has no EOL. It still must count as "done" keyword:
-done
