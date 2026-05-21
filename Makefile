@@ -29,6 +29,7 @@ SRCS = kernel/kmain.c \
        kernel/lib/string.c \
        kernel/lib/mem_test.c \
        kernel/arch/x86/cpu/gdt.c \
+       kernel/arch/x86/cpu/tss.c \
        kernel/arch/x86/cpu/idt.c \
        kernel/arch/x86/cpu/irq.c \
        kernel/arch/x86/cpu/isr.c \
@@ -67,7 +68,7 @@ SRCS = kernel/kmain.c \
 OBJS = src/embedded_test.o src/embedded_initrd.o \
        kernel/kmain.o kernel/auth.o \
        kernel/lib/kernel.o kernel/lib/kprintf.o kernel/lib/string.o kernel/lib/mem_test.o \
-       kernel/arch/x86/cpu/gdt.o kernel/arch/x86/cpu/idt.o \
+       kernel/arch/x86/cpu/gdt.o kernel/arch/x86/cpu/tss.o kernel/arch/x86/cpu/idt.o \
        kernel/arch/x86/cpu/irq.o kernel/arch/x86/cpu/isr.o \
        kernel/mm/paging.o kernel/mm/pmem.o kernel/mm/heap.o kernel/mm/memory.o \
        kernel/process/process.o kernel/process/scheduler.o kernel/process/elf.o \

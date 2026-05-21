@@ -1,5 +1,6 @@
 /* syscall.c - System calls interface */
 #include "syscall.h"
+#include "tss.h"
 #include "cpu.h"
 #include "vga.h"
 #include "kprintf.h"
@@ -269,8 +270,14 @@ static i32 syscall_exec(const char *path) {
     /* Switch to user mode */
     process_t *current = process_current();
     current->regs.eip = entry;
-    current->regs.esp = 0xBFFFFFFF;  /* User stack top */
-    current->regs.eflags |= 0x3000;  /* IOPL=3 for user mode */
+    current->regs.esp = USER_STACK_TOP;  /* User stack top */
+    current->regs.eflags &= ~0x3000;    /* Clear IOPL for ring3 */
+    current->regs.eflags |= 0x202;      /* Set IF and reserved flag */
+
+    if (current->pagedir) {
+        paging_load_directory(current->pagedir);
+    }
+    tss_set_kernel_stack((u32)current->stack + current->stack_size - 4);
 
     /* Set up user-mode segments (assuming GDT has user descriptors) */
     __asm__ volatile(
@@ -279,10 +286,10 @@ static i32 syscall_exec(const char *path) {
         "movw %%ax, %%es\n"
         "movw %%ax, %%fs\n"
         "movw %%ax, %%gs\n"
-        "pushl $0x23\n"     /* User data SS */
+        "pushw $0x23\n"     /* User data SS */
         "pushl %0\n"        /* ESP */
         "pushfl\n"          /* EFLAGS */
-        "pushl $0x1B\n"     /* User code CS */
+        "pushw $0x1B\n"     /* User code CS */
         "pushl %1\n"        /* EIP */
         "iret\n"
         : : "r"(current->regs.esp), "r"(entry)

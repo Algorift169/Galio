@@ -1,5 +1,6 @@
 /* isr.c - CPU exception handlers and interrupt dispatching */
 #include "cpu.h"
+#include "process.h"
 #include "vga.h"
 #include "common.h"
 #include "kprintf.h"
@@ -31,6 +32,9 @@ static void print_registers(registers_t *regs) {
             regs->esi, regs->edi, regs->ebp, regs->esp);
     kprintf("  EIP=%08X  EFLAGS=%08X  CS=%04X  DS=%04X\n",
             regs->eip, regs->eflags, regs->cs, regs->ds);
+    if ((regs->cs & 3) == 3) {
+        kprintf("  USER ESP=%08X  USER SS=%04X\n", regs->user_esp, regs->user_ss);
+    }
     if (regs->interrupt_number >= 32) {
         kprintf("  Error code: %08X\n", regs->error_code);
     }
@@ -53,7 +57,32 @@ void isr_handler(registers_t *regs) {
         if (int_no == 14) {
             u32 cr2;
             __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
-            kprintf("Faulting address: %08X\n", cr2);
+            kprintf("Page fault at CR2=%08X\n", cr2);
+
+            u32 present = regs->error_code & 0x1;
+            u32 write = regs->error_code & 0x2;
+            u32 user = regs->error_code & 0x4;
+            u32 reserved = regs->error_code & 0x8;
+            u32 instr = regs->error_code & 0x10;
+
+            kprintf("  Cause: %s, %s, %s\n",
+                    present ? "protection violation" : "non-present page",
+                    write ? "write" : "read",
+                    user ? "user-mode" : "kernel-mode");
+            if (reserved) {
+                kprintf("  Fault had reserved-bit violation\n");
+            }
+            if (instr) {
+                kprintf("  Instruction fetch fault\n");
+            }
+            kprintf("  EIP=%08X  ESP=%08X  CS=%04X\n",
+                    regs->eip, regs->esp, regs->cs);
+            if ((regs->cs & 3) == 3) {
+                kprintf("  USER ESP=%08X  USER SS=%04X\n",
+                        regs->user_esp, regs->user_ss);
+            }
+            process_t *current = process_current();
+            kprintf("  Process PID=%u\n", current ? current->pid : 0xFFFFFFFFu);
         }
         vga_puts("=== HALTED ===\n");
         disable_interrupts();

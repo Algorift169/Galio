@@ -4,11 +4,25 @@
 #include "common.h"
 
 typedef struct {
+    u32 edi;
+    u32 esi;
+    u32 ebp;
+    u32 esp;
+    u32 ebx;
+    u32 edx;
+    u32 ecx;
+    u32 eax;
     u32 ds;
-    u32 edi, esi, ebp, esp, ebx, edx, ecx, eax;
-    u32 interrupt_number;
+    u32 es;
+    u32 fs;
+    u32 gs;
     u32 error_code;
-    u32 eip, cs, eflags, user_esp, user_ss;
+    u32 interrupt_number;
+    u32 eip;
+    u32 cs;
+    u32 eflags;
+    u32 user_esp;
+    u32 user_ss;
 } registers_t;
 
 typedef void (*interrupt_handler_t)(registers_t *regs);

@@ -7,6 +7,9 @@
 #include "kprintf.h"
 #include "vfs.h"
 #include "pmem.h"
+#include "tss.h"
+
+#define PAGE_SIZE 4096
 
 extern void process_switch_asm(register_state_t *old_regs, register_state_t *new_regs);
 
@@ -48,6 +51,7 @@ void process_init(void) {
     current_process = &processes[1];
     current_process->state = PROCESS_RUNNING;
     current_process->time_slice = PROCESS_TIME_SLICE;
+    tss_set_kernel_stack((u32)current_process->stack + current_process->stack_size - 4);
     kprintf("Idle process created (PID 1)\n");
 }
 
@@ -79,6 +83,17 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->heap_start = USER_HEAP_START;
     proc->brk = USER_HEAP_START;
     proc->mmap_count = 0;
+
+    /* Allocate a user-mode stack region for this process */
+    u32 stack_base = USER_STACK_TOP - USER_STACK_SIZE;
+    for (u32 addr = stack_base; addr < USER_STACK_TOP; addr += PAGE_SIZE) {
+        u32 phys = pmem_alloc(1);
+        if (!phys) {
+            kprintf("process_create: Failed to allocate user stack page\n");
+            return 0;
+        }
+        paging_map(proc->pagedir, addr, phys, PAGE_PRESENT | PAGE_RW | PAGE_USER);
+    }
     proc->waiting_for_pid = -1;
     proc->uid = 0;
     proc->gid = 0;
@@ -294,6 +309,7 @@ void process_preempt(registers_t *regs) {
     if (next->pagedir) {
         paging_load_directory(next->pagedir);
     }
+    tss_set_kernel_stack((u32)next->stack + next->stack_size - 4);
 
     /* Copy next process state into the current IRQ frame so iret resumes it */
     regs->eax = next->regs.eax;
@@ -311,6 +327,11 @@ void process_preempt(registers_t *regs) {
 void process_switch(process_t *from, process_t *to) {
     /* Save current EIP on stack for return */
     from->regs.eip = (u32)&&return_point;
+
+    if (to->pagedir) {
+        paging_load_directory(to->pagedir);
+    }
+    tss_set_kernel_stack((u32)to->stack + to->stack_size - 4);
 
     /* Perform context switch */
     process_switch_asm(&from->regs, &to->regs);
