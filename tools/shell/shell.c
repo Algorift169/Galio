@@ -73,6 +73,15 @@ static shell_history_t history = {0};
 static dir_history_t dir_history = {0};
 static u8 extended_key = 0;
 static char current_dir[256] = HOME_DIR;
+static const char shell_hostname[] = "galio";
+
+static void shell_print_prompt(void) {
+    const char *host = shell_hostname;
+    if (kernel_auth.registered && kernel_auth.username[0]) host = kernel_auth.username;
+    SHELL_COLOR_CMD();
+    kprintf("[G] < %s @ galio : %s > ", host, current_dir);
+    SHELL_COLOR_RESET();
+}
 
 static void shell_add_history(const char *cmd) {
     if (input.len == 0) return;
@@ -334,9 +343,7 @@ static void shell_execute_command(void) {
                 SHELL_COLOR_ERR();
                 kprintf("[REX] Authentication cancelled\n");
                 SHELL_COLOR_RESET();
-                SHELL_COLOR_CMD();
-                kprintf(" ~[ G ]   < %s >   ", current_dir);
-                SHELL_COLOR_RESET();
+                shell_print_prompt();
                 input.len = 0;
                 return;
             }
@@ -346,9 +353,7 @@ static void shell_execute_command(void) {
                 SHELL_COLOR_ERR();
                 kprintf("[REX] Access denied: Invalid password\n");
                 SHELL_COLOR_RESET();
-                SHELL_COLOR_CMD();
-                kprintf(" ~[ G ]   < %s >   ", current_dir);
-                SHELL_COLOR_RESET();
+                shell_print_prompt();
                 input.len = 0;
                 return;
             }
@@ -692,9 +697,7 @@ static void shell_execute_command(void) {
         SHELL_COLOR_RESET();
     }
 
-    SHELL_COLOR_CMD();
-    kprintf(" ~[ G ]   < %s >   ", current_dir);
-    SHELL_COLOR_RESET();
+    shell_print_prompt();
     input.len = 0;
 }
 
@@ -803,9 +806,7 @@ void shell_run(void) {
     
     SHELL_COLOR_RESET();
 
-    SHELL_COLOR_CMD();
-    kprintf(" ~[ G ]   < %s >   ", current_dir);
-    SHELL_COLOR_RESET();
+    shell_print_prompt();
 
     for (;;) {
         shell_poll_keyboard();
