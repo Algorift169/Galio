@@ -102,6 +102,13 @@ static void editor_handle_key(editor_buffer_t *buf, u8 scancode, u8 is_pressed,
         return;
     }
     
+    /* If Ctrl was active but this was not a save/exit combo, discard the key.
+       This prevents stale Ctrl state from turning normal keys into shortcuts. */
+    if (ctrl_pressed) {
+        ctrl_pressed = 0;
+        return;
+    }
+    
     if (raw >= sizeof(ascii_table)) return;
     
     u8 c = shift_pressed ? ascii_table_shift[raw] : ascii_table[raw];
@@ -129,12 +136,14 @@ static void editor_handle_key(editor_buffer_t *buf, u8 scancode, u8 is_pressed,
 }
 
 static void editor_poll_keyboard(editor_buffer_t *buf, u8 *save_flag, u8 *exit_flag, u8 *buffer_changed) {
-    u8 scancode, is_pressed;
-    if (!keyboard_read_event(&scancode, &is_pressed)) {
+    u8 status = inb(0x64);
+    if (!(status & 0x01)) {
         return;
     }
 
-    /* Handle extended prefix (0xE0) */
+    u8 scancode = inb(0x60);
+    u8 is_pressed = !(scancode & 0x80);
+
     if (scancode == 0xE0) {
         extended_key = 1;
         return;
@@ -176,6 +185,11 @@ u8 shell_editor(const char *filepath) {
         return 0;
     }
     
+    /* Reset modifier state when entering the editor. */
+    shift_pressed = 0;
+    ctrl_pressed = 0;
+    extended_key = 0;
+
     editor_buffer_t buf = {0};
     u8 save_flag = 0, exit_flag = 0;
     u8 buffer_changed = 0;

@@ -341,8 +341,9 @@ void kmain(void *multiboot_ptr) {
 
     extern void shell_run(void);
 
-    /* Enable interrupts so IRQ-driven keyboard events can be delivered to the shell. */
+    /* Enable interrupts so IRQ-driven keyboard events can be delivered to the shell and editor. */
     __asm__ volatile("sti");
+    irq_unmask(1);  /* keyboard IRQ */
     shell_run();
 
     /* shell_run should not return. */
