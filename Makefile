@@ -40,6 +40,9 @@ SRCS = kernel/kmain.c \
        kernel/process/scheduler.c \
        kernel/process/elf.c \
        kernel/syscall/syscall.c \
+       kernel/syscall/syscall_extra.c \
+       kernel/process/signals.c \
+       kernel/process/paths.c \
        kernel/fs/vfs/vfs_core.c \
        kernel/fs/vfs/vfs_wrapper.c \
        kernel/fs/ext2/ext2.c \
@@ -67,7 +70,8 @@ OBJS = src/embedded_test.o src/embedded_initrd.o \
        kernel/arch/x86/cpu/irq.o kernel/arch/x86/cpu/isr.o \
        kernel/mm/paging.o kernel/mm/pmem.o kernel/mm/heap.o kernel/mm/memory.o \
        kernel/process/process.o kernel/process/scheduler.o kernel/process/elf.o \
-       kernel/syscall/syscall.o \
+       kernel/syscall/syscall.o kernel/syscall/syscall_extra.o \
+       kernel/process/signals.o kernel/process/paths.o \
        kernel/fs/vfs/vfs_core.o kernel/fs/vfs/vfs_wrapper.o kernel/fs/ext2/ext2.o \
        kernel/drivers/ata/ata.o kernel/drivers/keyboard/keyboard.o \
        kernel/drivers/serial/serial.o kernel/drivers/timer/pit.o kernel/drivers/video/vga.o \

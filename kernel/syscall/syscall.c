@@ -9,11 +9,49 @@
 #include "heap.h"
 #include "paging.h"
 
+#ifndef SYS_EXIT
+#define SYS_EXIT         1
+#define SYS_WRITE        2
+#define SYS_GETPID       3
+#define SYS_FORK         4
+#define SYS_EXEC         5
+#define SYS_SLEEP        6
+#define SYS_WAITPID      7
+#define SYS_OPEN         8
+#define SYS_READ         9
+#define SYS_CLOSE        10
+#define SYS_LSEEK        11
+#define SYS_STAT         12
+#define SYS_MMAP         13
+#define SYS_MUNMAP       14
+#define SYS_BRK          15
+#define SYS_EXECVE       16
+#define SYS_PIPE         17
+#define SYS_DUP          18
+#define SYS_DUP2         19
+#define SYS_CHDIR        20
+#define SYS_GETCWD       21
+#define SYS_TIME         22
+#define SYS_GETTIMEOFDAY 23
+#define SYS_GETUID       24
+#define SYS_GETGID       25
+#endif
+
+#ifndef PIPE_FD_FLAG
+#define PIPE_FD_FLAG     0x80000000u
+#define PIPE_READ_FLAG   0x40000000u
+#define PIPE_WRITE_FLAG  0x20000000u
+#define PIPE_ID_MASK     0x0000000Fu
+#define PIPE_MAX         16u
+#define PIPE_BUFFER_SIZE 1024u
+#endif
+
 /* Forward declarations for syscall implementations */
 static u32 syscall_fork(void);
 static i32 syscall_exec(const char *path);
 static i32 syscall_waitpid(i32 pid);
 static u32 syscall_open(const char *path, i32 flags);
+static u32 syscall_write(u32 fd, const void *buffer, u32 size);
 static u32 syscall_read(u32 fd, void *buffer, u32 size);
 static u32 syscall_close(u32 fd);
 static u32 syscall_lseek(u32 fd, i32 offset, i32 whence);
@@ -40,14 +78,17 @@ static void syscall_handler(registers_t *regs) {
             process_exit((i32)arg1);
             break;
             
-        case SYS_WRITE:
+        case SYS_WRITE: {
             if (arg1 == 1) {  /* stdout */
                 for (u32 i = 0; i < arg3; i++) {
                     vga_putch(((char *)arg2)[i]);
                 }
+                regs->eax = arg3;
+            } else {
+                regs->eax = syscall_write((u32)arg1, (const void *)arg2, (u32)arg3);
             }
-            regs->eax = arg3;
             break;
+        }
 
         case SYS_GETPID: {
             process_t *proc = process_current();
@@ -63,6 +104,10 @@ static void syscall_handler(registers_t *regs) {
             regs->eax = syscall_exec((const char *)arg1);
             break;
 
+        case SYS_EXECVE:
+            regs->eax = syscall_execve((const char *)arg1, (char *const *)arg2, (char *const *)arg3);
+            break;
+
         case SYS_SLEEP:
             kprintf("SYS_SLEEP not yet implemented\n");
             regs->eax = 0;
@@ -70,6 +115,42 @@ static void syscall_handler(registers_t *regs) {
 
         case SYS_WAITPID:
             regs->eax = syscall_waitpid((i32)arg1);
+            break;
+
+        case SYS_PIPE:
+            regs->eax = syscall_pipe((i32 *)arg1);
+            break;
+
+        case SYS_DUP:
+            regs->eax = syscall_dup((u32)arg1);
+            break;
+
+        case SYS_DUP2:
+            regs->eax = syscall_dup2((u32)arg1, (u32)arg2);
+            break;
+
+        case SYS_CHDIR:
+            regs->eax = syscall_chdir((const char *)arg1);
+            break;
+
+        case SYS_GETCWD:
+            regs->eax = syscall_getcwd((char *)arg1, (u32)arg2);
+            break;
+
+        case SYS_TIME:
+            regs->eax = syscall_time();
+            break;
+
+        case SYS_GETTIMEOFDAY:
+            regs->eax = syscall_gettimeofday((struct timeval *)arg1, (void *)arg2);
+            break;
+
+        case SYS_GETUID:
+            regs->eax = syscall_getuid();
+            break;
+
+        case SYS_GETGID:
+            regs->eax = syscall_getgid();
             break;
 
         case SYS_OPEN:
@@ -137,12 +218,43 @@ static u32 syscall_fork(void) {
     return child_pid;
 }
 
+static u32 syscall_write(u32 fd, const void *buffer, u32 size) {
+    process_t *proc = process_current();
+    if (!proc) {
+        return (u32)-1;
+    }
+    if (fd >= PROCESS_MAX_FDS) {
+        return (u32)-1;
+    }
+
+    u32 handle = proc->fd_table[fd];
+    if (handle == VFS_INVALID_FD) {
+        return (u32)-1;
+    }
+
+    if (handle & PIPE_FD_FLAG) {
+        return pipe_write_fd(handle, buffer, size);
+    }
+
+    return vfs_write(handle, buffer, size);
+}
+
 static i32 syscall_exec(const char *path) {
+    process_t *proc = process_current();
+    if (!proc || !path) {
+        return -1;
+    }
+
+    char resolved[PROCESS_PATH_MAX];
+    if (!process_resolve_path(proc->cwd, path, resolved, PROCESS_PATH_MAX)) {
+        return -1;
+    }
+
     /* Load ELF from VFS */
     void *elf_data = kmalloc(65536);  /* Temporary buffer */
     if (!elf_data) return -1;
 
-    u32 size = vfs_read(path, elf_data, 65536);
+    u32 size = vfs_read(resolved, elf_data, 65536);
     if (!size) {
         kfree(elf_data);
         return -1;
@@ -181,24 +293,22 @@ static i32 syscall_exec(const char *path) {
 }
 
 static i32 syscall_waitpid(i32 pid) {
-    /* Simplified wait - just yield until child exits */
-    while (1) {
-        process_t *child = process_get(pid);
-        if (!child || child->state == PROCESS_ZOMBIE) {
-            return pid;
-        }
-        process_yield();
-    }
+    return process_waitpid(pid);
 }
 
 static u32 syscall_open(const char *path, i32 flags) {
     (void)flags;
     
     process_t *proc = process_current();
-    if (!proc) return -1;
+    if (!proc || !path) return -1;
+
+    char resolved[PROCESS_PATH_MAX];
+    if (!process_resolve_path(proc->cwd, path, resolved, PROCESS_PATH_MAX)) {
+        return -1;
+    }
     
     /* Open file in VFS */
-    u32 vfs_fd = vfs_open(path);
+    u32 vfs_fd = vfs_open(resolved);
     if (vfs_fd == VFS_INVALID_FD) return -1;
     
     /* Find a free entry in process FD table */
@@ -219,12 +329,14 @@ static u32 syscall_read(u32 fd, void *buffer, u32 size) {
     if (!proc) return -1;
     if (fd >= PROCESS_MAX_FDS) return -1;
     
-    /* Get VFS FD from process FD table */
-    u32 vfs_fd = proc->fd_table[fd];
-    if (vfs_fd == VFS_INVALID_FD) return -1;
-    
-    /* Read from VFS */
-    return vfs_read_fd(vfs_fd, buffer, size);
+    u32 handle = proc->fd_table[fd];
+    if (handle == VFS_INVALID_FD) return -1;
+
+    if (handle & PIPE_FD_FLAG) {
+        return pipe_read_fd(handle, buffer, size);
+    }
+
+    return vfs_read_fd(handle, buffer, size);
 }
 
 static u32 syscall_close(u32 fd) {
@@ -232,13 +344,16 @@ static u32 syscall_close(u32 fd) {
     if (!proc) return -1;
     if (fd >= PROCESS_MAX_FDS) return -1;
     
-    u32 vfs_fd = proc->fd_table[fd];
-    if (vfs_fd == VFS_INVALID_FD) return -1;
+    u32 handle = proc->fd_table[fd];
+    if (handle == VFS_INVALID_FD) return -1;
     
-    /* Close in VFS */
-    u32 result = vfs_close(vfs_fd);
+    u32 result;
+    if (handle & PIPE_FD_FLAG) {
+        result = pipe_close_handle(handle);
+    } else {
+        result = vfs_close(handle);
+    }
     
-    /* Mark as invalid in process table */
     proc->fd_table[fd] = VFS_INVALID_FD;
     
     return result;
@@ -257,7 +372,16 @@ static u32 syscall_lseek(u32 fd, i32 offset, i32 whence) {
 
 static u32 syscall_stat(const char *path, void *statbuf) {
     if (!path || !statbuf) return -1;
-    return vfs_stat(path, statbuf);
+
+    process_t *proc = process_current();
+    if (!proc) return -1;
+
+    char resolved[PROCESS_PATH_MAX];
+    if (!process_resolve_path(proc->cwd, path, resolved, PROCESS_PATH_MAX)) {
+        return -1;
+    }
+
+    return vfs_stat(resolved, statbuf);
 }
 
 static void *syscall_mmap(void *addr, u32 length, i32 prot, i32 flags, i32 fd, u32 offset) {

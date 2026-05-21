@@ -1,5 +1,7 @@
 /* process.c - Process management and scheduling */
 #include "process.h"
+#include "string.h"
+#include "signals.h"
 #include "heap.h"
 #include "paging.h"
 #include "kprintf.h"
@@ -77,6 +79,13 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->heap_start = USER_HEAP_START;
     proc->brk = USER_HEAP_START;
     proc->mmap_count = 0;
+    proc->waiting_for_pid = -1;
+    proc->uid = 0;
+    proc->gid = 0;
+    proc->pending_signals = 0;
+    proc->exit_code = 0;
+    strncpy(proc->cwd, "/", PROCESS_PATH_MAX - 1);
+    proc->cwd[PROCESS_PATH_MAX - 1] = 0;
 
     /* Initialize mmap regions */
     for (u32 i = 0; i < PROCESS_MAX_MMAPS; i++) {
@@ -190,6 +199,10 @@ process_t *process_current(void) {
 }
 
 void process_yield(void) {
+    if (current_process) {
+        process_handle_pending_signals(current_process);
+    }
+
     /* Find next ready process */
     process_t *next = NULL;
     u32 start = (current_process - processes + 1) % MAX_PROCESSES;
@@ -211,7 +224,7 @@ void process_yield(void) {
         current_process = next;
         next->state = PROCESS_RUNNING;
         next->time_slice = PROCESS_TIME_SLICE;
-        if (old->pid != 0xFFFFFFFF) {
+        if (old->pid != 0xFFFFFFFF && old->state != PROCESS_ZOMBIE && old->state != PROCESS_WAITING) {
             old->state = PROCESS_READY;
         }
         process_switch(old, next);
@@ -262,6 +275,7 @@ void process_preempt(registers_t *regs) {
         return;
     }
 
+    process_handle_pending_signals(current_process);
     save_current_registers(regs);
     process_t *next = find_next_ready_process();
     if (!next || next == current_process) {
@@ -273,7 +287,7 @@ void process_preempt(registers_t *regs) {
     current_process = next;
     next->state = PROCESS_RUNNING;
     next->time_slice = PROCESS_TIME_SLICE;
-    if (old->pid != 0xFFFFFFFF) {
+    if (old->pid != 0xFFFFFFFF && old->state != PROCESS_ZOMBIE && old->state != PROCESS_WAITING) {
         old->state = PROCESS_READY;
     }
 
@@ -312,7 +326,10 @@ return_point:
 void process_exit(i32 code) {
     (void)code;
     current_process->state = PROCESS_ZOMBIE;
-    process_count--;
+    current_process->exit_code = (u32)code;
+    current_process->pending_signals = 0;
+    current_process->waiting_for_pid = -1;
+    process_send_signal(current_process->parent_pid, SIGCHLD);
     process_yield();
 }
 
@@ -323,4 +340,36 @@ process_t *process_get(u32 pid) {
         }
     }
     return NULL;
+}
+
+process_t *process_get_any(u32 pid) {
+    for (u32 i = 0; i < MAX_PROCESSES; i++) {
+        if (processes[i].pid == pid) {
+            return &processes[i];
+        }
+    }
+    return NULL;
+}
+
+process_t *process_find_child(u32 parent_pid, i32 pid) {
+    for (u32 i = 0; i < MAX_PROCESSES; i++) {
+        process_t *candidate = &processes[i];
+        if (candidate->pid != 0 && candidate->parent_pid == parent_pid) {
+            if (pid == -1 || (i32)candidate->pid == pid) {
+                return candidate;
+            }
+        }
+    }
+    return NULL;
+}
+
+process_t *process_find_any_child(u32 parent_pid) {
+    return process_find_child(parent_pid, -1);
+}
+
+void process_reap(process_t *proc) {
+    if (!proc || proc->state != PROCESS_ZOMBIE) {
+        return;
+    }
+    process_cleanup(proc);
 }

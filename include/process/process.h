@@ -13,6 +13,7 @@
 #define USER_STACK_TOP  0xBFFFE000
 #define USER_STACK_SIZE 0x10000
 
+#define PROCESS_PATH_MAX 512
 #define PROCESS_TIME_SLICE 10
 
 typedef enum {
@@ -61,6 +62,12 @@ typedef struct {
     u32 brk;
     u32 mmap_count;
     mmap_region_t mmap_regions[PROCESS_MAX_MMAPS];
+    char cwd[PROCESS_PATH_MAX];
+    i32 waiting_for_pid;
+    u32 uid;
+    u32 gid;
+    u32 pending_signals;
+    u32 exit_code;
 } process_t;
 
 void process_init(void);
@@ -71,7 +78,15 @@ void process_yield(void);
 void process_switch(process_t *from, process_t *to);
 void process_exit(i32 code);
 process_t *process_get(u32 pid);
+process_t *process_get_any(u32 pid);
+process_t *process_find_child(u32 parent_pid, i32 pid);
+process_t *process_find_any_child(u32 parent_pid);
+void process_reap(process_t *proc);
+i32 process_waitpid(i32 pid);
+u32 process_chdir(const char *path);
+u32 process_getcwd(char *buffer, u32 size);
 void process_oom_kill(void);
 void process_preempt(registers_t *regs);
+char *process_resolve_path(const char *cwd, const char *path, char *output, u32 output_size);
 
 #endif /* PROCESS_H */
