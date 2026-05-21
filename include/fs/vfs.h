@@ -13,6 +13,29 @@
 #define VFS_MAX_FILENAME 256
 #define VFS_INVALID_FD 0xFFFFFFFFu
 
+#define VFS_TYPE_MASK     0xF000
+#define VFS_TYPE_UNKNOWN  0x0000
+#define VFS_TYPE_FILE     0x8000
+#define VFS_TYPE_DIR      0x4000
+#define VFS_TYPE_SYMLINK  0xA000
+#define VFS_TYPE_CHARDEV  0x2000
+
+#define VFS_PERM_MASK           0x0FFF
+#define VFS_PERM_FILE_DEFAULT   0644
+#define VFS_PERM_DIR_DEFAULT    0755
+#define VFS_PERM_SYMLINK        0777
+
+#define VFS_O_RDONLY 0
+#define VFS_O_WRONLY 1
+#define VFS_O_RDWR   2
+#define VFS_O_CREAT  0x100
+#define VFS_O_TRUNC  0x200
+
+#define VFS_DEVFS  2
+#define VFS_PROCFS 3
+#define VFS_SYSFS  4
+#define VFS_TMPFS  5
+
 typedef struct {
     char path[VFS_MAX_PATH];
     u32 size;
@@ -111,6 +134,15 @@ typedef struct {
 /* Global file descriptor table */
 #define MAX_FDS 32
 extern vfs_fd_t fd_table[MAX_FDS];
+
+/* Create a symlink */
+u32 vfs_symlink(const char *target, const char *linkpath, u8 force);
+
+/* Read the contents of a symlink */
+u32 vfs_readlink(const char *path, char *buffer, u32 size);
+
+/* Change file permissions */
+i32 vfs_chmod(const char *path, u32 mode);
 
 /* Mount filesystem */
 i32 vfs_mount(const char *mountpoint, u32 device);

@@ -34,7 +34,7 @@ u8 vfs_core_is_directory(u32 inode_num) {
     }
     for (u32 i = 0; i < VFS_MAX_INODES; i++) {
         if (vfs_inodes[i].number == inode_num) {
-            return vfs_inodes[i].mode == VFS_TYPE_DIR;
+            return (vfs_inodes[i].mode & VFS_TYPE_MASK) == VFS_TYPE_DIR;
         }
     }
     return 0;
@@ -333,37 +333,40 @@ static vfs_dentry_t *vfs_make_directory_internal(const char *path, u8 force) {
         return child;
     }
 }
-static vfs_dentry_t *vfs_make_file_internal(const char *path, u8 force, const u8 *data, u32 size) {
+static vfs_dentry_t *vfs_make_node_internal(const char *path, u32 mode, const u8 *data, u32 size, u32 dev_id, u8 force) {
     if (!path) return NULL;
     char normalized[VFS_MAX_PATH];
     vfs_normalize(path, normalized);
     char parent_path[VFS_MAX_PATH], name[VFS_MAX_FILENAME];
     vfs_split_parent(normalized, parent_path, name);
     if (vfs_disk_mode) {
-        i32 inode_num = ext2_find_inode(normalized);
-        if (inode_num == 0 || force) {
-            inode_num = ext2_create_file(normalized, 0x81A4);
-            if (inode_num < 0) return NULL;
+        if ((mode & VFS_TYPE_MASK) == VFS_TYPE_FILE) {
+            i32 inode_num = ext2_find_inode(normalized);
+            if (inode_num == 0 || force) {
+                inode_num = ext2_create_file(normalized, 0x81A4);
+                if (inode_num < 0) return NULL;
+            }
+            if (data && size > 0) {
+                if (ext2_write_data(inode_num, data, size) < 0) return NULL;
+            }
+            vfs_dentry_t *parent = vfs_lookup_internal(parent_path);
+            if (!parent) return NULL;
+            vfs_inode_t *new_inode = vfs_alloc_inode();
+            if (!new_inode) return NULL;
+            ext2_inode_t disk_inode;
+            if (ext2_read_inode(inode_num, &disk_inode) != 0) return NULL;
+            new_inode->number = inode_num;
+            new_inode->mode = VFS_TYPE_FILE;
+            new_inode->size = disk_inode.size;
+            new_inode->block_count = disk_inode.blocks;
+            new_inode->link_count = disk_inode.links_count;
+            for (u32 i = 0; i < VFS_MAX_BLOCKS && i < 12; i++) {
+                new_inode->blocks[i] = disk_inode.block[i];
+            }
+            vfs_dentry_t *child = vfs_create_dentry(parent, name, new_inode);
+            return child;
         }
-        if (data && size > 0) {
-            if (ext2_write_data(inode_num, data, size) < 0) return NULL;
-        }
-        vfs_dentry_t *parent = vfs_lookup_internal(parent_path);
-        if (!parent) return NULL;
-        vfs_inode_t *new_inode = vfs_alloc_inode();
-        if (!new_inode) return NULL;
-        ext2_inode_t disk_inode;
-        if (ext2_read_inode(inode_num, &disk_inode) != 0) return NULL;
-        new_inode->number = inode_num;
-        new_inode->mode = VFS_TYPE_FILE;
-        new_inode->size = disk_inode.size;
-        new_inode->block_count = disk_inode.blocks;
-        new_inode->link_count = disk_inode.links_count;
-        for (u32 i = 0; i < VFS_MAX_BLOCKS && i < 12; i++) {
-            new_inode->blocks[i] = disk_inode.block[i];
-        }
-        vfs_dentry_t *child = vfs_create_dentry(parent, name, new_inode);
-        return child;
+        return NULL;
     } else {
         vfs_dentry_t *parent = vfs_lookup_internal(parent_path);
         if (!parent || !parent->inode || parent->inode->mode != VFS_TYPE_DIR) return NULL;
@@ -371,33 +374,61 @@ static vfs_dentry_t *vfs_make_file_internal(const char *path, u8 force, const u8
         if (existing) {
             if (existing->mode == VFS_TYPE_DIR) return NULL;
             if (!force) return NULL;
-            u32 new_offset = vfs_allocate_data(size);
-            if (new_offset == 0xFFFFFFFFu) return NULL;
-            if (data && size) memcpy(vfs_data_ram + new_offset, data, size);
-            existing->blocks[0] = new_offset; existing->block_count = 1; existing->size = size;
+            if ((mode & VFS_TYPE_MASK) == VFS_TYPE_FILE || (mode & VFS_TYPE_MASK) == VFS_TYPE_SYMLINK) {
+                u32 new_offset = vfs_allocate_data(size);
+                if (new_offset == 0xFFFFFFFFu) return NULL;
+                if (data && size) memcpy(vfs_data_ram + new_offset, data, size);
+                existing->blocks[0] = new_offset;
+                existing->block_count = 1;
+                existing->size = size;
+            } else if ((mode & VFS_TYPE_MASK) == VFS_TYPE_CHARDEV) {
+                existing->blocks[0] = dev_id;
+                existing->block_count = 0;
+                existing->size = 0;
+            }
+            existing->mode = mode;
             return vfs_cache_lookup(parent, name);
         }
         vfs_inode_t *inode = vfs_alloc_inode();
         if (!inode) return NULL;
-        inode->mode = VFS_TYPE_FILE;
-        inode->size = size; inode->link_count = 1;
-        u32 data_offset = 0;
-        if (size > 0) {
-            data_offset = vfs_allocate_data(size);
-            if (data_offset == 0xFFFFFFFFu) return NULL;
-            if (data) memcpy(vfs_data_ram + data_offset, data, size);
-            else memset(vfs_data_ram + data_offset, 0, size);
-            inode->blocks[0] = data_offset; inode->block_count = 1;
+        inode->mode = mode;
+        inode->size = size;
+        inode->link_count = 1;
+        inode->block_count = 0;
+        if ((mode & VFS_TYPE_MASK) == VFS_TYPE_FILE) {
+            if (size > 0) {
+                u32 data_offset = vfs_allocate_data(size);
+                if (data_offset == 0xFFFFFFFFu) return NULL;
+                if (data) memcpy(vfs_data_ram + data_offset, data, size);
+                else memset(vfs_data_ram + data_offset, 0, size);
+                inode->blocks[0] = data_offset;
+                inode->block_count = 1;
+            }
+        } else if ((mode & VFS_TYPE_MASK) == VFS_TYPE_SYMLINK) {
+            if (size > 0) {
+                u32 data_offset = vfs_allocate_data(size);
+                if (data_offset == 0xFFFFFFFFu) return NULL;
+                memcpy(vfs_data_ram + data_offset, data, size);
+                inode->blocks[0] = data_offset;
+                inode->block_count = 1;
+            }
+        } else if ((mode & VFS_TYPE_MASK) == VFS_TYPE_CHARDEV) {
+            inode->blocks[0] = dev_id;
+            inode->block_count = 0;
+            inode->size = 0;
         }
         if (!vfs_dirent_add(parent->inode, name, inode->number)) return NULL;
         vfs_dentry_t *child = vfs_create_dentry(parent, name, inode);
         return child;
     }
 }
+static vfs_dentry_t *vfs_make_file_internal(const char *path, u8 force, const u8 *data, u32 size) {
+    return vfs_make_node_internal(path, VFS_TYPE_FILE | VFS_PERM_FILE_DEFAULT, data, size, 0, force);
+}
 static void vfs_init_root(void) {
     vfs_root_inode = vfs_alloc_inode();
     if (!vfs_root_inode) return;
-    vfs_root_inode->mode = VFS_TYPE_DIR;
+    vfs_root_inode->mode = VFS_TYPE_DIR | VFS_PERM_DIR_DEFAULT;
     vfs_root_inode->size = 0; vfs_root_inode->link_count = 1;
     vfs_root_inode->dirent_count = 0; vfs_root_inode->dirent_capacity = 0; vfs_root_inode->dirents = NULL;
     vfs_root_dentry = vfs_create_dentry(NULL, "", vfs_root_inode);
@@ -434,6 +465,15 @@ void vfs_core_init(void *initrd_addr) {
     vfs_init_root();
     if (!vfs_root_dentry) { kprintf("[VFS] ERROR: Root directory initialization failed\n"); return; }
     vfs_build_from_initrd(header);
+    if (!vfs_disk_mode) {
+        vfs_core_create_dir("/dev", 1);
+        vfs_core_create_device("/dev/null", 0644, 1);
+        vfs_core_create_device("/dev/zero", 0644, 2);
+        vfs_core_create_device("/dev/random", 0644, 3);
+        vfs_core_create_dir("/proc", 1);
+        vfs_core_create_dir("/sys", 1);
+        vfs_core_create_dir("/tmp", 1);
+    }
     kprintf("[VFS] Core filesystem initialized in RAM\n");
 }
 vfs_dentry_t *vfs_core_lookup(const char *path, u32 flags) {
@@ -444,9 +484,26 @@ vfs_dentry_t *vfs_core_lookup(const char *path, u32 flags) {
 vfs_dentry_t *vfs_core_root(void) { return vfs_root_dentry; }
 void vfs_core_build_path(vfs_dentry_t *dentry, char *buffer) { vfs_build_path_from_dentry(dentry, buffer); }
 
-u32 vfs_core_open(const char *path) {
+static u8 vfs_inode_is_regular(vfs_inode_t *inode) {
+    return inode && (inode->mode & VFS_TYPE_MASK) == VFS_TYPE_FILE;
+}
+static u8 vfs_inode_is_char_device(vfs_inode_t *inode) {
+    return inode && (inode->mode & VFS_TYPE_MASK) == VFS_TYPE_CHARDEV;
+}
+static u8 vfs_inode_is_symlink(vfs_inode_t *inode) {
+    return inode && (inode->mode & VFS_TYPE_MASK) == VFS_TYPE_SYMLINK;
+}
+
+static u32 vfs_core_open_internal(const char *path) {
     vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
-    if (!dentry || !dentry->inode || dentry->inode->mode != VFS_TYPE_FILE) return VFS_INVALID_FD;
+    if (!dentry || !dentry->inode) return VFS_INVALID_FD;
+    u32 type = dentry->inode->mode & VFS_TYPE_MASK;
+    if (type != VFS_TYPE_FILE && type != VFS_TYPE_CHARDEV && type != VFS_TYPE_SYMLINK) return VFS_INVALID_FD;
+    if (type == VFS_TYPE_SYMLINK) {
+        char target[VFS_MAX_PATH];
+        if (!vfs_core_readlink(path, target, sizeof(target))) return VFS_INVALID_FD;
+        return vfs_core_open_internal(target);
+    }
     for (u32 i = 0; i < VFS_MAX_FILE_HANDLES; i++) {
         if (vfs_files[i].ref_count == 0) {
             vfs_files[i].inode = dentry->inode;
@@ -455,6 +512,10 @@ u32 vfs_core_open(const char *path) {
         }
     }
     return VFS_INVALID_FD;
+}
+
+u32 vfs_core_open(const char *path) {
+    return vfs_core_open_internal(path);
 }
 u32 vfs_core_close(u32 fd) {
     if (fd >= VFS_MAX_FILE_HANDLES) return 0;
@@ -465,7 +526,14 @@ u32 vfs_core_close(u32 fd) {
 u32 vfs_core_write(u32 fd, const void *buffer, u32 size) {
     if (fd >= VFS_MAX_FILE_HANDLES) return 0;
     vfs_file_t *fh = &vfs_files[fd];
-    if (!fh->inode || fh->ref_count == 0 || fh->inode->mode != VFS_TYPE_FILE) return 0;
+    if (!fh->inode || fh->ref_count == 0) return 0;
+    u32 type = fh->inode->mode & VFS_TYPE_MASK;
+    if (type == VFS_TYPE_CHARDEV) {
+        /* Device files discard writes and always succeed */
+        fh->pos += size;
+        return size;
+    }
+    if (type != VFS_TYPE_FILE) return 0;
     if (vfs_disk_mode) {
         i32 written = ext2_write_data(fh->inode->number, buffer, size);
         if (written < 0) return 0;
@@ -492,7 +560,31 @@ u32 vfs_core_read_path(const char *path, void *buffer, u32 size) {
         return result > 0 ? (u32)result : 0;
     }
     vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
-    if (!dentry || !dentry->inode || dentry->inode->mode != VFS_TYPE_FILE) return 0;
+    if (!dentry || !dentry->inode) return 0;
+    u32 type = dentry->inode->mode & VFS_TYPE_MASK;
+    if (type == VFS_TYPE_SYMLINK) {
+        char target[VFS_MAX_PATH];
+        if (!vfs_core_readlink(path, target, sizeof(target))) return 0;
+        return vfs_core_read_path(target, buffer, size);
+    }
+    if (type == VFS_TYPE_CHARDEV) {
+        u32 dev_id = dentry->inode->blocks[0];
+        if (dev_id == 1) {
+            /* /dev/null reads EOF */
+            return 0;
+        } else if (dev_id == 2) {
+            memset(buffer, 0, size);
+            return size;
+        } else if (dev_id == 3) {
+            u8 *out = buffer;
+            for (u32 i = 0; i < size; i++) {
+                out[i] = (u8)((i * 37) ^ 0xA5);
+            }
+            return size;
+        }
+        return 0;
+    }
+    if (type != VFS_TYPE_FILE) return 0;
     u32 to_read = size;
     if (to_read > dentry->inode->size) to_read = dentry->inode->size;
     if (to_read == 0) return 0;
@@ -530,6 +622,50 @@ u32 vfs_core_create_dir(const char *path, u8 force) {
     }
     vfs_dentry_t *created = vfs_make_directory_internal(path, force);
     return created != NULL;
+}
+
+u32 vfs_core_create_symlink(const char *target, const char *linkpath, u8 force) {
+    if (!target || !linkpath) return 0;
+    if (vfs_disk_mode) return 0;
+    u32 len = strlen(target) + 1;
+    u32 mode = VFS_TYPE_SYMLINK | VFS_PERM_SYMLINK;
+    vfs_dentry_t *created = vfs_make_node_internal(linkpath, mode, (const u8 *)target, len, 0, force);
+    return created != NULL;
+}
+
+u32 vfs_core_readlink(const char *path, char *buffer, u32 size) {
+    if (!path || !buffer || size == 0) return 0;
+    if (vfs_disk_mode) return 0;
+    vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
+    if (!dentry || !dentry->inode) return 0;
+    if ((dentry->inode->mode & VFS_TYPE_MASK) != VFS_TYPE_SYMLINK) return 0;
+    u32 len = dentry->inode->size;
+    if (len == 0) return 0;
+    u32 to_copy = len;
+    if (to_copy >= size) to_copy = size - 1;
+    u32 offset = dentry->inode->blocks[0];
+    if (offset == 0xFFFFFFFFu) return 0;
+    memcpy(buffer, vfs_data_ram + offset, to_copy);
+    buffer[to_copy] = '\0';
+    return to_copy;
+}
+
+u32 vfs_core_create_device(const char *path, u32 mode, u32 dev_id) {
+    if (!path) return 0;
+    if (vfs_disk_mode) return 0;
+    u32 full_mode = VFS_TYPE_CHARDEV | (mode & VFS_PERM_MASK);
+    vfs_dentry_t *created = vfs_make_node_internal(path, full_mode, NULL, 0, dev_id, 1);
+    return created != NULL;
+}
+
+u32 vfs_core_chmod(const char *path, u32 mode) {
+    if (!path) return 0;
+    if (vfs_disk_mode) return 0;
+    vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
+    if (!dentry || !dentry->inode) return 0;
+    u32 type = dentry->inode->mode & VFS_TYPE_MASK;
+    dentry->inode->mode = type | (mode & VFS_PERM_MASK);
+    return 1;
 }
 vfs_inode_t *vfs_core_inode_by_number(u32 inode_number) {
     if (inode_number >= VFS_MAX_INODES) return NULL;
@@ -600,7 +736,9 @@ u32 vfs_core_unlink(const char *path) {
         return ext2_unlink(path) == 0 ? 1 : 0;
     }
     vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
-    if (!dentry || !dentry->inode || dentry->inode->mode != VFS_TYPE_FILE) return 0;
+    if (!dentry || !dentry->inode) return 0;
+    u32 type = dentry->inode->mode & VFS_TYPE_MASK;
+    if (type == VFS_TYPE_DIR) return 0;
     if (dentry == vfs_root_dentry) return 0;
     vfs_dentry_t *parent = dentry->parent;
     if (!parent || !parent->inode) return 0;
@@ -632,7 +770,25 @@ u32 vfs_core_read(u32 fd, void *buffer, u32 size) {
     if (fd >= VFS_MAX_FILE_HANDLES) return 0;
     if (!buffer) return 0;
     vfs_file_t *fh = &vfs_files[fd];
-    if (!fh->inode || fh->ref_count == 0 || fh->inode->mode != VFS_TYPE_FILE) return 0;
+    if (!fh->inode || fh->ref_count == 0) return 0;
+    u32 type = fh->inode->mode & VFS_TYPE_MASK;
+    if (type == VFS_TYPE_CHARDEV) {
+        u32 dev_id = fh->inode->blocks[0];
+        if (dev_id == 1) {
+            return 0;
+        } else if (dev_id == 2) {
+            memset(buffer, 0, size);
+            return size;
+        } else if (dev_id == 3) {
+            u8 *out = buffer;
+            for (u32 i = 0; i < size; i++) {
+                out[i] = (u8)((i * 37) ^ 0xA5);
+            }
+            return size;
+        }
+        return 0;
+    }
+    if (type != VFS_TYPE_FILE) return 0;
     if (vfs_disk_mode) {
         if (fh->inode->number == 0) return 0;
         i32 result = ext2_read_data(fh->inode->number, buffer, size, fh->pos);

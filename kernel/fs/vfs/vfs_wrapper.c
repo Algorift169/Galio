@@ -57,9 +57,9 @@ static vfs_entry_t *build_compat_entry(vfs_dentry_t *dentry, const char *path) {
     strncpy(entry->path, normalized, VFS_MAX_PATH - 1);
     entry->path[VFS_MAX_PATH - 1] = 0;
     entry->size = dentry->inode->size;
-    entry->is_dir = (dentry->inode->mode == VFS_TYPE_DIR);
+    entry->is_dir = ((dentry->inode->mode & VFS_TYPE_MASK) == VFS_TYPE_DIR);
     entry->offset = dentry->inode->blocks[0];
-    entry->permissions = entry->is_dir ? 0755 : 0644;
+    entry->permissions = dentry->inode->mode & VFS_PERM_MASK;
     return entry;
 }
 
@@ -337,9 +337,17 @@ void vfs_listdir(const char *path) {
         if (strcmp(dent->name, ".") == 0 || strcmp(dent->name, "..") == 0) continue;
         vfs_inode_t *child = vfs_core_inode_by_number(dent->inode_number);
         if (!child) continue;
-        if (child->mode == VFS_TYPE_DIR) {
+        u32 ctype = child->mode & VFS_TYPE_MASK;
+        if (ctype == VFS_TYPE_DIR) {
             kprintf("    [DIR]  %s/\n", dent->name);
             dir_count++;
+        } else if (ctype == VFS_TYPE_SYMLINK) {
+            kprintf("    [SYMLINK] %s -> (target)\n", dent->name);
+            file_count++;
+            total_dir_size += child->size;
+        } else if (ctype == VFS_TYPE_CHARDEV) {
+            kprintf("    [CHARDEV] %s\n", dent->name);
+            file_count++;
         } else {
             kprintf("    [FILE] %s (%u bytes)\n", dent->name, child->size);
             file_count++;
@@ -658,6 +666,90 @@ u32 vfs_unlink(const char *path) {
         return 0;
     }
     return 1;
+}
+
+u32 vfs_symlink(const char *target, const char *linkpath, u8 force) {
+    if (!vfs_root) {
+        kprintf("[VFS] ERROR: Filesystem not mounted\n");
+        return 0;
+    }
+    if (!vfs_core_create_symlink(target, linkpath, force)) {
+        kprintf("[VFS] ERROR: Could not create symlink %s -> %s\n", linkpath, target);
+        return 0;
+    }
+    return 1;
+}
+
+u32 vfs_readlink(const char *path, char *buffer, u32 size) {
+    if (!vfs_root) {
+        kprintf("[VFS] ERROR: Filesystem not mounted\n");
+        return 0;
+    }
+    return vfs_core_readlink(path, buffer, size);
+}
+
+i32 vfs_chmod(const char *path, u32 mode) {
+    if (!vfs_root) {
+        kprintf("[VFS] ERROR: Filesystem not mounted\n");
+        return -1;
+    }
+    if (!vfs_core_chmod(path, mode)) {
+        kprintf("[VFS] ERROR: Could not chmod: %s\n", path);
+        return -1;
+    }
+    return 0;
+}
+
+static u32 vfs_mount_root_entry(const char *mountpoint, u32 device) {
+    char normalized[VFS_MAX_PATH];
+    strncpy(normalized, path_normalize(mountpoint), VFS_MAX_PATH - 1);
+    normalized[VFS_MAX_PATH - 1] = 0;
+    if (!vfs_core_create_dir(normalized, 1)) return 0;
+    if (device == VFS_DEVFS) {
+        if (strcmp(normalized, "/") == 0) return 1;
+        char dev_path[VFS_MAX_PATH];
+        strncpy(dev_path, normalized, VFS_MAX_PATH - 1);
+        dev_path[VFS_MAX_PATH - 1] = 0;
+        if (strcmp(dev_path, "/") != 0 && dev_path[strlen(dev_path)-1] != '/') {
+            strncat(dev_path, "/", VFS_MAX_PATH - strlen(dev_path) - 1);
+        }
+        strncat(dev_path, "null", VFS_MAX_PATH - strlen(dev_path) - 1);
+        vfs_core_create_device(dev_path, 0644, 1);
+        if (strcmp(normalized, "/") != 0) {
+            strncpy(dev_path, normalized, VFS_MAX_PATH - 1);
+            dev_path[VFS_MAX_PATH - 1] = 0;
+            strncat(dev_path, "/zero", VFS_MAX_PATH - strlen(dev_path) - 1);
+            vfs_core_create_device(dev_path, 0644, 2);
+            strncpy(dev_path, normalized, VFS_MAX_PATH - 1);
+            dev_path[VFS_MAX_PATH - 1] = 0;
+            strncat(dev_path, "/random", VFS_MAX_PATH - strlen(dev_path) - 1);
+            vfs_core_create_device(dev_path, 0644, 3);
+        }
+    }
+    return 1;
+}
+
+i32 vfs_mount(const char *mountpoint, u32 device) {
+    if (!vfs_root) {
+        kprintf("[VFS] ERROR: Filesystem not mounted\n");
+        return -1;
+    }
+    if (!mountpoint) return -1;
+    if (!vfs_mount_root_entry(mountpoint, device)) {
+        kprintf("[VFS] ERROR: Mount failed: %s\n", mountpoint);
+        return -1;
+    }
+    kprintf("[VFS] Mounted device %u at %s\n", device, mountpoint);
+    return 0;
+}
+
+i32 vfs_unmount(const char *mountpoint) {
+    if (!vfs_root) {
+        kprintf("[VFS] ERROR: Filesystem not mounted\n");
+        return -1;
+    }
+    kprintf("[VFS] Unmount not implemented for %s\n", mountpoint);
+    return -1;
 }
 
 static u8 vfs_disk_entry_is_dot(const ext2_dirent_t *dent) {
