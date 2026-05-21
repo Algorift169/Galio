@@ -1,4 +1,4 @@
-#include "elf.h"
+#include "process/elf.h"
 #include "paging.h"
 #include "pmem.h"
 #include "kprintf.h"
@@ -67,23 +67,27 @@ u32 elf_load(void *elf_data) {
             virt = start_page + page * PAGE_SIZE;
             phys = pmem_alloc(1);
             if (!phys) {
-                kprintf("elf_load: Failed to allocate physical frame for virt=0x%x\n", virt);
+                kprintf("elf_load: Failed to allocate physical frame for virt=0x%x (page %u of %u)\n", virt, page, num_pages);
                 return 0;
             }
+            kprintf("      Allocated phys=0x%x for virt=0x%x (page %u)\n", phys, virt, page);
             /* Map with user access (PAGE_USER) for ELF */
             paging_map(pd, virt, phys, PAGE_PRESENT | PAGE_RW | PAGE_USER);
             /* Zero the page */
             for (j = 0; j < PAGE_SIZE; j++) {
                 ((u8 *)virt)[j] = 0;
             }
+            kprintf("      Zeroed virt=0x%x\n", virt);
         }
 
         /* Copy file contents to memory */
         src = (u8 *)elf_data + offset;
         dst = (u8 *)vaddr;
+        kprintf("    Copying %u bytes to vaddr=0x%x (offset=0x%x)\n", filesz, vaddr, offset);
         for (j = 0; j < filesz; j++) {
             dst[j] = src[j];
         }
+        kprintf("    Copied %u bytes to vaddr=0x%x\n", filesz, vaddr);
     }
 
     kprintf("ELF load completed successfully\n");

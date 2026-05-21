@@ -92,11 +92,19 @@ isr_syscall:
 
 ; Common ISR stub – passes registers_t pointer to isr_handler
 isr_common_stub:
+    xor eax, eax
+    mov ax, gs
+    push eax
+    xor eax, eax
+    mov ax, fs
+    push eax
+    xor eax, eax
+    mov ax, es
+    push eax
+    xor eax, eax
+    mov ax, ds
+    push eax
     pusha
-    push ds
-    push es
-    push fs
-    push gs
 
     mov ax, 0x10        ; kernel data segment
     mov ds, ax
@@ -110,21 +118,29 @@ isr_common_stub:
     call isr_handler
     add esp, 4
 
+    popa
     pop gs
     pop fs
     pop es
     pop ds
-    popa
     add esp, 8          ; remove error code and interrupt number
     iret
 
 ; Common IRQ stub – passes registers_t pointer to irq_handler
 irq_common_stub:
+    xor eax, eax
+    mov ax, gs
+    push eax
+    xor eax, eax
+    mov ax, fs
+    push eax
+    xor eax, eax
+    mov ax, es
+    push eax
+    xor eax, eax
+    mov ax, ds
+    push eax
     pusha
-    push ds
-    push es
-    push fs
-    push gs
 
     mov ax, 0x10
     mov ds, ax
@@ -137,10 +153,10 @@ irq_common_stub:
     call irq_handler
     add esp, 4
 
+    popa
     pop gs
     pop fs
     pop es
     pop ds
-    popa
     add esp, 8
     iret

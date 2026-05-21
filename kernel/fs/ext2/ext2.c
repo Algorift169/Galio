@@ -17,6 +17,69 @@ static u32 inodes_per_block;
 static u32 blocks_per_group;
 static u32 ext2_partition_lba = 0; /* LBA of the start of the EXT2 partition */
 
+#define EXT2_BLOCK_CACHE_SLOTS 16
+
+typedef struct {
+    u32 block_num;
+    u8 valid;
+    u8 data[4096];
+} ext2_block_cache_entry_t;
+
+static ext2_block_cache_entry_t ext2_block_cache[EXT2_BLOCK_CACHE_SLOTS];
+static u32 ext2_block_cache_next = 0;
+
+static void ext2_cache_init(void) {
+    for (u32 i = 0; i < EXT2_BLOCK_CACHE_SLOTS; i++) {
+        ext2_block_cache[i].block_num = 0xFFFFFFFFu;
+        ext2_block_cache[i].valid = 0;
+    }
+    ext2_block_cache_next = 0;
+}
+
+static i32 ext2_cache_find(u32 block_num) {
+    for (u32 i = 0; i < EXT2_BLOCK_CACHE_SLOTS; i++) {
+        if (ext2_block_cache[i].valid && ext2_block_cache[i].block_num == block_num) {
+            return (i32)i;
+        }
+    }
+    return -1;
+}
+
+static i32 ext2_cache_store(u32 block_num, const void *buffer) {
+    u32 slot = ext2_cache_find(block_num);
+    if (slot == (u32)-1) {
+        slot = ext2_block_cache_next++ % EXT2_BLOCK_CACHE_SLOTS;
+    }
+    ext2_block_cache[slot].block_num = block_num;
+    ext2_block_cache[slot].valid = 1;
+    memcpy(ext2_block_cache[slot].data, buffer, block_size);
+    return 0;
+}
+
+static u32 ext2_block_to_lba(u32 block_num);
+
+static i32 ext2_cache_read_block(u32 block_num, void *buffer) {
+    i32 slot = ext2_cache_find(block_num);
+    if (slot >= 0) {
+        memcpy(buffer, ext2_block_cache[slot].data, block_size);
+        return 0;
+    }
+
+    u32 sector = ext2_block_to_lba(block_num);
+    u32 sectors = block_size / 512;
+    if (ata_read_sectors(sector, sectors, buffer) < 0) return -1;
+    ext2_cache_store(block_num, buffer);
+    return 0;
+}
+
+static i32 ext2_cache_write_block(u32 block_num, const void *buffer) {
+    u32 sector = ext2_block_to_lba(block_num);
+    u32 sectors = block_size / 512;
+    if (ata_write_sectors(sector, sectors, buffer) < 0) return -1;
+    ext2_cache_store(block_num, buffer);
+    return 0;
+}
+
 /* Set the filesystem base LBA on disk (partition start) */
 void ext2_set_partition_lba(u32 lba) {
     ext2_partition_lba = lba;
@@ -30,16 +93,12 @@ static u32 ext2_block_to_lba(u32 block_num) {
 
 /* Read a block from disk (filesystem-relative block number) */
 static i32 read_block(u32 block_num, void *buffer) {
-    u32 sector = ext2_block_to_lba(block_num);
-    u32 sectors = block_size / 512;
-    return ata_read_sectors(sector, sectors, buffer) < 0 ? -1 : 0;
+    return ext2_cache_read_block(block_num, buffer);
 }
 
 /* Write a block to disk (filesystem-relative block number) */
 static i32 write_block(u32 block_num, const void *buffer) {
-    u32 sector = ext2_block_to_lba(block_num);
-    u32 sectors = block_size / 512;
-    return ata_write_sectors(sector, sectors, buffer) < 0 ? -1 : 0;
+    return ext2_cache_write_block(block_num, buffer);
 }
 
 static i32 ext2_write_group_descriptors(void) {
@@ -119,6 +178,8 @@ i32 ext2_init(void) {
         kprintf("EXT2: Failed to read group descriptors\n");
         return -1;
     }
+
+    ext2_cache_init();
 
     kprintf("EXT2: %u inodes, %u blocks, block size %u, groups %u\n",
             superblock.inodes_count, superblock.blocks_count, block_size, ext2_group_count);
@@ -702,13 +763,16 @@ i32 ext2_write_data(u32 inode_num, const void *buffer, u32 size) {
             return -1;
         }
 
-        memset(block_buffer, 0, block_size);
-        if (read_block((u32)block_num, block_buffer) < 0) {
-            kprintf("[EXT2] write_data: failed to read block %u\n", (u32)block_num);
-            return -1;
+        if (to_write == block_size) {
+            memcpy(block_buffer, data + written, to_write);
+        } else {
+            memset(block_buffer, 0, block_size);
+            if (read_block((u32)block_num, block_buffer) < 0) {
+                kprintf("[EXT2] write_data: failed to read block %u\n", (u32)block_num);
+                return -1;
+            }
+            memcpy(block_buffer, data + written, to_write);
         }
-
-        memcpy(block_buffer, data + written, to_write);
 
         if (write_block((u32)block_num, block_buffer) < 0) {
             kprintf("[EXT2] write_data: write_block failed for block %u\n", (u32)block_num);
@@ -725,14 +789,6 @@ write_inode_and_return:
     if (ext2_write_inode(inode_num, &inode) != 0) {
         kprintf("[EXT2] write_data: write_inode failed\n");
         return written > 0 ? (i32)written : -1;
-    }
-
-    /* Sync metadata */
-    if (ext2_write_superblock() != 0) {
-        kprintf("[EXT2] write_data: failed to sync superblock\n");
-    }
-    if (ext2_write_group_descriptors() != 0) {
-        kprintf("[EXT2] write_data: failed to sync group descriptors\n");
     }
 
     return (i32)written;

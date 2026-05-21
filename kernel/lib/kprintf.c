@@ -41,6 +41,29 @@ static void print_unsigned(unsigned long n, int base, int uppercase) {
     while (i-- > 0) putc(buf[i]);
 }
 
+static void print_padded_unsigned(unsigned long n, int base, int uppercase, int width, char pad_char) {
+    static const char hexdigits_l[] = "0123456789abcdef";
+    static const char hexdigits_u[] = "0123456789ABCDEF";
+    const char *hexdigits = uppercase ? hexdigits_u : hexdigits_l;
+    char buf[32];
+    int i = 0;
+
+    if (n == 0) {
+        buf[i++] = '0';
+    } else {
+        while (n > 0 && i < (int)sizeof(buf)) {
+            buf[i++] = hexdigits[n % base];
+            n /= base;
+        }
+    }
+
+    while (i < width) {
+        buf[i++] = pad_char;
+    }
+
+    while (i-- > 0) putc(buf[i]);
+}
+
 /* print signed long in base 10 */
 static void print_signed(long n) {
     if (n < 0) {
@@ -60,8 +83,19 @@ void kprintf(const char *fmt, ...) {
         if (*fmt == '%') {
             ++fmt;
             int longmod = 0;
+            int width = 0;
+            char pad_char = ' ';
 
-            /* support length modifier 'l' (e.g., %ld, %lu, %lx, %lp) */
+            if (*fmt == '0') {
+                pad_char = '0';
+                ++fmt;
+            }
+
+            while (*fmt >= '0' && *fmt <= '9') {
+                width = width * 10 + (*fmt - '0');
+                ++fmt;
+            }
+
             if (*fmt == 'l') {
                 longmod = 1;
                 ++fmt;
@@ -78,29 +112,29 @@ void kprintf(const char *fmt, ...) {
                     break;
                 case 'u':
                     if (longmod) {
-                        print_unsigned(va_arg(ap, unsigned long), 10, 0);
+                        print_padded_unsigned(va_arg(ap, unsigned long), 10, 0, width, pad_char);
                     } else {
-                        print_unsigned((unsigned long)va_arg(ap, unsigned int), 10, 0);
+                        print_padded_unsigned((unsigned long)va_arg(ap, unsigned int), 10, 0, width, pad_char);
                     }
                     break;
                 case 'x':
                     if (longmod) {
-                        print_unsigned(va_arg(ap, unsigned long), 16, 0);
+                        print_padded_unsigned(va_arg(ap, unsigned long), 16, 0, width, pad_char);
                     } else {
-                        print_unsigned((unsigned long)va_arg(ap, unsigned int), 16, 0);
+                        print_padded_unsigned((unsigned long)va_arg(ap, unsigned int), 16, 0, width, pad_char);
                     }
                     break;
                 case 'X':
                     if (longmod) {
-                        print_unsigned(va_arg(ap, unsigned long), 16, 1);
+                        print_padded_unsigned(va_arg(ap, unsigned long), 16, 1, width, pad_char);
                     } else {
-                        print_unsigned((unsigned long)va_arg(ap, unsigned int), 16, 1);
+                        print_padded_unsigned((unsigned long)va_arg(ap, unsigned int), 16, 1, width, pad_char);
                     }
                     break;
                 case 'p':
                     prints("0x");
                     /* pointer promoted to void*, print as unsigned long */
-                    print_unsigned((unsigned long)va_arg(ap, void *), 16, 0);
+                    print_padded_unsigned((unsigned long)va_arg(ap, void *), 16, 0, width, pad_char);
                     break;
                 case 's':
                     prints(va_arg(ap, const char *));

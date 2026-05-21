@@ -15,8 +15,8 @@ set -euo pipefail
 #   ./run_fullscreen.sh --qemu-args "-m 256M -serial file:serial.log"
 #   ./run_fullscreen.sh --fullscreen
 
-ISO="galio.iso"
-DISK="disk.img"
+ISO="build/galio.iso"
+DISK="build/disk.img"
 QEMU_BIN="qemu-system-i386"
 EXTRA_ARGS=""
 NOGRAPHIC=false

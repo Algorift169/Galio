@@ -69,25 +69,20 @@ sudo apt install -y build-essential gcc-multilib libc6-dev-i386 nasm binutils \
 From the project root:
 
 ```bash
-# Build kernel
-make all || make galio.bin
-
-
-# Create GRUB ISO
-chmod +x ./iso.sh
-./iso.sh
+# Build everything
+make all
 
 # Run in QEMU with serial output
 chmod +x ./run.sh
 ./run.sh
 
 # Or run with VGA window
-qemu-system-i386 -cdrom galio.iso -m 128M
+qemu-system-i386 -cdrom build/galio.iso -m 128M
 ```
 
 ## OR MAKE ALL IN ONCE AND RUN
 
-make clean && rm -rf galio.iso && make all || make galio.bin && ./iso.sh && ./run.sh
+make clean && make all && ./run.sh
 
 ---
 
@@ -95,11 +90,10 @@ make clean && rm -rf galio.iso && make all || make galio.bin && ./iso.sh && ./ru
 
 **Top Level**
 - `Makefile` — Build rules for compiling and linking
-- `galio.bin` — Linked kernel image
-- `galio.iso` — Bootable GRUB ISO
+- `build/` — Generated build artifacts and images
 - `README.md` — This documentation
-- `initrd.bin` — Initial RAM disk image
-- `disk.img` — Disk image for persistent storage
+- `build/initrd.bin` — Initial RAM disk image
+- `build/disk.img` — Disk image for persistent storage
 
 **Directories**
 
@@ -135,9 +129,7 @@ make clean && rm -rf galio.iso && make all || make galio.bin && ./iso.sh && ./ru
 - `scripts/` — Utility scripts
   - `run.sh` — QEMU runner
   - `run_fullscreen.sh` — QEMU fullscreen runner
-  - `iso.sh` — ISO creation script
 
-- `test/` — Test programs
   - `test_elf.c` — ELF test binary
 
 ### Notes

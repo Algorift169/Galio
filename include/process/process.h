@@ -34,6 +34,9 @@ typedef struct {
     u32 eax;
     u32 eflags;
     u32 eip;
+    u32 cs;
+    u32 user_esp;
+    u32 user_ss;
 } register_state_t;
 
 typedef struct {

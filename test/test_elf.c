@@ -3,6 +3,8 @@
 #define SYS_WRITE 2
 #define SYS_EXIT  1
 
+typedef unsigned int u32;
+
 static inline int syscall3(int num, int arg1, int arg2, int arg3) {
     int ret;
     asm volatile(
@@ -15,8 +17,14 @@ static inline int syscall3(int num, int arg1, int arg2, int arg3) {
 }
 
 void _start(void) {
-    const char msg[] = "Hello from ELF!\n";
-    syscall3(SYS_WRITE, 1, (int)msg, sizeof(msg) - 1);
+    const char msg[] = "Hello from ELF user task!\n";
+
+    for (int i = 0; i < 8; i++) {
+        syscall3(SYS_WRITE, 1, (int)msg, sizeof(msg) - 1);
+        for (volatile u32 delay = 0; delay < 2000000; delay++) {
+            /* Busy loop to force timer preemption */
+        }
+    }
 
     /* Exit */
     syscall3(SYS_EXIT, 0, 0, 0);

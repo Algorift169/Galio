@@ -12,6 +12,7 @@
 static page_directory_t page_directory_pool[MAX_PAGE_DIRS];
 static u32 page_directory_count = 0;
 static page_directory_t *kernel_pd = NULL;
+static page_directory_t *current_page_directory = NULL;
 
 static page_directory_t *alloc_page_directory(void) {
     if (page_directory_count >= MAX_PAGE_DIRS) return NULL;
@@ -138,7 +139,7 @@ void paging_map(page_directory_t *pd, u32 vaddr, u32 paddr, u32 flags) {
             return;
         }
         pd->tables[pd_idx] = (u32 *)pt_phys;
-        pd->directory[pd_idx] = (pt_phys & 0xFFFFF000) | PAGE_PRESENT | PAGE_RW;
+        pd->directory[pd_idx] = (pt_phys & 0xFFFFF000) | PAGE_PRESENT | PAGE_RW | PAGE_USER;
     }
 
     u32 pte = (paddr & 0xFFFFF000) | flags;
@@ -171,11 +172,11 @@ void paging_enable(page_directory_t *pd) {
     __asm__ volatile("mov %%cr0, %0" : "=r"(cr0));
     cr0 |= 0x80000000;
     __asm__ volatile("mov %0, %%cr0" : : "r"(cr0));
+    current_page_directory = pd;
 }
 
 page_directory_t *paging_get_current(void) {
-    process_t *proc = process_current();
-    if (proc && proc->pagedir) return proc->pagedir;
+    if (current_page_directory) return current_page_directory;
     return kernel_pd;
 }
 
@@ -219,4 +220,5 @@ page_directory_t *paging_clone_directory(page_directory_t *src) {
 void paging_load_directory(page_directory_t *pd) {
     u32 pd_phys = (u32)pd->directory;
     __asm__ volatile("mov %0, %%cr3" : : "r"(pd_phys));
+    current_page_directory = pd;
 }

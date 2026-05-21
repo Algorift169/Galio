@@ -28,7 +28,7 @@ static u32 process_count = 0;
 void idle_main(void) {
     kprintf("Idle process running\n");
     for (;;) {
-        process_yield();
+        __asm__ volatile("hlt");
     }
 }
 
@@ -131,6 +131,9 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->regs.eax = 0;
     proc->regs.eflags = 0x202;  /* IF flag set */
     proc->regs.eip = (u32)entry;
+    proc->regs.cs = KERNEL_CS;
+    proc->regs.user_esp = 0;
+    proc->regs.user_ss = 0;
     proc->time_slice = PROCESS_TIME_SLICE;
 
     /* Initialize file descriptor table */
@@ -283,6 +286,9 @@ static void save_current_registers(registers_t *regs) {
     current_process->regs.esp = regs->esp;
     current_process->regs.eflags = regs->eflags;
     current_process->regs.eip = regs->eip;
+    current_process->regs.cs = regs->cs;
+    current_process->regs.user_esp = regs->user_esp;
+    current_process->regs.user_ss = regs->user_ss;
 }
 
 void process_preempt(registers_t *regs) {
@@ -322,6 +328,9 @@ void process_preempt(registers_t *regs) {
     regs->esp = next->regs.esp;
     regs->eip = next->regs.eip;
     regs->eflags = next->regs.eflags;
+    regs->cs = next->regs.cs;
+    regs->user_esp = next->regs.user_esp;
+    regs->user_ss = next->regs.user_ss;
 }
 
 void process_switch(process_t *from, process_t *to) {

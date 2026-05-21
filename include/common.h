@@ -20,6 +20,10 @@ typedef int32_t  i32;
 void *memset(void *s, int c, u32 n);
 void *memcpy(void *dest, const void *src, u32 n);
 void panic(const char *msg);
+void assert_failed(const char *expr, const char *file, i32 line);
+void stack_trace(void);
+
+#define ASSERT(expr) ((expr) ? (void)0 : assert_failed(#expr, __FILE__, __LINE__))
 
 /* Kernel status reporting */
 void kernel_status(void);

@@ -13,8 +13,8 @@ set -euo pipefail
 #   ./run.sh --nogui
 #   ./run.sh --qemu-args "-m 256M -display gtk -serial file:serial.log"
 
-ISO="galio.iso"
-DISK="disk.img"
+ISO="build/galio.iso"
+DISK="build/disk.img"
 QEMU_BIN="qemu-system-i386"
 EXTRA_ARGS=""
 NOGRAPHIC=false

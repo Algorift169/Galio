@@ -261,16 +261,29 @@ static i32 syscall_exec(const char *path) {
         return -1;
     }
 
-    /* Load ELF */
+    /* Load ELF into the process page directory */
+    process_t *current = process_current();
+    page_directory_t *saved_pd = paging_get_current();
+    if (current->pagedir) {
+        paging_load_directory(current->pagedir);
+    }
+
     u32 entry = elf_load(elf_data);
     kfree(elf_data);
 
-    if (!entry) return -1;
+    if (!entry) {
+        if (current->pagedir && saved_pd && saved_pd != current->pagedir) {
+            paging_load_directory(saved_pd);
+        }
+        return -1;
+    }
 
     /* Switch to user mode */
-    process_t *current = process_current();
     current->regs.eip = entry;
-    current->regs.esp = USER_STACK_TOP;  /* User stack top */
+    current->regs.esp = USER_STACK_TOP;  /* Kernel stack top for the process */
+    current->regs.user_esp = USER_STACK_TOP;
+    current->regs.user_ss = USER_DS;
+    current->regs.cs = USER_CS;
     current->regs.eflags &= ~0x3000;    /* Clear IOPL for ring3 */
     current->regs.eflags |= 0x202;      /* Set IF and reserved flag */
 
@@ -292,7 +305,7 @@ static i32 syscall_exec(const char *path) {
         "pushw $0x1B\n"     /* User code CS */
         "pushl %1\n"        /* EIP */
         "iret\n"
-        : : "r"(current->regs.esp), "r"(entry)
+        : : "r"(current->regs.user_esp), "r"(entry)
     );
 
     /* Should not reach here */

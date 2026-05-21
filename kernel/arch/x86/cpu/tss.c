@@ -44,13 +44,14 @@ void enter_userspace(u32 entry_point, u32 user_stack) {
         "movw %%ax, %%gs\n"
         "pushw %[udata]\n"
         "pushl %[ustack]\n"
-        "pushfl\n"
+        "pushl %[eflags]\n"
         "pushw %[ucode]\n"
         "pushl %[entry]\n"
         "iret\n"
         :
         : [udata] "i" (USER_DS),
           [ustack] "r" (user_stack),
+          [eflags] "i" (0x202),
           [ucode] "i" (USER_CS),
           [entry] "r" (entry_point)
         : "ax"

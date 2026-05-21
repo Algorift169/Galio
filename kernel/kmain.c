@@ -291,6 +291,14 @@ void kmain(void *multiboot_ptr) {
         kprintf("Welcome to Galio !\n");
     }
     kprintf("Press c to enter GSH....\n\n");
+    /* Create init process early so the embedded ELF gets scheduled
+       (previously creation was after shell and unreachable) */
+    kprintf("Creating init process...\n");
+    u32 init_pid = process_create(init_main, 1);
+    if (!init_pid) {
+        kprintf("Failed to create init process!\n");
+        for(;;);
+    }
 
     /* ELF test disabled - needs proper kernel virtual address mapping */
     // kprintf("Loading ELF loader smoke test...\n");
@@ -345,12 +353,14 @@ void kmain(void *multiboot_ptr) {
     /* Restore timer IRQ so the scheduler can run once interrupts are enabled */
     irq_unmask(0);
 
-    /* Create init process */
-    kprintf("Creating init process...\n");
-    u32 init_pid = process_create(init_main, 1);
+    /* Ensure init process exists (may have been created earlier) */
     if (!init_pid) {
-        kprintf("Failed to create init process!\n");
-        for(;;);
+        kprintf("Creating init process...\n");
+        init_pid = process_create(init_main, 1);
+        if (!init_pid) {
+            kprintf("Failed to create init process!\n");
+            for(;;);
+        }
     }
 
     process_set_boot_current();
