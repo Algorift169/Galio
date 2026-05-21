@@ -3,49 +3,18 @@
 #include "vfs_core.h"
 #include "kprintf.h"
 #include "string.h"
+#include "path.h"
 
 vfs_header_t *vfs_root = NULL;
 static vfs_entry_t compat_entries[32];
 static u32 compat_index = 0;
-
-static char *path_normalize(const char *path) {
-    static char buf[VFS_MAX_PATH];
-    u32 i = 0, j = 0;
-
-    if (!path) {
-        buf[0] = '/';
-        buf[1] = 0;
-        return buf;
-    }
-
-    while (path[i] && j < VFS_MAX_PATH - 1) {
-        if (path[i] == '/' && i > 0 && path[i - 1] == '/') {
-            i++;
-            continue;
-        }
-        buf[j++] = path[i++];
-    }
-    buf[j] = 0;
-
-    if (j > 1 && buf[j - 1] == '/') {
-        buf[j - 1] = 0;
-    }
-
-    if (j == 0) {
-        buf[0] = '/';
-        buf[1] = 0;
-    }
-
-    return buf;
-}
 
 static vfs_entry_t *build_compat_entry(vfs_dentry_t *dentry, const char *path) {
     if (!dentry || !dentry->inode) return NULL;
     vfs_entry_t *entry = &compat_entries[compat_index++ % 32];
     char normalized[VFS_MAX_PATH];
     if (path && *path) {
-        strncpy(normalized, path_normalize(path), VFS_MAX_PATH - 1);
-        normalized[VFS_MAX_PATH - 1] = 0;
+        path_normalize(path, normalized, sizeof(normalized));
     } else {
         vfs_core_build_path(dentry, normalized);
     }
@@ -81,7 +50,8 @@ void vfs_init(void *initrd_addr) {
 
 vfs_entry_t *vfs_find(const char *path) {
     if (!vfs_root || !path) return NULL;
-    char *norm_path = path_normalize(path);
+    char norm_path[VFS_MAX_PATH];
+    path_normalize(path, norm_path, sizeof(norm_path));
     vfs_dentry_t *dentry = vfs_core_lookup(norm_path, 0);
     return build_compat_entry(dentry, norm_path);
 }
@@ -92,25 +62,6 @@ u32 vfs_read(const char *path, void *buffer, u32 size) {
         return 0;
     }
     return vfs_core_read_path(path, buffer, size);
-}
-
-static char *get_parent_dir(const char *path) {
-    static char buf[VFS_MAX_PATH];
-    const char *src = path;
-    char *dst = buf;
-    while (*src) *dst++ = *src++;
-    *dst = 0;
-
-    int i = __builtin_strlen(buf) - 1;
-    while (i > 0 && buf[i] != '/') i--;
-
-    if (i == 0) {
-        buf[1] = 0;
-    } else {
-        buf[i] = 0;
-    }
-
-    return buf;
 }
 
 static u32 path_depth(const char *path) {
@@ -142,7 +93,8 @@ void vfs_listdir(const char *path) {
         return;
     }
 
-    char *norm_path = path_normalize(path);
+    char norm_path[VFS_MAX_PATH];
+    path_normalize(path, norm_path, sizeof(norm_path));
     vfs_dentry_t *dentry = vfs_core_lookup(norm_path, 0);
     if (!dentry || !dentry->inode || dentry->inode->mode != VFS_TYPE_DIR) {
         kprintf("[VFS] ERROR: Directory not found: %s\n", path);
@@ -306,7 +258,8 @@ u32 vfs_mkdir(const char *path, u8 force) {
         kprintf("[VFS] ERROR: Filesystem not mounted\n");
         return 0;
     }
-    char *norm_path = path_normalize(path);
+    char norm_path[VFS_MAX_PATH];
+    path_normalize(path, norm_path, sizeof(norm_path));
     if (!vfs_core_create_dir(norm_path, force)) {
         kprintf("[VFS] ERROR: Could not create directory: %s\n", norm_path);
         return 0;
@@ -320,7 +273,8 @@ u32 vfs_create(const char *path, u8 force) {
         kprintf("[VFS] ERROR: Filesystem not mounted\n");
         return 0;
     }
-    char *norm_path = path_normalize(path);
+    char norm_path[VFS_MAX_PATH];
+    path_normalize(path, norm_path, sizeof(norm_path));
     if (!vfs_core_create_file(norm_path, force)) {
         kprintf("[VFS] ERROR: Could not create file: %s\n", norm_path);
         return 0;
@@ -334,7 +288,8 @@ u32 vfs_rmdir(const char *path) {
         kprintf("[VFS] ERROR: Filesystem not mounted\n");
         return 0;
     }
-    char *norm_path = path_normalize(path);
+    char norm_path[VFS_MAX_PATH];
+    path_normalize(path, norm_path, sizeof(norm_path));
     if (!vfs_core_rmdir(norm_path)) {
         kprintf("[VFS] ERROR: Unable to remove directory: %s\n", norm_path);
         return 0;

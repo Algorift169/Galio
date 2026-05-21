@@ -196,9 +196,8 @@ void kmain(void *multiboot_ptr) {
     kprintf("Initializing scheduler...\n");
     scheduler_init();
 
-    /* Do NOT initialize keyboard driver – we will use polling in shell */
-    // kprintf("Initializing keyboard...\n");
-    // keyboard_init();
+    kprintf("Initializing keyboard...\n");
+    keyboard_init();
 
     kprintf("Initializing filesystem...\n");
 
@@ -333,6 +332,9 @@ void kmain(void *multiboot_ptr) {
     }
 
     extern void shell_run(void);
+
+    /* Enable interrupts so IRQ-driven keyboard events can be delivered to the shell. */
+    __asm__ volatile("sti");
     shell_run();
 
     /* shell_run should not return. */

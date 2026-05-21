@@ -4,7 +4,7 @@
 #include "string.h"
 #include "vfs.h"
 #include "vfs_core.h"
-#include "arch/x86/cpu.h"
+#include "keyboard.h"
 
 #define EDITOR_BUFFER_SIZE 4096
 
@@ -129,20 +129,19 @@ static void editor_handle_key(editor_buffer_t *buf, u8 scancode, u8 is_pressed,
 }
 
 static void editor_poll_keyboard(editor_buffer_t *buf, u8 *save_flag, u8 *exit_flag, u8 *buffer_changed) {
-    u8 status = inb(0x64);
-    if (!(status & 0x01)) return;
-    
-    u8 scancode = inb(0x60);
-    
+    u8 scancode, is_pressed;
+    if (!keyboard_read_event(&scancode, &is_pressed)) {
+        return;
+    }
+
     /* Handle extended prefix (0xE0) */
     if (scancode == 0xE0) {
         extended_key = 1;
         return;
     }
-    
-    u8 is_pressed = !(scancode & 0x80);
+
     u8 raw = scancode & 0x7F;
-    
+
     /* Track shift keys */
     if (raw == 0x2A || raw == 0x36) {
         shift_pressed = is_pressed;

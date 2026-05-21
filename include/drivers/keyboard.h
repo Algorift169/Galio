@@ -8,6 +8,8 @@ typedef void (*key_callback_t)(u8 scancode, u8 is_pressed);
 
 void keyboard_init(void);
 void keyboard_install_callback(key_callback_t callback);
+u8 keyboard_has_event(void);
+u8 keyboard_read_event(u8 *scancode, u8 *is_pressed);
 u8 scancode_to_ascii(u8 scancode);
 
 #endif /* KEYBOARD_H */

@@ -6,51 +6,20 @@
 #include "kprintf.h"
 #include "pit.h"
 #include "string.h"
+#include "path.h"
 
-extern u32 block_size;  /* Add this line - defined in ext2.c */
+extern u32 block_size; 
 
 vfs_header_t *vfs_root = NULL;
 static vfs_entry_t compat_entries[32];
 static u32 compat_index = 0;
-
-static char *path_normalize(const char *path) {
-    static char buf[VFS_MAX_PATH];
-    u32 i = 0, j = 0;
-
-    if (!path) {
-        buf[0] = '/';
-        buf[1] = 0;
-        return buf;
-    }
-
-    while (path[i] && j < VFS_MAX_PATH - 1) {
-        if (path[i] == '/' && i > 0 && path[i - 1] == '/') {
-            i++;
-            continue;
-        }
-        buf[j++] = path[i++];
-    }
-    buf[j] = 0;
-
-    if (j > 1 && buf[j - 1] == '/') {
-        buf[j - 1] = 0;
-    }
-
-    if (j == 0) {
-        buf[0] = '/';
-        buf[1] = 0;
-    }
-
-    return buf;
-}
 
 static vfs_entry_t *build_compat_entry(vfs_dentry_t *dentry, const char *path) {
     if (!dentry || !dentry->inode) return NULL;
     vfs_entry_t *entry = &compat_entries[compat_index++ % 32];
     char normalized[VFS_MAX_PATH];
     if (path && *path) {
-        strncpy(normalized, path_normalize(path), VFS_MAX_PATH - 1);
-        normalized[VFS_MAX_PATH - 1] = 0;
+        path_normalize(path, normalized, sizeof(normalized));
     } else {
         vfs_core_build_path(dentry, normalized);
     }
@@ -91,8 +60,7 @@ static vfs_entry_t *build_compat_entry_for_disk(u32 inode_num, const char *path)
 
     vfs_entry_t *entry = &compat_entries[compat_index++ % 32];
     char normalized[VFS_MAX_PATH];
-    strncpy(normalized, path_normalize(path), VFS_MAX_PATH - 1);
-    normalized[VFS_MAX_PATH - 1] = 0;
+    path_normalize(path, normalized, sizeof(normalized));
     strncpy(entry->path, normalized, VFS_MAX_PATH - 1);
     entry->path[VFS_MAX_PATH - 1] = 0;
     entry->size = inode.size;
@@ -104,7 +72,8 @@ static vfs_entry_t *build_compat_entry_for_disk(u32 inode_num, const char *path)
 
 vfs_entry_t *vfs_find(const char *path) {
     if (!vfs_root || !path) return NULL;
-    char *norm_path = path_normalize(path);
+    char norm_path[VFS_MAX_PATH];
+    path_normalize(path, norm_path, sizeof(norm_path));
     if (vfs_core_is_disk_mode()) {
         u32 inode_num = ext2_find_inode(norm_path);
         return build_compat_entry_for_disk(inode_num, norm_path);
@@ -121,25 +90,6 @@ u32 vfs_read(const char *path, void *buffer, u32 size) {
         return 0;
     }
     return vfs_core_read_path(path, buffer, size);
-}
-
-static char *get_parent_dir(const char *path) {
-    static char buf[VFS_MAX_PATH];
-    const char *src = path;
-    char *dst = buf;
-    while (*src) *dst++ = *src++;
-    *dst = 0;
-
-    int i = __builtin_strlen(buf) - 1;
-    while (i > 0 && buf[i] != '/') i--;
-
-    if (i == 0) {
-        buf[1] = 0;
-    } else {
-        buf[i] = 0;
-    }
-
-    return buf;
 }
 
 static u32 path_depth(const char *path) {
@@ -241,7 +191,8 @@ void vfs_listdir(const char *path) {
         return;
     }
     
-    char *norm_path = path_normalize(path);
+    char norm_path[VFS_MAX_PATH];
+    path_normalize(path, norm_path, sizeof(norm_path));
     
     /* Handle disk mode separately using EXT2 directly */
     if (vfs_core_is_disk_mode()) {
@@ -584,7 +535,8 @@ u32 vfs_mkdir(const char *path, u8 force) {
         kprintf("[VFS] ERROR: Filesystem not mounted\n");
         return 0;
     }
-    char *norm_path = path_normalize(path);
+    char norm_path[VFS_MAX_PATH];
+    path_normalize(path, norm_path, sizeof(norm_path));
     if (!vfs_core_create_dir(norm_path, force)) {
         kprintf("[VFS] ERROR: Could not create directory: %s\n", norm_path);
         return 0;
@@ -597,7 +549,8 @@ u32 vfs_create(const char *path, u8 force) {
         kprintf("[VFS] ERROR: Filesystem not mounted\n");
         return 0;
     }
-    char *norm_path = path_normalize(path);
+    char norm_path[VFS_MAX_PATH];
+    path_normalize(path, norm_path, sizeof(norm_path));
     if (!vfs_core_create_file(norm_path, force)) {
         kprintf("[VFS] ERROR: Could not create file: %s\n", norm_path);
         return 0;
@@ -610,7 +563,8 @@ u32 vfs_rmdir(const char *path) {
         kprintf("[VFS] ERROR: Filesystem not mounted\n");
         return 0;
     }
-    char *norm_path = path_normalize(path);
+    char norm_path[VFS_MAX_PATH];
+    path_normalize(path, norm_path, sizeof(norm_path));
     if (!vfs_core_rmdir(norm_path)) {
         kprintf("[VFS] ERROR: Unable to remove directory: %s\n", norm_path);
         return 0;
@@ -625,10 +579,8 @@ u32 vfs_move(const char *source, const char *target) {
     }
     char src_norm[VFS_MAX_PATH];
     char dst_norm[VFS_MAX_PATH];
-    strncpy(src_norm, path_normalize(source), VFS_MAX_PATH - 1);
-    src_norm[VFS_MAX_PATH - 1] = 0;
-    strncpy(dst_norm, path_normalize(target), VFS_MAX_PATH - 1);
-    dst_norm[VFS_MAX_PATH - 1] = 0;
+    path_normalize(source, src_norm, sizeof(src_norm));
+    path_normalize(target, dst_norm, sizeof(dst_norm));
     return vfs_core_move(src_norm, dst_norm);
 }
 
@@ -702,8 +654,7 @@ i32 vfs_chmod(const char *path, u32 mode) {
 
 static u32 vfs_mount_root_entry(const char *mountpoint, u32 device) {
     char normalized[VFS_MAX_PATH];
-    strncpy(normalized, path_normalize(mountpoint), VFS_MAX_PATH - 1);
-    normalized[VFS_MAX_PATH - 1] = 0;
+    path_normalize(mountpoint, normalized, sizeof(normalized));
     if (!vfs_core_create_dir(normalized, 1)) return 0;
     if (device == VFS_DEVFS) {
         if (strcmp(normalized, "/") == 0) return 1;

@@ -2,46 +2,70 @@
 #include "keyboard.h"
 #include "irq.h"
 #include "kprintf.h"
-#include "vga.h"
 #include <stddef.h>
 
 #define KEYBOARD_DATA 0x60
 #define KEYBOARD_CTRL 0x64
-#define PIC_MASTER_CMD 0x20
-#define PIC_MASTER_EOI 0x20
 
 #define LSHIFT_PRESSED  0x2A
 #define RSHIFT_PRESSED  0x36
 #define LCTRL_PRESSED   0x1D
 #define LALT_PRESSED    0x38
+#define KEYBOARD_QUEUE_SIZE 256
 
+typedef struct {
+    u8 scancode;
+    u8 is_pressed;
+} keyboard_event_t;
+
+static keyboard_event_t event_queue[KEYBOARD_QUEUE_SIZE];
+static volatile u8 queue_head = 0;
+static volatile u8 queue_tail = 0;
 static u8 shift_pressed = 0;
 static u8 ctrl_pressed = 0;
 static u8 alt_pressed = 0;
-static u8 extended_prefix = 0;
 static key_callback_t user_callback = NULL;
 
-static int handle_arrow_key(u8 scancode) {
-    switch (scancode) {
-        case 0x48: /* Up */
-            vga_move_cursor(0, -1);
-            vga_update_cursor();
-            return 1;
-        case 0x50: /* Down */
-            vga_move_cursor(0, 1);
-            vga_update_cursor();
-            return 1;
-        case 0x4B: /* Left */
-            vga_move_cursor(-1, 0);
-            vga_update_cursor();
-            return 1;
-        case 0x4D: /* Right */
-            vga_move_cursor(1, 0);
-            vga_update_cursor();
-            return 1;
-        default:
-            return 0;
+static inline u8 keyboard_queue_empty(void) {
+    return queue_head == queue_tail;
+}
+
+static inline u8 keyboard_queue_full(void) {
+    u8 next = queue_head + 1;
+    if (next == KEYBOARD_QUEUE_SIZE) next = 0;
+    return next == queue_tail;
+}
+
+static void keyboard_enqueue(u8 scancode, u8 is_pressed) {
+    if (keyboard_queue_full()) {
+        return;
     }
+
+    event_queue[queue_head].scancode = scancode;
+    event_queue[queue_head].is_pressed = is_pressed;
+    queue_head++;
+    if (queue_head == KEYBOARD_QUEUE_SIZE) {
+        queue_head = 0;
+    }
+}
+
+static u8 keyboard_dequeue(u8 *scancode, u8 *is_pressed) {
+    if (keyboard_queue_empty()) {
+        return 0;
+    }
+
+    if (scancode) {
+        *scancode = event_queue[queue_tail].scancode;
+    }
+    if (is_pressed) {
+        *is_pressed = event_queue[queue_tail].is_pressed;
+    }
+
+    queue_tail++;
+    if (queue_tail == KEYBOARD_QUEUE_SIZE) {
+        queue_tail = 0;
+    }
+    return 1;
 }
 
 /* Scancode to ASCII lookup table (without shift) */
@@ -74,58 +98,48 @@ static void keyboard_handler(registers_t *regs) {
     u8 is_pressed = !(scancode & 0x80);
 
     if (scancode == 0xE0) {
-        extended_prefix = 1;
+        keyboard_enqueue(scancode, is_pressed);
         return;
     }
 
     u8 raw_scancode = scancode & 0x7F;
 
-    if (extended_prefix) {
-        extended_prefix = 0;
-        if (is_pressed && handle_arrow_key(raw_scancode))
-            return;
-    } else {
-        if (is_pressed && handle_arrow_key(raw_scancode))
-            return;
-    }
-
-    /* Track modifiers */
     if (raw_scancode == LSHIFT_PRESSED || raw_scancode == RSHIFT_PRESSED) {
         shift_pressed = is_pressed;
-        return;
     } else if (raw_scancode == LCTRL_PRESSED) {
         ctrl_pressed = is_pressed;
-        return;
     } else if (raw_scancode == LALT_PRESSED) {
         alt_pressed = is_pressed;
-        return;
     }
+
+    keyboard_enqueue(scancode, is_pressed);
 
     if (user_callback) {
         user_callback(raw_scancode, is_pressed);
-    } else if (is_pressed && raw_scancode < 60) {
-        u8 ascii = shift_pressed ? scancode_table_shift[raw_scancode] : scancode_table[raw_scancode];
-        if (ascii > 0) {
-            vga_putch(ascii);
-            vga_update_cursor();
-        }
     }
 }
 
 void keyboard_init(void) {
-    /* Enable PS/2 keyboard port */
     outb(KEYBOARD_CTRL, 0xAE);   /* Enable first PS/2 port */
-
-    /* Shell uses polling mode, so don't install interrupt handler */
-    /* to avoid conflicts with keyboard controller port reads */
-    /* interrupt_install_handler(33, keyboard_handler); */
-    /* irq_unmask(1); */
-
-    kprintf("Keyboard initialized (polling mode)\n");
+    interrupt_install_handler(33, keyboard_handler);
+    irq_unmask(1);
+    kprintf("Keyboard initialized (IRQ mode)\n");
 }
 
 void keyboard_install_callback(key_callback_t callback) {
     user_callback = callback;
+}
+
+u8 keyboard_has_event(void) {
+    return !keyboard_queue_empty();
+}
+
+u8 keyboard_read_event(u8 *scancode, u8 *is_pressed) {
+    u8 result;
+    __asm__ volatile("cli");
+    result = keyboard_dequeue(scancode, is_pressed);
+    __asm__ volatile("sti");
+    return result;
 }
 
 u8 scancode_to_ascii(u8 scancode) {
