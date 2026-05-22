@@ -80,6 +80,12 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->priority = priority;
     proc->ticks = 0;
     proc->pagedir = paging_create_user_directory();
+    if (!proc->pagedir) {
+        kprintf("process_create: Failed to create user page directory\n");
+        proc->pid = 0;
+        proc->state = PROCESS_ZOMBIE;
+        return 0;
+    }
     proc->heap_start = USER_HEAP_START;
     proc->brk = USER_HEAP_START;
     proc->mmap_count = 0;
@@ -90,6 +96,18 @@ u32 process_create(void (*entry)(void), u32 priority) {
         u32 phys = pmem_alloc(1);
         if (!phys) {
             kprintf("process_create: Failed to allocate user stack page\n");
+            /* Clean up partially allocated address space */
+            for (u32 cleanup_addr = stack_base; cleanup_addr < addr; cleanup_addr += PAGE_SIZE) {
+                u32 cleanup_phys = paging_get_physical(proc->pagedir, cleanup_addr);
+                if (cleanup_phys) {
+                    paging_unmap(proc->pagedir, cleanup_addr);
+                    pmem_free(cleanup_phys, 1);
+                }
+            }
+            pmem_free((u32)((page_directory_t *)proc->pagedir)->directory, 1);
+            proc->pagedir = NULL;
+            proc->pid = 0;
+            proc->state = PROCESS_ZOMBIE;
             return 0;
         }
         paging_map(proc->pagedir, addr, phys, PAGE_PRESENT | PAGE_RW | PAGE_USER);
@@ -115,6 +133,17 @@ u32 process_create(void (*entry)(void), u32 priority) {
 
     if (!proc->stack) {
         kprintf("process_create: Failed to allocate stack\n");
+        for (u32 addr = stack_base; addr < USER_STACK_TOP; addr += PAGE_SIZE) {
+            u32 paddr = paging_get_physical(proc->pagedir, addr);
+            if (paddr) {
+                paging_unmap(proc->pagedir, addr);
+                pmem_free(paddr, 1);
+            }
+        }
+        pmem_free((u32)((page_directory_t *)proc->pagedir)->directory, 1);
+        proc->pagedir = NULL;
+        proc->pid = 0;
+        proc->state = PROCESS_ZOMBIE;
         return 0;
     }
 
@@ -153,16 +182,20 @@ static void process_free_address_space(process_t *proc) {
     
     /* Walk page directory and free all user pages */
     for (u32 pd_idx = 0; pd_idx < 1024; pd_idx++) {
-        if (!pd->tables[pd_idx]) continue;
         u32 pde = pd->directory[pd_idx];
-        if (!(pde & PAGE_PRESENT)) continue;
-        
+        if (!(pde & PAGE_PRESENT) || !(pde & PAGE_USER)) {
+            /* Skip kernel/shared page tables and non-present entries */
+            continue;
+        }
+
         u32 *pt = pd->tables[pd_idx];
+        if (!pt) continue;
+
         for (u32 pt_idx = 0; pt_idx < 1024; pt_idx++) {
             u32 pte = pt[pt_idx];
             if (!(pte & PAGE_PRESENT)) continue;
             
-            /* Decrement refcount for physical frame */
+            /* Decrement refcount for copied/allocated physical frames */
             u32 phys_addr = pte & 0xFFFFF000;
             if (phys_addr) {
                 pmem_refcount_dec(phys_addr);

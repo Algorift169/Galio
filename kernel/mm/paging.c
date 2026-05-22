@@ -23,8 +23,11 @@ static page_directory_t *alloc_page_directory(void) {
 }
 
 static u32 alloc_page_table(void) {
-    u32 pt_phys = pmem_alloc(1);
-    if (!pt_phys) return 0;
+    u32 pt_phys = pmem_alloc_region(1, 0x100000, 0x1000000);
+    if (!pt_phys) {
+        kprintf("paging: low-memory page table allocation failed\n");
+        return 0;
+    }
     volatile u32 *pt_virt = (volatile u32 *)pt_phys;
     for (u32 i = 0; i < PAGE_ENTRIES; i++) pt_virt[i] = 0;
     return pt_phys;
@@ -101,8 +104,11 @@ page_directory_t *paging_create_directory(void) {
     page_directory_t *pd = alloc_page_directory();
     if (!pd) return NULL;
 
-    u32 pd_phys = pmem_alloc(1);
-    if (!pd_phys) return NULL;
+    u32 pd_phys = pmem_alloc_region(1, 0x100000, 0x1000000);
+    if (!pd_phys) {
+        kprintf("paging: low-memory page directory allocation failed\n");
+        return NULL;
+    }
 
     volatile u32 *pd_virt = (volatile u32 *)pd_phys;
     for (u32 i = 0; i < PAGE_ENTRIES; i++) pd_virt[i] = 0;

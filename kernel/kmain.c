@@ -187,16 +187,33 @@ void kmain(void *multiboot_ptr) {
     kprintf("Running memory stabilization tests...\n");
     mem_test_run();
 
-    kprintf("Running kernel self-tests...\n");
-    kprintf("─────────────────────────────────────────────────────────────\n");
-    run_kernel_tests();
-    kprintf("─────────────────────────────────────────────────────────────\n");
-
     kprintf("Initializing process manager...\n");
     process_init();
 
     kprintf("Installing system call handler...\n");
     syscall_init();
+
+    kprintf("Initializing timer (100 Hz)...\n");
+    pit_init(100);
+
+    kprintf("Initializing scheduler...\n");
+    scheduler_init();
+
+    kprintf("Initializing keyboard...\n");
+    keyboard_init();
+
+    kprintf("Initializing filesystem...\n");
+
+    extern u8 _binary_initrd_bin_start;
+    vfs_init(&_binary_initrd_bin_start);
+    vfs_ensure_home_dirs();
+    vfs_debug();
+
+    kprintf("Running kernel self-tests...\n");
+    run_kernel_tests();
+
+    kprintf("Initializing ATA driver...\n");
+    ata_init();
 
     kprintf("Initializing timer (100 Hz)...\n");
     pit_init(100);

@@ -170,6 +170,44 @@ u32 pmem_alloc(size_t num_frames) {
     return 0;
 }
 
+u32 pmem_alloc_region(size_t num_frames, u32 min_addr, u32 max_addr) {
+    if (num_frames == 0 || min_addr >= max_addr) {
+        return 0;
+    }
+
+    u32 start_frame = (min_addr + FRAME_SIZE - 1) / FRAME_SIZE;
+    u32 end_frame = max_addr / FRAME_SIZE;
+    if (end_frame > BITMAP_SIZE * 8) {
+        end_frame = BITMAP_SIZE * 8;
+    }
+    if (start_frame >= end_frame) {
+        return 0;
+    }
+
+    for (u32 frame = start_frame; frame + num_frames <= end_frame; frame++) {
+        if (!get_frame(frame)) {
+            u8 found = 1;
+            for (u32 i = 1; i < num_frames; i++) {
+                if (get_frame(frame + i)) {
+                    found = 0;
+                    break;
+                }
+            }
+            if (found) {
+                u32 addr = frame * FRAME_SIZE;
+                for (u32 i = 0; i < num_frames; i++) {
+                    ref_frame(frame + i);
+                }
+                kprintf("pmem_alloc_region: Allocated %u frame(s) at addr=%x (frame %u) in range %x-%x\n",
+                        num_frames, addr, frame, min_addr, max_addr);
+                return addr;
+            }
+        }
+    }
+
+    return 0;
+}
+
 void pmem_free(u32 addr, size_t num_frames) {
     u32 frame = addr / FRAME_SIZE;
     for (u32 i = 0; i < num_frames; i++) {
