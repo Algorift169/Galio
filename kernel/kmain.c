@@ -28,6 +28,9 @@ void syscall_init(void);
 /* Memory test declaration */
 void mem_test_run(void);
 
+/* Kernel test declaration */
+void run_kernel_tests(void);
+
 /* Embedded test binary */
 extern u8 _binary_test_elf_bin_start;
 extern u8 _binary_test_elf_bin_end;
@@ -183,6 +186,11 @@ void kmain(void *multiboot_ptr) {
 
     kprintf("Running memory stabilization tests...\n");
     mem_test_run();
+
+    kprintf("Running kernel self-tests...\n");
+    kprintf("─────────────────────────────────────────────────────────────\n");
+    run_kernel_tests();
+    kprintf("─────────────────────────────────────────────────────────────\n");
 
     kprintf("Initializing process manager...\n");
     process_init();
