@@ -53,6 +53,12 @@ static void test_reserved_ranges(void) {
         ASSERT(!in_kernel_range, "Allocated in kernel range (0x100000-0x400000)");
     }
 
+    /* Free frames allocated during alignment testing before exhaustion test */
+    for (u32 i = 0; i < num_allocated; i++) {
+        pmem_free(allocated_frames[i], 1);
+    }
+    num_allocated = 0;
+
     kprintf("TEST 2 RESULT: %u passed, %u failed\n", tests_passed, tests_failed);
 }
 
@@ -73,13 +79,14 @@ static void test_exhaustion(void) {
     ASSERT(accounting_correct, "Memory accounting mismatch");
 
     /* Allocate until exhaustion */
+    u32 exhaustion_frames[256];
     u32 alloc_count = 0;
     while (alloc_count < 256) {  /* Safety limit */
         u32 addr = pmem_alloc(1);
         if (addr == 0) {
             break;
         }
-        alloc_count++;
+        exhaustion_frames[alloc_count++] = addr;
 
         if (alloc_count <= 5 || alloc_count % 64 == 0) {
             kprintf("  Allocated frame %u: addr=%x\n", alloc_count - 1, addr);
@@ -93,15 +100,15 @@ static void test_exhaustion(void) {
     kprintf("  Memory after: free=%u KB, used=%u KB\n", free_after / 1024, used_after / 1024);
 
     /* Free all allocated test frames */
-    for (u32 i = 0; i < num_allocated; i++) {
-        pmem_free(allocated_frames[i], 1);
+    for (u32 i = 0; i < alloc_count; i++) {
+        pmem_free(exhaustion_frames[i], 1);
     }
 
     u32 free_recovered = pmem_get_free();
     kprintf("  Memory recovered after free: free=%u KB\n", free_recovered / 1024);
 
     /* Check that we recovered memory for the freed frames */
-    u32 expected_free = free_before + (num_allocated * FRAME_SIZE / 1024);
+    u32 expected_free = free_before + (alloc_count * FRAME_SIZE / 1024);
     ASSERT(free_recovered >= expected_free - 4, "Did not recover free memory");  /* Allow small margin */
 
     kprintf("TEST 3 RESULT: %u passed, %u failed\n", tests_passed, tests_failed);
