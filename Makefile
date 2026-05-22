@@ -59,6 +59,12 @@ SRCS = kernel/kmain.c \
        kernel/drivers/serial/serial.c \
        kernel/drivers/timer/pit.c \
        kernel/drivers/video/vga.c \
+       kernel/tests/run_tests.c \
+       kernel/tests/scheduler_test.c \
+       kernel/tests/paging_test.c \
+       kernel/tests/vfs_test.c \
+       kernel/tests/signal_test.c \
+       kernel/tests/heap_test.c \
        init/init.c \
        tools/shell/shell.c \
        tools/shell/commands/file.c \
