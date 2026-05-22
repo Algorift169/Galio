@@ -84,7 +84,29 @@ process_switch_asm:
     mov eax, [edx + 28]
     mov ecx, [edx + 24]
     mov esp, [edx + 0]
+    ; Load EFLAGS for new process
     push dword [process_switch_new_eflags]
     popfd
+
+    ; Decide transition method based on CPL required by CS selector
+    mov ax, word [edx + 40]     ; new CS selector (16-bit)
+    test ax, 0x3                ; check RPL bits
+    jz .kernel_mode_switch
+
+    ; User-mode target: build an IRET frame (SS, ESP, EFLAGS, CS, EIP)
+    ; Push user SS (word) then user ESP (dword)
+    mov bx, word [edx + 48]     ; user_ss
+    push bx                     ; pushw user_ss
+    mov eax, [edx + 44]         ; user_esp
+    push dword eax              ; pushl user_esp
+    ; Push EFLAGS (already loaded into EFLAGS, but push saved value)
+    push dword [process_switch_new_eflags]
+    ; Push CS and EIP
+    push word ax                ; pushw user CS (ax still holds CS)
+    push dword [process_switch_new_eip]
+    iret
+
+.kernel_mode_switch:
+    ; Kernel-mode: return normally (CS unchanged)
     push dword [process_switch_new_eip]
     ret

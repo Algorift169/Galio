@@ -325,6 +325,8 @@ void kmain(void *multiboot_ptr) {
         for(;;);
     }
 
+    /* Init will be scheduled later by the existing flow */
+
     /* ELF test disabled - needs proper kernel virtual address mapping */
     // kprintf("Loading ELF loader smoke test...\n");
     // u32 elf_entry = elf_load(&_binary_test_elf_bin_start);

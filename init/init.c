@@ -21,13 +21,16 @@ void init_main(void) {
     }
 
     kprintf("Loading user ELF from embedded image (%u bytes)...\n", elf_size);
+    kprintf("init: checking page directory and paging before load...\n");
     if (!me || !me->pagedir) {
         panic("Init process has no user page directory");
     }
-
     /* Load the ELF into the current process address space */
+    kprintf("init: loading into page directory %08X\n", (u32)me->pagedir);
     paging_load_directory(me->pagedir);
+    kprintf("init: page directory loaded, calling elf_load()\n");
     u32 entry = elf_load(&_binary_test_elf_bin_start);
+    kprintf("init: elf_load returned entry=0x%08X\n", entry);
     if (!entry) {
         panic("Failed to load user ELF");
     }
