@@ -5,6 +5,30 @@
 #include "string.h"
 #include <string.h>
 #include <stddef.h>
+#include <stdlib.h>
+#include <limits.h>
+
+static char *shell_strchr(const char *s, int c) {
+    while (*s) {
+        if (*s == (char)c) return (char *)s;
+        s++;
+    }
+    if (c == 0) return (char *)s;
+    return NULL;
+}
+
+static int shell_atoi(const char *s) {
+    int v = 0;
+    int sign = 1;
+    while (*s == ' ' || *s == '\t') s++;
+    if (*s == '-') { sign = -1; s++; }
+    else if (*s == '+') { s++; }
+    while (*s >= '0' && *s <= '9') {
+        v = v * 10 + (*s - '0');
+        s++;
+    }
+    return v * sign;
+}
 #include "arch/x86/cpu.h"
 #include "vfs.h"
 #include "auth.h"
@@ -16,6 +40,7 @@
 #include "clean.h"
 #include "delete.h"
 #include "editor.h"
+#include <string.h>
 
 #define SHELL_BUFFER_SIZE 256
 #define HISTORY_SIZE 10
@@ -79,7 +104,7 @@ static void shell_print_prompt(void) {
     const char *host = shell_hostname;
     if (kernel_auth.registered && kernel_auth.username[0]) host = kernel_auth.username;
     SHELL_COLOR_CMD();
-    kprintf("[G] < %s @ galio : %s > ", host, current_dir);
+    kprintf( "(%s @ galio )-< %s > ", host, current_dir);
     SHELL_COLOR_RESET();
 }
 
@@ -170,7 +195,8 @@ static u8 shell_ensure_directories(const char *path) {
         char segment[DIR_PATH_SIZE];
         u32 len = 0;
         while (cursor[len] && cursor[len] != '/' && len + 1 < sizeof(segment)) {
-            segment[len++] = cursor[len];
+            segment[len] = cursor[len];
+            len++;
         }
         segment[len] = 0;
 
@@ -223,6 +249,274 @@ static u8 is_root_child_path(const char *path) {
     memcpy(parent, path, last - path);
     parent[last - path] = 0;
     return strcmp(parent, "/") == 0;
+}
+
+/* --- Pipeline & background job support --- */
+#define MAX_PIPE_STAGES 8
+#define MAX_BG_JOBS 16
+
+typedef struct {
+    int id;
+    int pids[MAX_PIPE_STAGES];
+    int nprocs;
+    char cmdline[256];
+    int running;
+} shell_job_t;
+
+static shell_job_t bg_jobs[MAX_BG_JOBS];
+static int next_job_id = 1;
+
+/* Syscall helpers (inline int $0x80 wrappers) */
+#define SYS_FORK 4
+#define SYS_WAITPID 7
+#define SYS_EXECVE 16
+#define SYS_PIPE 17
+#define SYS_DUP2 19
+#define SYS_CLOSE 10
+#define SYS_EXIT 1
+
+static inline int sc_syscall1(int num, int a1) {
+    int ret;
+    asm volatile(
+        "int $0x80\n"
+        : "=a"(ret)
+        : "a"(num), "b"(a1)
+        : "memory"
+    );
+    return ret;
+}
+
+static inline int sc_syscall2(int num, int a1, int a2) {
+    int ret;
+    asm volatile(
+        "int $0x80\n"
+        : "=a"(ret)
+        : "a"(num), "b"(a1), "c"(a2)
+        : "memory"
+    );
+    return ret;
+}
+
+static inline int sc_syscall3(int num, int a1, int a2, int a3) {
+    int ret;
+    asm volatile(
+        "int $0x80\n"
+        : "=a"(ret)
+        : "a"(num), "b"(a1), "c"(a2), "d"(a3)
+        : "memory"
+    );
+    return ret;
+}
+
+static int shell_parse_pipeline(const char *line, char out_cmds[][256], int *out_n, int *out_bg) {
+    int n = 0;
+    int bg = 0;
+    int in_sq = 0, in_dq = 0;
+    int len = strlen(line);
+    char cur[256];
+    int ci = 0;
+
+    /* Detect trailing & (after trimming whitespace) */
+    int last = len - 1;
+    while (last >= 0 && (line[last] == ' ' || line[last] == '\t')) last--;
+    if (last >= 0 && line[last] == '&') {
+        bg = 1;
+        /* ignore the & when parsing; treat as removed */
+        len = last; /* exclusive end */
+    }
+
+    for (int i = 0; i < len; i++) {
+        char c = line[i];
+        if (c == '\'' && !in_dq) { in_sq = !in_sq; cur[ci++] = c; continue; }
+        if (c == '"' && !in_sq) { in_dq = !in_dq; cur[ci++] = c; continue; }
+        if (c == '|' && !in_sq && !in_dq) {
+            /* end current */
+            while (ci > 0 && (cur[ci-1] == ' ' || cur[ci-1] == '\t')) ci--;
+            cur[ci] = 0;
+            /* trim leading */
+            int s = 0; while (cur[s] == ' ' || cur[s] == '\t') s++;
+            strncpy(out_cmds[n], cur + s, 255);
+            out_cmds[n][255] = 0;
+            n++;
+            if (n >= MAX_PIPE_STAGES) break;
+            ci = 0;
+            continue;
+        }
+        if (ci < (int)sizeof(cur) - 1) cur[ci++] = c;
+    }
+
+    if (ci > 0) {
+        while (ci > 0 && (cur[ci-1] == ' ' || cur[ci-1] == '\t')) ci--;
+        cur[ci] = 0;
+        int s = 0; while (cur[s] == ' ' || cur[s] == '\t') s++;
+        strncpy(out_cmds[n], cur + s, 255);
+        out_cmds[n][255] = 0;
+        n++;
+    }
+
+    *out_n = n;
+    *out_bg = bg;
+    return 0;
+}
+
+static void shell_job_add(int *pids, int n, const char *cmdline) {
+    for (int i = 0; i < MAX_BG_JOBS; i++) {
+        if (!bg_jobs[i].running) {
+            bg_jobs[i].running = 1;
+            bg_jobs[i].id = next_job_id++;
+            bg_jobs[i].nprocs = n < MAX_PIPE_STAGES ? n : MAX_PIPE_STAGES;
+            for (int j = 0; j < bg_jobs[i].nprocs; j++) bg_jobs[i].pids[j] = pids[j];
+            strncpy(bg_jobs[i].cmdline, cmdline, sizeof(bg_jobs[i].cmdline)-1);
+            bg_jobs[i].cmdline[sizeof(bg_jobs[i].cmdline)-1] = 0;
+            kprintf("[%d]", bg_jobs[i].id);
+            for (int j = 0; j < bg_jobs[i].nprocs; j++) kprintf(" %d", bg_jobs[i].pids[j]);
+            kprintf("\n");
+            return;
+        }
+    }
+    SHELL_COLOR_ERR(); kprintf("No space for more background jobs\n"); SHELL_COLOR_RESET();
+}
+
+static void shell_list_jobs(void) {
+    for (int i = 0; i < MAX_BG_JOBS; i++) {
+        if (bg_jobs[i].running) {
+            kprintf("[%d]", bg_jobs[i].id);
+            for (int j = 0; j < bg_jobs[i].nprocs; j++) kprintf(" %d", bg_jobs[i].pids[j]);
+            kprintf("  %s\n", bg_jobs[i].cmdline);
+        }
+    }
+}
+
+static shell_job_t *shell_find_job_by_id(int id) {
+    for (int i = 0; i < MAX_BG_JOBS; i++) {
+        if (bg_jobs[i].running && bg_jobs[i].id == id) return &bg_jobs[i];
+    }
+    return NULL;
+}
+
+static void shell_remove_job(shell_job_t *job) {
+    if (!job) return;
+    job->running = 0;
+    job->nprocs = 0;
+    job->cmdline[0] = 0;
+}
+
+/* Execute pipeline of commands (each entry is a full command string). */
+static void shell_run_pipeline(char cmds[][256], int n, int bg) {
+    if (n <= 0) return;
+    if (n > MAX_PIPE_STAGES) {
+        SHELL_COLOR_ERR(); kprintf("Too many pipeline stages (max %d)\n", MAX_PIPE_STAGES); SHELL_COLOR_RESET();
+        return;
+    }
+
+    int pipefds[MAX_PIPE_STAGES-1][2];
+    for (int i = 0; i < n-1; i++) {
+        int r = sc_syscall1(SYS_PIPE, (int)&pipefds[i]);
+        if (r < 0) {
+            SHELL_COLOR_ERR(); kprintf("pipe() failed\n"); SHELL_COLOR_RESET();
+            return;
+        }
+    }
+
+    int child_pids[MAX_PIPE_STAGES];
+
+    for (int i = 0; i < n; i++) {
+        int pid = sc_syscall1(SYS_FORK, 0);
+        if (pid == 0) {
+            /* Child */
+            /* stdin from previous pipe */
+            if (i > 0) {
+                sc_syscall2(SYS_DUP2, pipefds[i-1][0], 0);
+            }
+            /* stdout to next pipe */
+            if (i < n-1) {
+                sc_syscall2(SYS_DUP2, pipefds[i][1], 1);
+            }
+            /* Close all pipe fds */
+            for (int j = 0; j < n-1; j++) {
+                sc_syscall1(SYS_CLOSE, pipefds[j][0]);
+                sc_syscall1(SYS_CLOSE, pipefds[j][1]);
+            }
+
+            /* Build argv (simple split, respecting quotes) */
+            char *argv[16];
+            char argbuf[256];
+            char argv_storage[16][256];
+            int argc = 0;
+            int ai = 0;
+            int in_sq = 0, in_dq = 0;
+            char *s = cmds[i];
+            for (int k = 0; ; k++) {
+                char c = s[k];
+                if (c == '\0' || (c == ' ' && !in_sq && !in_dq)) {
+                    if (ai > 0) {
+                        argbuf[ai] = 0;
+                        if (ai >= (int)sizeof(argv_storage[argc])) ai = sizeof(argv_storage[argc]) - 1;
+                        strncpy(argv_storage[argc], argbuf, ai + 1);
+                        argv_storage[argc][ai] = 0;
+                        argv[argc] = argv_storage[argc];
+                        argc++;
+                        ai = 0;
+                    }
+                    if (c == '\0') break;
+                    continue;
+                }
+                if (c == '\'' && !in_dq) { in_sq = !in_sq; continue; }
+                if (c == '"' && !in_sq) { in_dq = !in_dq; continue; }
+                if (ai < (int)sizeof(argbuf)-1) argbuf[ai++] = c;
+            }
+            argv[argc] = NULL;
+
+            if (argc == 0) sc_syscall1(SYS_EXIT, 1);
+
+            /* Resolve binary path: if contains '/', use as-is; else prefix /bin/ */
+            char pathbuf[256];
+            if (shell_strchr(argv[0], '/')) {
+                strncpy(pathbuf, argv[0], sizeof(pathbuf)-1);
+                pathbuf[sizeof(pathbuf)-1] = 0;
+            } else {
+                strncpy(pathbuf, "/bin/", sizeof(pathbuf)-1);
+                pathbuf[sizeof(pathbuf)-1] = 0;
+                strncat(pathbuf, argv[0], sizeof(pathbuf) - strlen(pathbuf) - 1);
+            }
+
+            sc_syscall3(SYS_EXECVE, (int)pathbuf, (int)argv, 0);
+            SHELL_COLOR_ERR(); kprintf("Failed to exec: %s\n", pathbuf); SHELL_COLOR_RESET();
+            sc_syscall1(SYS_EXIT, 1);
+        } else if (pid > 0) {
+            child_pids[i] = pid;
+        } else {
+            SHELL_COLOR_ERR(); kprintf("fork() failed\n"); SHELL_COLOR_RESET();
+            /* close pipes */
+            for (int j = 0; j < n-1; j++) {
+                sc_syscall1(SYS_CLOSE, pipefds[j][0]);
+                sc_syscall1(SYS_CLOSE, pipefds[j][1]);
+            }
+            return;
+        }
+    }
+
+    /* Parent closes all pipe fds */
+    for (int j = 0; j < n-1; j++) {
+        sc_syscall1(SYS_CLOSE, pipefds[j][0]);
+        sc_syscall1(SYS_CLOSE, pipefds[j][1]);
+    }
+
+    if (bg) {
+        /* store job and return */
+        /* join child pids into single command line string */
+        char combined[256] = {0};
+        for (int i = 0; i < n; i++) {
+            if (i) strncat(combined, " | ", sizeof(combined)-strlen(combined)-1);
+            strncat(combined, cmds[i], sizeof(combined)-strlen(combined)-1);
+        }
+        shell_job_add(child_pids, n, combined);
+        return;
+    }
+
+    /* Foreground: wait for last child */
+    int lastpid = child_pids[n-1];
+    if (lastpid > 0) sc_syscall1(SYS_WAITPID, lastpid);
 }
 
 u8 shell_dir_command(const char *args, const char *current_dir, u8 replace, u8 privileged) {
@@ -328,6 +622,35 @@ static void shell_execute_command(void) {
     input.buffer[input.len] = 0;
     shell_add_history(input.buffer);
     kprintf("\n");
+
+    /* Parse for pipes and background '&' */
+    {
+        char cmds[MAX_PIPE_STAGES][256];
+        int stages = 0;
+        int bg = 0;
+        shell_parse_pipeline(input.buffer, cmds, &stages, &bg);
+        if (stages > 1) {
+            /* disallow rex inside pipeline for now */
+            for (int i = 0; i < stages; i++) {
+                if (strncmp(cmds[i], "rex", 3) == 0 && (cmds[i][3] == ' ' || cmds[i][3] == '\0')) {
+                    SHELL_COLOR_ERR(); kprintf("rex inside pipelines is not supported\n"); SHELL_COLOR_RESET();
+                    shell_print_prompt();
+                    input.len = 0;
+                    return;
+                }
+            }
+            shell_run_pipeline(cmds, stages, bg);
+            shell_print_prompt();
+            input.len = 0;
+            return;
+        } else if (stages == 1 && bg) {
+            /* background single command: run as external */
+            shell_run_pipeline(cmds, stages, bg);
+            shell_print_prompt();
+            input.len = 0;
+            return;
+        }
+    }
 
     /* Handle rex (sudo-like) commands */
     if (strncmp(input.buffer, "rex ", 4) == 0) {
@@ -453,6 +776,24 @@ static void shell_execute_command(void) {
             kprintf("[REX] Unknown privileged command: %s\n", cmd);
             kprintf("[REX] Available: goto, file, new file, dir, new dir, mkdir, write, recycle, delete, clean\n");
             SHELL_COLOR_RESET();
+        }
+    } else if (strcmp(input.buffer, "jobs") == 0) {
+        shell_list_jobs();
+    } else if (strncmp(input.buffer, "fg ", 3) == 0) {
+        const char *arg = input.buffer + 3;
+        while (*arg == ' ') arg++;
+        int id = shell_atoi(arg);
+        if (id <= 0) {
+            SHELL_COLOR_ERR(); kprintf("Usage: fg <job_id>\n"); SHELL_COLOR_RESET();
+        } else {
+            shell_job_t *job = shell_find_job_by_id(id);
+            if (!job) {
+                SHELL_COLOR_ERR(); kprintf("No such job: %d\n", id); SHELL_COLOR_RESET();
+            } else {
+                int last = job->pids[job->nprocs - 1];
+                if (last > 0) sc_syscall1(SYS_WAITPID, last);
+                shell_remove_job(job);
+            }
         }
     } else if (strncmp(input.buffer, "new ", 4) == 0) {
         SHELL_COLOR_OUT();

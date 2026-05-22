@@ -1,6 +1,7 @@
 /* isr.c - CPU exception handlers and interrupt dispatching */
 #include "cpu.h"
 #include "process.h"
+#include "signals.h"
 #include "vga.h"
 #include "common.h"
 #include "kprintf.h"
@@ -84,6 +85,15 @@ void isr_handler(registers_t *regs) {
             process_t *current = process_current();
             kprintf("  Process PID=%u\n", current ? current->pid : 0xFFFFFFFFu);
         }
+        /* If this fault came from user mode, convert to a signal for the process
+         * so the kernel keeps running and the process can be terminated or handled. */
+        process_t *current = process_current();
+        if ((regs->cs & 3) == 3 && current) {
+            kprintf("Delivering SIGSEGV to PID=%u\n", current->pid);
+            process_send_signal(current->pid, SIGSEGV);
+            return;
+        }
+
         vga_puts("=== HALTED ===\n");
         disable_interrupts();
         halt();
