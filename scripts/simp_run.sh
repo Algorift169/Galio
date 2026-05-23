@@ -1,28 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# run_fullscreen.sh — run galio.iso in QEMU (fullscreen mode)
-# Usage:
-#   ./run_fullscreen.sh                # run fullscreen with default args
-#   ./run_fullscreen.sh --nogui        # run headless (nographic) and print serial to stdout
-#   ./run_fullscreen.sh --iso path     # use custom ISO path
-#   ./run_fullscreen.sh --qemu-args "...args..."  # pass extra qemu args
-#   ./run_fullscreen.sh --fullscreen   # run in fullscreen mode (default)
-#
-# Examples:
-#   ./run_fullscreen.sh
-#   ./run_fullscreen.sh --nogui
-#   ./run_fullscreen.sh --qemu-args "-m 256M -serial file:serial.log"
-#   ./run_fullscreen.sh --fullscreen
+# simp_run.sh — simple QEMU runner for quick testing
+# Defaults: boot build/galio.iso with a small disk image and NO network device
+# Use `--net` to enable the default user-mode e1000 network device.
 
 ISO="build/galio.iso"
 DISK="build/disk.img"
 QEMU_BIN="qemu-system-i386"
 EXTRA_ARGS=""
 NOGRAPHIC=false
-FULLSCREEN=true
+FULLSCREEN=false
 
-# Parse arguments
 while [ $# -gt 0 ]; do
     case "$1" in
         --nogui|-n)
@@ -31,10 +20,6 @@ while [ $# -gt 0 ]; do
             ;;
         --fullscreen|-f)
             FULLSCREEN=true
-            shift
-            ;;
-        --windowed|-w)
-            FULLSCREEN=false
             shift
             ;;
         --iso)
@@ -57,18 +42,16 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Sanity checks
 command -v "${QEMU_BIN}" >/dev/null 2>&1 || {
     echo "Error: ${QEMU_BIN} not found in PATH"
     exit 1
 }
 
 if [ ! -f "${ISO}" ]; then
-    echo "Error: ISO '${ISO}' not found. Build it first (make or ./run_fullscreen.sh --iso <path> if using custom ISO)."
+    echo "Error: ISO '${ISO}' not found. Build it first (make)."
     exit 1
 fi
 
-# Create disk image if it doesn't exist
 if [ ! -f "${DISK}" ]; then
     echo "Disk image '${DISK}' not found. Creating 64MB disk image..."
     dd if=/dev/zero of="${DISK}" bs=1M count=64 2>/dev/null || {
@@ -92,20 +75,18 @@ if [ ! -f "${DISK}" ]; then
     echo "Disk image created and formatted."
 fi
 
-# Common QEMU arguments
-COMMON_ARGS="-cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m 128M -netdev user,id=net0 -device e1000,netdev=net0"
+# Base args (always no network)
+COMMON_ARGS="-cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m 128M -net none"
 
-# Run QEMU
+echo "Note: networking disabled. This script always boots without internet."
+
 if [ "${NOGRAPHIC}" = true ]; then
-    # Headless mode: print serial to stdout
     echo "Starting QEMU (headless). Serial output will appear on stdout."
-    exec ${QEMU_BIN} ${COMMON_ARGS} -nographic -serial stdio ${EXTRA_ARGS}
+    exec ${QEMU_BIN} ${COMMON_ARGS} -nographic -monitor none -serial stdio ${EXTRA_ARGS}
 elif [ "${FULLSCREEN}" = true ]; then
-    # Fullscreen mode with scaling
     echo "Starting QEMU (fullscreen). Serial logged to serial.log"
     exec ${QEMU_BIN} ${COMMON_ARGS} -vga std -full-screen -display gtk,zoom-to-fit=on -serial file:serial.log -monitor none -no-reboot ${EXTRA_ARGS}
 else
-    # Windowed mode with scaling to fill window
     echo "Starting QEMU (windowed). Serial logged to serial.log"
     exec ${QEMU_BIN} ${COMMON_ARGS} -vga std -display gtk,zoom-to-fit=on -serial file:serial.log -monitor none -no-reboot ${EXTRA_ARGS}
 fi

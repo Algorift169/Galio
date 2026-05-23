@@ -1,0 +1,11 @@
+#ifndef INCLUDE_DRIVERS_NET_RTL8188EU_H
+#define INCLUDE_DRIVERS_NET_RTL8188EU_H
+
+#include "pci.h"
+
+#define RTL8188EU_VENDOR_ID 0x0BDA
+#define RTL8188EU_DEVICE_ID 0x8179
+
+void rtl8188eu_register_driver(void);
+
+#endif /* INCLUDE_DRIVERS_NET_RTL8188EU_H */

@@ -41,11 +41,54 @@ static void print_unsigned(unsigned long n, int base, int uppercase) {
     while (i-- > 0) putc(buf[i]);
 }
 
+static void print_unsigned_longlong(unsigned long long n, int base, int uppercase) {
+    static const char hexdigits_l[] = "0123456789abcdef";
+    static const char hexdigits_u[] = "0123456789ABCDEF";
+    const char *hexdigits = uppercase ? hexdigits_u : hexdigits_l;
+    char buf[64];
+    int i = 0;
+
+    if (n == 0) {
+        putc('0');
+        return;
+    }
+
+    while (n > 0 && i < (int)sizeof(buf)) {
+        buf[i++] = hexdigits[n % base];
+        n /= base;
+    }
+
+    while (i-- > 0) putc(buf[i]);
+}
+
 static void print_padded_unsigned(unsigned long n, int base, int uppercase, int width, char pad_char) {
     static const char hexdigits_l[] = "0123456789abcdef";
     static const char hexdigits_u[] = "0123456789ABCDEF";
     const char *hexdigits = uppercase ? hexdigits_u : hexdigits_l;
     char buf[32];
+    int i = 0;
+
+    if (n == 0) {
+        buf[i++] = '0';
+    } else {
+        while (n > 0 && i < (int)sizeof(buf)) {
+            buf[i++] = hexdigits[n % base];
+            n /= base;
+        }
+    }
+
+    while (i < width) {
+        buf[i++] = pad_char;
+    }
+
+    while (i-- > 0) putc(buf[i]);
+}
+
+static void print_padded_unsigned_longlong(unsigned long long n, int base, int uppercase, int width, char pad_char) {
+    static const char hexdigits_l[] = "0123456789abcdef";
+    static const char hexdigits_u[] = "0123456789ABCDEF";
+    const char *hexdigits = uppercase ? hexdigits_u : hexdigits_l;
+    char buf[64];
     int i = 0;
 
     if (n == 0) {
@@ -75,6 +118,15 @@ static void print_signed(long n) {
     }
 }
 
+static void print_signed_longlong(long long n) {
+    if (n < 0) {
+        putc('-');
+        print_unsigned_longlong((unsigned long long)(-(n + 1)) + 1, 10, 0);
+    } else {
+        print_unsigned_longlong((unsigned long long)n, 10, 0);
+    }
+}
+
 void kprintf(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -83,6 +135,7 @@ void kprintf(const char *fmt, ...) {
         if (*fmt == '%') {
             ++fmt;
             int longmod = 0;
+            int longlongmod = 0;
             int width = 0;
             char pad_char = ' ';
 
@@ -99,33 +152,45 @@ void kprintf(const char *fmt, ...) {
             if (*fmt == 'l') {
                 longmod = 1;
                 ++fmt;
+                if (*fmt == 'l') {
+                    longlongmod = 1;
+                    ++fmt;
+                }
             }
 
             switch (*fmt) {
                 case 'd':
                 case 'i':
-                    if (longmod) {
+                    if (longlongmod) {
+                        print_signed_longlong(va_arg(ap, long long));
+                    } else if (longmod) {
                         print_signed(va_arg(ap, long));
                     } else {
                         print_signed((long)va_arg(ap, int));
                     }
                     break;
                 case 'u':
-                    if (longmod) {
+                    if (longlongmod) {
+                        print_padded_unsigned_longlong(va_arg(ap, unsigned long long), 10, 0, width, pad_char);
+                    } else if (longmod) {
                         print_padded_unsigned(va_arg(ap, unsigned long), 10, 0, width, pad_char);
                     } else {
                         print_padded_unsigned((unsigned long)va_arg(ap, unsigned int), 10, 0, width, pad_char);
                     }
                     break;
                 case 'x':
-                    if (longmod) {
+                    if (longlongmod) {
+                        print_padded_unsigned_longlong(va_arg(ap, unsigned long long), 16, 0, width, pad_char);
+                    } else if (longmod) {
                         print_padded_unsigned(va_arg(ap, unsigned long), 16, 0, width, pad_char);
                     } else {
                         print_padded_unsigned((unsigned long)va_arg(ap, unsigned int), 16, 0, width, pad_char);
                     }
                     break;
                 case 'X':
-                    if (longmod) {
+                    if (longlongmod) {
+                        print_padded_unsigned_longlong(va_arg(ap, unsigned long long), 16, 1, width, pad_char);
+                    } else if (longmod) {
                         print_padded_unsigned(va_arg(ap, unsigned long), 16, 1, width, pad_char);
                     } else {
                         print_padded_unsigned((unsigned long)va_arg(ap, unsigned int), 16, 1, width, pad_char);

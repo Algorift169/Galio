@@ -82,7 +82,7 @@ if [ ! -f "${DISK}" ]; then
 fi
 
 # Common QEMU arguments
-COMMON_ARGS="-cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m 128M"
+COMMON_ARGS="-cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m 128M -netdev user,id=net0 -device e1000,netdev=net0"
 
 # Run QEMU
 if [ "${NOGRAPHIC}" = true ]; then

@@ -19,6 +19,10 @@
 #include "scheduler.h"
 #include "auth.h"
 #include "string.h"
+#include "pci.h"
+#include "net/net.h"
+#include "net/wifi.h"
+#include "drivers/net/e1000.h"
 
 // Disk entry - line: 193
 
@@ -183,6 +187,13 @@ void kmain(void *multiboot_ptr) {
     paging_init();
     kprintf("Initializing heap...\n");
     heap_init();
+
+    kprintf("Initializing networking subsystem...\n");
+    net_init();
+    wifi_init();
+    e1000_register_driver();
+    pci_init();
+    net_print_devices();
 
     kprintf("Running memory stabilization tests...\n");
     mem_test_run();

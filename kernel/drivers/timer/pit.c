@@ -10,20 +10,18 @@
 #define PIT_CONTROL   0x43
 
 static u32 ticks = 0;
-static timer_callback_t user_callback = NULL;
+#define MAX_TIMER_CALLBACKS 8
+static timer_callback_t timer_callbacks[MAX_TIMER_CALLBACKS] = {0};
 
 /* IRQ0 handler */
 static void pit_handler(registers_t *regs) {
     (void)regs;
     ticks++;
 
-    // Debug: show ticks every second (100 Hz PIT)
-    // if (ticks % 100 == 0) {
-    //     kprintf("[debug] PIT tick=%u\n", ticks);
-    // }
-
-    if (user_callback) {
-        user_callback(regs);
+    for (u32 i = 0; i < MAX_TIMER_CALLBACKS; i++) {
+        if (timer_callbacks[i]) {
+            timer_callbacks[i](regs);
+        }
     }
 }
 
@@ -53,7 +51,14 @@ u32 pit_get_ticks(void) {
 }
 
 void pit_install_callback(timer_callback_t callback) {
-    user_callback = callback;
+    if (!callback) return;
+    for (u32 i = 0; i < MAX_TIMER_CALLBACKS; i++) {
+        if (timer_callbacks[i] == callback) return;
+        if (!timer_callbacks[i]) {
+            timer_callbacks[i] = callback;
+            return;
+        }
+    }
 }
 
 void pit_enable(void) {

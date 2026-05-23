@@ -7,6 +7,20 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <limits.h>
+#include "arch/x86/cpu.h"
+#include "vfs.h"
+#include "auth.h"
+#include "new.h"
+#include "file.h"
+#include "write.h"
+#include "show.h"
+#include "recycle.h"
+#include "clean.h"
+#include "delete.h"
+#include "net.h"
+#include "editor.h"
+
+u8 shell_net_command(const char *args, const char *current_dir);
 
 static char *shell_strchr(const char *s, int c) {
     while (*s) {
@@ -29,18 +43,6 @@ static int shell_atoi(const char *s) {
     }
     return v * sign;
 }
-#include "arch/x86/cpu.h"
-#include "vfs.h"
-#include "auth.h"
-#include "new.h"
-#include "file.h"
-#include "write.h"
-#include "show.h"
-#include "recycle.h"
-#include "clean.h"
-#include "delete.h"
-#include "editor.h"
-#include <string.h>
 
 #define SHELL_BUFFER_SIZE 256
 #define HISTORY_SIZE 10
@@ -104,7 +106,7 @@ static void shell_print_prompt(void) {
     const char *host = shell_hostname;
     if (kernel_auth.registered && kernel_auth.username[0]) host = kernel_auth.username;
     SHELL_COLOR_CMD();
-    kprintf( "(%s @ galio )-< %s > ", host, current_dir);
+    kprintf( "(%s @ galio)-< %s > ", host, current_dir);
     SHELL_COLOR_RESET();
 }
 
@@ -852,6 +854,14 @@ static void shell_execute_command(void) {
         SHELL_COLOR_OUT();
         shell_clean_command("", current_dir);
         SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "net ", 4) == 0) {
+        SHELL_COLOR_OUT();
+        shell_net_command(input.buffer + 4, current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "net") == 0) {
+        SHELL_COLOR_CMD();
+        kprintf("Usage: net <stat|scan|list|devices>\n");
+        SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "clear", 5) == 0) {
         vga_clear();
         SHELL_COLOR_OUT();
@@ -883,6 +893,8 @@ static void shell_execute_command(void) {
         kprintf(" | recycle  - Move to recycle bin (usage: recycle <path1> [path2])  |\n");
         kprintf(" |__________________________________________________________________|\n");
         kprintf(" | clean    - Clean recycle bin (usage: clean rbin)                 |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" |  net      - Networking commands (usage: net stat|scan|list|devices)     |\n");
         kprintf(" |__________________________________________________________________|\n");
         kprintf(" | delete   - Permanently delete (usage: delete <path1> [path2])    |\n");
         kprintf(" |__________________________________________________________________|\n");

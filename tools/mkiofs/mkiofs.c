@@ -205,6 +205,11 @@ static file_spec_t files[] = {
         "# Filesystem initialization script\n"
         "echo 'Mounting filesystems...'\n",
         67, 0},
+    /* Optional developer file: include host-collected wifi scan results
+     * at build time by placing a file at tools/shell/wifi_scan.txt
+     * The file will be embedded into the initrd as /etc/wifi_scan
+     * and parsed by the kernel for development/testing. */
+    {"/etc/wifi_scan", NULL, 0, 0},
 };
 
 static int file_count = sizeof(files) / sizeof(files[0]);
@@ -220,6 +225,36 @@ int main(int argc, char *argv[]) {
     if (!fp) {
         perror("Cannot open output file");
         return 1;
+    }
+
+    /* If a developer wifi scan file exists, read and attach it to the
+     * corresponding entry so it becomes part of the initrd image. */
+    {
+        const char *local = "tools/shell/wifi_scan.txt";
+        FILE *wf = fopen(local, "rb");
+        if (wf) {
+            fseek(wf, 0, SEEK_END);
+            long sz = ftell(wf);
+            fseek(wf, 0, SEEK_SET);
+            if (sz > 0) {
+                char *buf = malloc(sz);
+                if (buf) {
+                    if (fread(buf, 1, sz, wf) == (size_t)sz) {
+                        /* find the index for /etc/wifi_scan */
+                        for (int i = 0; i < file_count; i++) {
+                            if (strcmp(files[i].path, "/etc/wifi_scan") == 0) {
+                                files[i].data = buf;
+                                files[i].size = (unsigned int)sz;
+                                break;
+                            }
+                        }
+                    } else {
+                        free(buf);
+                    }
+                }
+            }
+            fclose(wf);
+        }
     }
 
     vfs_header_t header;
