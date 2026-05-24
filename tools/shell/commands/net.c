@@ -5,6 +5,7 @@
 #include "net/util.h"
 #include "net/wifi.h"
 #include "net/arp.h"
+#include "net/http.h"
 
 static void print_mac(uint8_t mac[6]) {
     kprintf("%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -65,7 +66,7 @@ static const char *copy_token(const char *src, char *dst, u32 max) {
 u8 shell_net_command(const char *args, const char *current_dir) {
     (void)current_dir;
     if (!args || *args == 0) {
-        kprintf("Usage: net <stat|arp|scan|list|devices|setip>\n");
+        kprintf("Usage: net <stat|arp|scan|list|devices|setip|http>\n");
         return 0;
     }
 
@@ -225,6 +226,42 @@ u8 shell_net_command(const char *args, const char *current_dir) {
         return 1;
     }
 
-    kprintf("Usage: net <stat|arp|scan|list|devices|setip>\n");
+    if (strncmp(args, "http", 4) == 0 && (args[4] == ' ' || args[4] == '\0')) {
+        const char *next = skip_spaces(args + 4);
+        char ipstr[32];
+        char path[256];
+        next = copy_token(next, ipstr, sizeof(ipstr));
+        next = skip_spaces(next);
+        if (!*ipstr) {
+            kprintf("Usage: net http <ip> <path>\n");
+            return 0;
+        }
+        if (!*next) {
+            strcpy(path, "/");
+        } else {
+            if (strlen(next) >= sizeof(path)) {
+                kprintf("Path too long\n");
+                return 0;
+            }
+            strcpy(path, next);
+        }
+
+        u32 ip_addr = 0;
+        if (!parse_ipv4(ipstr, &ip_addr)) {
+            kprintf("Invalid IPv4 address\n");
+            return 0;
+        }
+
+        char response[4096];
+        int length = http_get_ip(ip_addr, 80, path, response, sizeof(response), 5000);
+        if (length < 0) {
+            kprintf("HTTP request failed\n");
+            return 0;
+        }
+        kprintf("HTTP response:\n%s\n", response);
+        return 1;
+    }
+
+    kprintf("Usage: net <stat|arp|scan|list|devices|setip|http>\n");
     return 0;
 }

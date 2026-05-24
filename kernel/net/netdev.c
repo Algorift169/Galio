@@ -47,6 +47,27 @@ net_device_t *netdev_get_by_name(const char *name) {
     return NULL;
 }
 
+net_device_t *netdev_route(u32 dest_ip) {
+    net_device_t *fallback = NULL;
+    net_device_t *it = dev_list;
+    while (it) {
+        if (it->ip_addr == 0) {
+            it = it->next;
+            continue;
+        }
+        if (!fallback) {
+            fallback = it;
+        }
+        if (it->netmask && ((dest_ip & it->netmask) == (it->ip_addr & it->netmask))) {
+            return it;
+        }
+        if (it->gateway) {
+            fallback = it;
+        }
+        it = it->next;
+    }
+    return fallback;
+}
 
 int netdev_send_skb(net_device_t *dev, net_buf_t *buf) {
     if (!dev || !buf) return -1;

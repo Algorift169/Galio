@@ -1,4 +1,7 @@
 #include "net.h"
+#include "net/udp.h"
+#include "net/tcp.h"
+#include "net/http.h"
 #include "net/arp.h"
 #include "net/ethernet.h"
 #include "net/ipv4.h"
@@ -15,11 +18,15 @@ void net_init(void) {
     net_core_init();
     arp_init();
     ipv4_init();
+    udp_init();
+    tcp_init();
+    http_init();
     pit_install_callback(net_tick);
 }
 
 void net_poll(void) {
     arp_poll();
+    tcp_poll();
     net_device_t *dev = netdev_first();
     while (dev) {
         if (dev->poll) {

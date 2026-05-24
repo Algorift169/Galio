@@ -5,6 +5,10 @@
 #include "net/ethernet.h"
 #include "net/netdev.h"
 #include "net/packet.h"
+#include "net/udp.h"
+#include "net/tcp.h"
+#include "net/arp.h"
+#include "drivers/pit.h"
 #include "lib/kprintf.h"
 #include "lib/string.h"
 
@@ -66,6 +70,58 @@ static void ipv4_send_icmp_echo_reply(net_buf_t *buf, struct ipv4_hdr *ip, struc
 void ipv4_init(void) {
 }
 
+int ipv4_send(net_device_t *dev, u32 dest_ip, u8 proto, const void *payload, u32 payload_len) {
+    if (!dev || dev->ip_addr == 0 || dest_ip == 0) return -1;
+    if (!payload && payload_len > 0) return -1;
+
+    u32 next_hop = dest_ip;
+    if (dev->netmask && ((dest_ip & dev->netmask) != (dev->ip_addr & dev->netmask))) {
+        if (!dev->gateway) return -1;
+        next_hop = dev->gateway;
+    }
+
+    uint8_t dest_mac[ETH_ALEN];
+    if (arp_resolve(dev, next_hop, dest_mac) != 0) {
+        u32 start = pit_get_ticks();
+        while ((pit_get_ticks() - start) < 500) {
+            if (arp_resolve_async(dev, next_hop, dest_mac) == 0) break;
+        }
+        if (arp_resolve_async(dev, next_hop, dest_mac) != 0) return -1;
+    }
+
+    u32 packet_len = ETH_HDR_LEN + sizeof(struct ipv4_hdr) + payload_len;
+    net_buf_t *buf = net_buf_alloc(packet_len, 0);
+    if (!buf) return -1;
+    buf->dev = dev;
+    buf->len = packet_len;
+
+    struct eth_hdr *eth = (struct eth_hdr *)buf->data;
+    memcpy(eth->dest, dest_mac, ETH_ALEN);
+    memcpy(eth->src, dev->mac, ETH_ALEN);
+    eth->type = net_htons(ETH_P_IP);
+
+    struct ipv4_hdr *ip = (struct ipv4_hdr *)(buf->data + ETH_HDR_LEN);
+    ip->version_ihl = (4 << 4) | (sizeof(struct ipv4_hdr) / 4);
+    ip->tos = 0;
+    ip->tot_len = net_htons(sizeof(struct ipv4_hdr) + payload_len);
+    ip->id = net_htons(0);
+    ip->frag_off = net_htons(0x4000);
+    ip->ttl = 64;
+    ip->protocol = proto;
+    ip->checksum = 0;
+    ip->src = net_htonl(dev->ip_addr);
+    ip->dest = net_htonl(dest_ip);
+    ip->checksum = net_htons(ipv4_checksum(ip, sizeof(struct ipv4_hdr)));
+
+    if (payload_len > 0) {
+        memcpy(buf->data + ETH_HDR_LEN + sizeof(struct ipv4_hdr), payload, payload_len);
+    }
+
+    int rc = netdev_send_skb(dev, buf);
+    net_buf_free(buf);
+    return rc;
+}
+
 void ipv4_input(net_buf_t *buf) {
     if (!buf || !buf->dev) return;
     if (buf->len < ETH_HDR_LEN + sizeof(struct ipv4_hdr)) return;
@@ -86,6 +142,10 @@ void ipv4_input(net_buf_t *buf) {
     if (net_ntohl(ip->dest) != buf->dev->ip_addr) return;
 
     if (ip->protocol == IPV4_PROTO_ICMP) {
-        ipv4_send_icmp_echo_reply(buf, ip, eth);
-    }
+            ipv4_send_icmp_echo_reply(buf, ip, eth);
+        } else if (ip->protocol == IPV4_PROTO_UDP) {
+            udp_input(buf, ip);
+        } else if (ip->protocol == IPV4_PROTO_TCP) {
+            tcp_input(buf, ip);
+        }
 }

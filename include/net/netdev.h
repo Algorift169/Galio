@@ -38,6 +38,7 @@ typedef struct net_device {
 int netdev_register(net_device_t *dev);
 int netdev_unregister(net_device_t *dev);
 net_device_t *netdev_get_by_name(const char *name);
+net_device_t *netdev_route(u32 dest_ip);
 int netdev_send_skb(net_device_t *dev, net_buf_t *buf);
 int netdev_receive_skb(net_device_t *dev, net_buf_t *buf);
 void netdev_set_ipv4(net_device_t *dev, u32 addr, u32 netmask, u32 gateway);

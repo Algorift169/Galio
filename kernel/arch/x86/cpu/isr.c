@@ -2,6 +2,7 @@
 #include "cpu.h"
 #include "process.h"
 #include "signals.h"
+#include "paging.h"
 #include "vga.h"
 #include "common.h"
 #include "kprintf.h"
@@ -56,6 +57,10 @@ void isr_handler(registers_t *regs) {
         kprintf("Exception: %s (INT %d)\n", exception_names[int_no], int_no);
         print_registers(regs);
         if (int_no == 14) {
+            if (paging_handle_page_fault(regs) == PAGE_FAULT_HANDLED) {
+                return;
+            }
+
             u32 cr2;
             __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
             kprintf("Page fault at CR2=%08X\n", cr2);

@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # simp_run.sh — simple QEMU runner for quick testing
-# Defaults: boot build/galio.iso with a small disk image and NO network device
+# Defaults: boot build/bin/galio.iso with a small disk image and NO network device
 # Use `--net` to enable the default user-mode e1000 network device.
 
-ISO="build/galio.iso"
+ISO="build/bin/galio.iso"
 DISK="build/disk.img"
 QEMU_BIN="qemu-system-i386"
 EXTRA_ARGS=""

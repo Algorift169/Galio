@@ -12,6 +12,8 @@
 #define ICMP_ECHO_REQUEST 8
 #define ICMP_ECHO_REPLY   0
 
+int ipv4_send(net_device_t *dev, u32 dest_ip, u8 proto, const void *payload, u32 payload_len);
+
 struct ipv4_hdr {
     u8 version_ihl;
     u8 tos;

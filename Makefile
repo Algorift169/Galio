@@ -2,7 +2,7 @@
 
 BUILD_DIR = build
 OBJ_DIR = $(BUILD_DIR)/obj
-BIN_DIR = $(BUILD_DIR)
+BIN_DIR = $(BUILD_DIR)/bin
 ISO_DIR = $(BUILD_DIR)/iso
 
 CC = gcc
@@ -39,6 +39,9 @@ SRCS = kernel/kmain.c \
        kernel/net/ethernet.c \
        kernel/net/arp.c \
        kernel/net/ipv4.c \
+       kernel/net/udp.c \
+       kernel/net/tcp.c \
+       kernel/net/http.c \
        kernel/net/80211.c \
        kernel/lib/kernel.c \
        kernel/lib/kprintf.c \
@@ -175,10 +178,10 @@ $(KERNEL_BIN): $(OBJS)
 	@echo "Kernel linked: $@"
 
 # mkiofs tool
-MKIOFS = $(OBJ_DIR)/tools/mkiofs/mkiofs
+MKIOFS = $(BIN_DIR)/mkiofs
 $(MKIOFS): tools/mkiofs/mkiofs.c
 	@mkdir -p $(dir $@)
-	gcc -m32 -o $@ $<
+	$(CC) -m32 -o $@ $<
 
 # Initrd image
 $(INITRD_IMAGE): $(MKIOFS)
@@ -211,21 +214,21 @@ $(KERNEL_ISO): $(KERNEL_BIN) $(INITRD_IMAGE)
 # Embedded objects
 $(OBJ_DIR)/src/embedded_test.o: $(TEST_ELF)
 	@mkdir -p $(dir $@)
-	cd $(BUILD_DIR) && objcopy -I binary -O elf32-i386 -B i386 $(notdir $<) $(patsubst $(BUILD_DIR)/%,%,$@)
+	cd $(BUILD_DIR) && objcopy -I binary -O elf32-i386 -B i386 $(patsubst $(BUILD_DIR)/%,%,$<) $(patsubst $(BUILD_DIR)/%,%,$@)
 
 $(OBJ_DIR)/src/embedded_initrd.o: $(INITRD_IMAGE)
 	@mkdir -p $(dir $@)
-	cd $(BUILD_DIR) && objcopy -I binary -O elf32-i386 -B i386 $(notdir $<) $(patsubst $(BUILD_DIR)/%,%,$@)
+	cd $(BUILD_DIR) && objcopy -I binary -O elf32-i386 -B i386 $(patsubst $(BUILD_DIR)/%,%,$<) $(patsubst $(BUILD_DIR)/%,%,$@)
 
 $(OBJ_DIR)/test/test_elf.o: test/test_elf.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/test_elf.elf: $(OBJ_DIR)/test/test_elf.o
+$(BIN_DIR)/test_elf.elf: $(OBJ_DIR)/test/test_elf.o
 	@mkdir -p $(dir $@)
 	$(LD) -m elf_i386 -Ttext=$(USER_ELF_BASE) --entry=_start $< -o $@
 
-$(TEST_ELF): $(BUILD_DIR)/test_elf.elf
+$(TEST_ELF): $(BIN_DIR)/test_elf.elf
 	@mkdir -p $(dir $@)
 	cp $< $@
 
