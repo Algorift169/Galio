@@ -45,11 +45,45 @@ static void vfs_populate_disk_from_initrd(void) {
     
     /* List of directories to create from initrd */
     const char *dirs[] = {
-        "/boot", "/bin", "/etc", "/lib", "/dev", "/tmp",
-        "/home", "/home/desktop", "/home/desktop/recycle", "/home/downloads",
-        "/home/music", "/home/doccuments", "/home/videos", "/home/recent",
-        "/usr", "/proc", "/sys", "/var", "/var/log",
-        "/usr/bin", "/usr/lib", "/etc/init.d", NULL
+        /* Core directories */
+        "/boot", "/bin", "/sbin", "/dev", "/etc", "/home", "/lib", 
+        "/mnt", "/media", "/proc", "/root", "/run", "/srv", "/sys", "/tmp", 
+        "/fuse", "/lost+found",
+        
+        /* /usr subdirectories */
+        "/usr", "/usr/bin", "/usr/sbin", "/usr/lib", "/usr/local", 
+        "/usr/local/bin", "/usr/local/sbin", "/usr/local/lib", 
+        "/usr/local/share", "/usr/share", "/usr/share/doc", 
+        "/usr/share/man", "/usr/share/info", "/usr/include", 
+        "/usr/src", "/usr/games", "/usr/libexec",
+        
+        /* /var subdirectories */
+        "/var", "/var/log", "/var/run", "/var/spool", "/var/spool/cron", 
+        "/var/spool/mail", "/var/crash", "/var/lock", "/var/account", 
+        "/var/mail", "/var/tmp", "/var/cache", "/var/cache/apt", "/var/games",
+        
+        /* /etc subdirectories */
+        "/etc/X11", "/etc/X11/xorg.conf.d", "/etc/opt", "/etc/sgml", 
+        "/etc/init.d", "/etc/rc.d", "/etc/rc.d/init.d", "/etc/share", 
+        "/etc/xml", "/etc/ssl", "/etc/ssl/certs", "/etc/ssl/private", 
+        "/etc/skel", "/etc/pam.d", "/etc/sysconfig", "/etc/cron.d", 
+        "/etc/cron.daily", "/etc/cron.weekly", "/etc/cron.monthly", 
+        "/etc/cron.hourly", "/etc/security", "/etc/selinux", "/etc/iptables", 
+        "/etc/network", "/etc/network/if-up.d", "/etc/network/if-down.d", 
+        "/etc/network/if-pre-up.d", "/etc/network/if-post-down.d", 
+        "/etc/profile.d", "/etc/modprobe.d", "/etc/ssh",
+        
+        /* /opt subdirectories */
+        "/opt", "/opt/bin", "/opt/sbin", "/opt/etc", "/opt/var", 
+        "/opt/lib", "/opt/share", "/opt/share/doc", "/opt/share/man", 
+        "/opt/local", "/opt/src",
+        
+        /* /home subdirectories */
+        "/home/desktop", "/home/desktop/recycle", "/home/downloads",
+        "/home/music", "/home/documents", "/home/videos", "/home/recent",
+        "/home/images", "/home/pictures", 
+        
+        NULL
     };
     
     /* Create directories on disk */
@@ -94,7 +128,8 @@ static void vfs_populate_disk_from_initrd(void) {
 static void vfs_ensure_home_dirs(void) {
     const char *dirs[] = {
         "/home", "/home/desktop", "/home/desktop/recycle", "/home/downloads",
-        "/home/music", "/home/doccuments", "/home/videos", "/home/recent", NULL
+        "/home/music", "/home/documents", "/home/videos", "/home/recent",
+        "/home/images", "/home/pictures", NULL
     };
 
     for (int i = 0; dirs[i] != NULL; i++) {
@@ -222,25 +257,6 @@ void kmain(void *multiboot_ptr) {
 
     kprintf("Running kernel self-tests...\n");
     run_kernel_tests();
-
-    kprintf("Initializing ATA driver...\n");
-    ata_init();
-
-    kprintf("Initializing timer (100 Hz)...\n");
-    pit_init(100);
-
-    kprintf("Initializing scheduler...\n");
-    scheduler_init();
-
-    kprintf("Initializing keyboard...\n");
-    keyboard_init();
-
-    kprintf("Initializing filesystem...\n");
-
-    extern u8 _binary_initrd_bin_start;
-    vfs_init(&_binary_initrd_bin_start);
-    vfs_ensure_home_dirs();
-    vfs_debug();
 
     kprintf("Initializing ATA driver...\n");
     ata_init();
