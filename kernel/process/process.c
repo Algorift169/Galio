@@ -171,7 +171,7 @@ u32 process_create(void (*entry)(void), u32 priority) {
     }
 
     process_count++;
-    kprintf("Process created: PID=%u, priority=%u\n", proc->pid, priority);
+    // kprintf("Process created: PID=%u, priority=%u\n", proc->pid, priority);
 
     return proc->pid;
 }

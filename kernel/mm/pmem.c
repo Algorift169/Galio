@@ -159,7 +159,7 @@ u32 pmem_alloc(size_t num_frames) {
                 for (u32 i = 0; i < num_frames; i++) {
                     ref_frame(frame + i);
                 }
-                kprintf("pmem_alloc: Allocated %u frame(s) at addr=%x (frame %u)\n", num_frames, addr, frame);
+                // kprintf("pmem_alloc: Allocated %u frame(s) at addr=%x (frame %u)\n", num_frames, addr, frame);
                 return addr;
             }
         }
@@ -198,8 +198,8 @@ u32 pmem_alloc_region(size_t num_frames, u32 min_addr, u32 max_addr) {
                 for (u32 i = 0; i < num_frames; i++) {
                     ref_frame(frame + i);
                 }
-                kprintf("pmem_alloc_region: Allocated %u frame(s) at addr=%x (frame %u) in range %x-%x\n",
-                        num_frames, addr, frame, min_addr, max_addr);
+                // kprintf("pmem_alloc_region: Allocated %u frame(s) at addr=%x (frame %u) in range %x-%x\n",
+                //         num_frames, addr, frame, min_addr, max_addr);
                 return addr;
             }
         }

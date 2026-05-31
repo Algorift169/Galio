@@ -206,6 +206,9 @@ void auth_bootstrap(void) {
 
     i32 loaded = auth_load_from_disk();
 
+    /* Clear boot logs and prepare the screen for authentication/registration */
+    vga_clear();
+
     if (loaded == 1) {
         while (1) {
             kprintf("Password for %s: ", kernel_auth.username);

@@ -342,10 +342,10 @@ void kmain(void *multiboot_ptr) {
     } else {
         kprintf("Welcome to Galio !\n");
     }
-    kprintf("Press c to enter GSH....\n\n");
+    kprintf("Please press Enter to continue\n\n");
     /* Create init process early so the embedded ELF gets scheduled
        (previously creation was after shell and unreachable) */
-    kprintf("Creating init process...\n");
+    // kprintf("Creating init process...\n");
     u32 init_pid = process_create(init_main, 1);
     if (!init_pid) {
         kprintf("Failed to create init process!\n");
@@ -379,12 +379,12 @@ void kmain(void *multiboot_ptr) {
         if (status & 0x01) {
             u8 scancode = inb(0x60);
             
-            if (scancode == 0x2E) {  /* 'c' key */
+            if (scancode == 0x1C) {  /* Enter key */
                 /* Drain keyboard buffer */
                 while (inb(0x64) & 0x01) {
                     inb(0x60);
                 }
-                kprintf("\n'c' key detected! Launching shell...\n\n");
+                kprintf("\nEnter pressed! Launching shell...\n\n");
                 break;
             }
         }
@@ -410,7 +410,7 @@ void kmain(void *multiboot_ptr) {
 
     /* Ensure init process exists (may have been created earlier) */
     if (!init_pid) {
-        kprintf("Creating init process...\n");
+        // kprintf("Creating init process...\n");
         init_pid = process_create(init_main, 1);
         if (!init_pid) {
             kprintf("Failed to create init process!\n");
