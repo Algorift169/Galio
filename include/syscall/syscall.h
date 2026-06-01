@@ -30,6 +30,9 @@
 #define SYS_GETTIMEOFDAY 23
 #define SYS_GETUID       24
 #define SYS_GETGID       25
+#define SYS_GETPPID      26
+#define SYS_KILL         27
+#define SYS_WAIT         28
 
 #define PIPE_FD_FLAG     0x80000000u
 #define PIPE_READ_FLAG   0x40000000u
@@ -51,6 +54,11 @@ void syscall_init(void);
 u32 syscall_getpid(void);
 void syscall_sleep(u32 ms);
 
+/* User pointer validation for syscall entry points */
+u8 validate_user_ptr(const void *ptr, u8 write);
+u8 validate_user_buffer(const void *ptr, u32 length, u8 write);
+u8 validate_user_string(const char *str, u32 max_length);
+
 /* Extended syscall implementations */
 u32 syscall_execve(const char *path, char *const argv[], char *const envp[]);
 i32 syscall_pipe(i32 pipefd[2]);
@@ -66,6 +74,7 @@ u32 syscall_getgid(void);
 /* Pipe support for process I/O */
 u32 pipe_read_fd(u32 handle, void *buffer, u32 size);
 u32 pipe_write_fd(u32 handle, const void *buffer, u32 size);
+u32 pipe_retain_handle(u32 handle);
 u32 pipe_close_handle(u32 handle);
 
 #endif /* SYSCALL_H */

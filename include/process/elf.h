@@ -53,6 +53,6 @@ typedef struct {
 #define PT_TLS      7
 
 /* Function prototype */
-u32 elf_load(void *elf_data);
+u32 elf_load(void *elf_data, u32 elf_size);
 
 #endif /* ELF_H */

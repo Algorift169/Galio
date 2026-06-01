@@ -8,6 +8,7 @@
 #include "heap.h"
 #include "kprintf.h"
 #include "string.h"
+#include "tss.h"
 
 #ifndef SYS_TIMEVAL_STRUCT_DEFINED
 struct timeval {
@@ -37,6 +38,20 @@ typedef struct {
 } pipe_t;
 
 static pipe_t pipe_table[PIPE_MAX];
+
+static u8 copy_user_string(char *dst, const char *src, u32 dst_size) {
+    if (!dst || dst_size == 0 || !validate_user_string(src, dst_size)) {
+        return 0;
+    }
+    for (u32 i = 0; i < dst_size; i++) {
+        dst[i] = src[i];
+        if (dst[i] == 0) {
+            return 1;
+        }
+    }
+    dst[dst_size - 1] = 0;
+    return 0;
+}
 
 static u32 pipe_handle(u32 id, u32 flags) {
     return PIPE_FD_FLAG | flags | (id & PIPE_ID_MASK);
@@ -224,8 +239,13 @@ u32 syscall_execve(const char *path, char *const argv[], char *const envp[]) {
         return (u32)-1;
     }
 
+    char kpath[PROCESS_PATH_MAX];
+    if (!copy_user_string(kpath, path, sizeof(kpath))) {
+        return (u32)-1;
+    }
+
     char resolved[PROCESS_PATH_MAX];
-    if (!process_resolve_path(proc->cwd, path, resolved, PROCESS_PATH_MAX)) {
+    if (!process_resolve_path(proc->cwd, kpath, resolved, PROCESS_PATH_MAX)) {
         return (u32)-1;
     }
 
@@ -240,7 +260,7 @@ u32 syscall_execve(const char *path, char *const argv[], char *const envp[]) {
         return (u32)-1;
     }
 
-    u32 entry = elf_load(elf_data);
+    u32 entry = elf_load(elf_data, size);
     kfree(elf_data);
     if (!entry) {
         return (u32)-1;
@@ -248,7 +268,11 @@ u32 syscall_execve(const char *path, char *const argv[], char *const envp[]) {
 
     proc->regs.eip = entry;
     proc->regs.esp = USER_STACK_TOP;
-    proc->regs.eflags |= 0x3000;
+    proc->regs.user_esp = USER_STACK_TOP;
+    proc->regs.user_ss = USER_DS;
+    proc->regs.cs = USER_CS;
+    proc->regs.eflags &= ~0x3000;
+    proc->regs.eflags |= 0x202;
 
     __asm__ volatile(
         "movw $0x23, %%ax\n"
@@ -269,7 +293,7 @@ u32 syscall_execve(const char *path, char *const argv[], char *const envp[]) {
 }
 
 i32 syscall_pipe(i32 pipefd[2]) {
-    if (!pipefd) {
+    if (!pipefd || !validate_user_buffer(pipefd, sizeof(i32) * 2, 1)) {
         return -1;
     }
 
@@ -358,10 +382,17 @@ i32 syscall_dup2(u32 oldfd, u32 newfd) {
 }
 
 i32 syscall_chdir(const char *path) {
-    return (i32)process_chdir(path);
+    char kpath[PROCESS_PATH_MAX];
+    if (!copy_user_string(kpath, path, sizeof(kpath))) {
+        return -1;
+    }
+    return (i32)process_chdir(kpath);
 }
 
 u32 syscall_getcwd(char *buffer, u32 size) {
+    if (!validate_user_buffer(buffer, size, 1)) {
+        return (u32)-1;
+    }
     return process_getcwd(buffer, size);
 }
 
@@ -370,7 +401,7 @@ u32 syscall_time(void) {
 }
 
 i32 syscall_gettimeofday(struct timeval *tv, void *tz) {
-    if (!tv) {
+    if (!tv || !validate_user_buffer(tv, sizeof(*tv), 1)) {
         return -1;
     }
     u32 ticks = pit_get_ticks();

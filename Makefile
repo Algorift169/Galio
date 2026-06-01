@@ -84,6 +84,7 @@ SRCS = kernel/kmain.c \
        kernel/tests/vfs_test.c \
        kernel/tests/signal_test.c \
        kernel/tests/heap_test.c \
+       kernel/tests/security_test.c \
        init/init.c \
        tools/shell/shell.c \
        kernel/shell/cmd_net.c \

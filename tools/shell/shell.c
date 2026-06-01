@@ -106,7 +106,7 @@ static void shell_print_prompt(void) {
     const char *host = shell_hostname;
     if (kernel_auth.registered && kernel_auth.username[0]) host = kernel_auth.username;
     SHELL_COLOR_CMD();
-    kprintf( "(%s @ galio)-< %s > ", host, current_dir);
+    kprintf( "{ %s @ galio }-< %s > ", host, current_dir);
     SHELL_COLOR_RESET();
 }
 

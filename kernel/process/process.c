@@ -92,12 +92,13 @@ u32 process_create(void (*entry)(void), u32 priority) {
 
     /* Allocate a user-mode stack region for this process */
     u32 stack_base = USER_STACK_TOP - USER_STACK_SIZE;
-    for (u32 addr = stack_base; addr < USER_STACK_TOP; addr += PAGE_SIZE) {
+    u32 stack_map_base = stack_base + PAGE_SIZE;
+    for (u32 addr = stack_map_base; addr < USER_STACK_TOP; addr += PAGE_SIZE) {
         u32 phys = pmem_alloc(1);
         if (!phys) {
             kprintf("process_create: Failed to allocate user stack page\n");
             /* Clean up partially allocated address space */
-            for (u32 cleanup_addr = stack_base; cleanup_addr < addr; cleanup_addr += PAGE_SIZE) {
+            for (u32 cleanup_addr = stack_map_base; cleanup_addr < addr; cleanup_addr += PAGE_SIZE) {
                 u32 cleanup_phys = paging_get_physical(proc->pagedir, cleanup_addr);
                 if (cleanup_phys) {
                     paging_unmap(proc->pagedir, cleanup_addr);
@@ -133,7 +134,7 @@ u32 process_create(void (*entry)(void), u32 priority) {
 
     if (!proc->stack) {
         kprintf("process_create: Failed to allocate stack\n");
-        for (u32 addr = stack_base; addr < USER_STACK_TOP; addr += PAGE_SIZE) {
+        for (u32 addr = stack_map_base; addr < USER_STACK_TOP; addr += PAGE_SIZE) {
             u32 paddr = paging_get_physical(proc->pagedir, addr);
             if (paddr) {
                 paging_unmap(proc->pagedir, addr);
@@ -176,7 +177,7 @@ u32 process_create(void (*entry)(void), u32 priority) {
     return proc->pid;
 }
 
-static void process_free_address_space(process_t *proc) {
+void process_free_address_space(process_t *proc) {
     if (!proc || !proc->pagedir) return;
     page_directory_t *pd = proc->pagedir;
     
@@ -387,7 +388,7 @@ return_point:
 }
 
 void process_exit(i32 code) {
-    (void)code;
+    if (!current_process) return;
     current_process->state = PROCESS_ZOMBIE;
     current_process->exit_code = (u32)code;
     current_process->pending_signals = 0;
@@ -428,6 +429,22 @@ process_t *process_find_child(u32 parent_pid, i32 pid) {
 
 process_t *process_find_any_child(u32 parent_pid) {
     return process_find_child(parent_pid, -1);
+}
+
+u32 process_getppid(void) {
+    process_t *current = process_current();
+    return current ? current->parent_pid : 0;
+}
+
+u32 process_count_active(void) {
+    return process_count;
+}
+
+u8 process_kill(u32 pid, u8 sig) {
+    if (pid == 0) {
+        return 0;
+    }
+    return process_send_signal(pid, sig);
 }
 
 void process_reap(process_t *proc) {

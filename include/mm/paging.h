@@ -42,6 +42,7 @@ page_directory_t *paging_create_user_directory(void);
 void paging_map(page_directory_t *pd, u32 vaddr, u32 paddr, u32 flags);
 void paging_unmap(page_directory_t *pd, u32 vaddr);
 u32 paging_get_physical(page_directory_t *pd, u32 vaddr);
+u8 paging_validate_user_range(page_directory_t *pd, u32 vaddr, u32 length, u8 write);
 void paging_enable(page_directory_t *pd);
 page_directory_t *paging_get_current(void);
 page_directory_t *paging_clone_directory(page_directory_t *src);

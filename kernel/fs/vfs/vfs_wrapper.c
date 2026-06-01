@@ -596,6 +596,13 @@ u32 vfs_open(const char *path) {
     return fd;
 }
 
+u32 vfs_retain(u32 fd) {
+    if (!vfs_root) {
+        return 0;
+    }
+    return vfs_core_retain(fd);
+}
+
 u32 vfs_close(u32 fd) {
     return vfs_core_close(fd);
 }

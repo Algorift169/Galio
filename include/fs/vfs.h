@@ -108,6 +108,7 @@ u32 vfs_dir_size(const char *path);
  u32 vfs_unlink(const char *path);
  u32 vfs_move(const char *source, const char *target);
  u32 vfs_open(const char *path);
+ u32 vfs_retain(u32 fd);
  u32 vfs_close(u32 fd);
  u32 vfs_write(u32 fd, const void *buffer, u32 size);
  u32 vfs_remove_recursive(const char *path);

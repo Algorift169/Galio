@@ -72,7 +72,7 @@ static u8 is_user_address(u32 addr) {
 }
 
 static u8 is_user_stack_address(u32 addr) {
-    return addr >= (USER_STACK_TOP - USER_STACK_SIZE) && addr < USER_STACK_TOP;
+    return addr >= (USER_STACK_TOP - USER_STACK_SIZE + PAGE_SIZE) && addr < USER_STACK_TOP;
 }
 
 static u8 is_user_heap_address(u32 addr) {
@@ -238,6 +238,36 @@ u32 paging_get_physical(page_directory_t *pd, u32 vaddr) {
     u32 pte = pd->tables[pd_idx][pt_idx];
     if (!(pte & PAGE_PRESENT)) return 0;
     return (pte & 0xFFFFF000u) | (vaddr & 0xFFFu);
+}
+
+u8 paging_validate_user_range(page_directory_t *pd, u32 vaddr, u32 length, u8 write) {
+    if (!pd || length == 0) {
+        return length == 0;
+    }
+
+    if (!is_user_address(vaddr)) {
+        return 0;
+    }
+
+    u32 end = vaddr + length - 1;
+    if (end < vaddr || !is_user_address(end)) {
+        return 0;
+    }
+
+    for (u32 page = PAGE_ALIGN_DOWN(vaddr); page <= PAGE_ALIGN_DOWN(end); page += PAGE_SIZE) {
+        u32 *pte = get_page_entry(pd, page);
+        if (!pte || !(*pte & PAGE_PRESENT) || !(*pte & PAGE_USER)) {
+            return 0;
+        }
+        if (write && !(*pte & PAGE_RW)) {
+            return 0;
+        }
+        if (page == PAGE_ALIGN_DOWN(end)) {
+            break;
+        }
+    }
+
+    return 1;
 }
 
 void paging_enable(page_directory_t *pd) {

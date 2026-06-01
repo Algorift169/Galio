@@ -9,6 +9,7 @@
 #include "elf.h"
 #include "heap.h"
 #include "paging.h"
+#include "string.h"
 
 #ifndef SYS_EXIT
 #define SYS_EXIT         1
@@ -61,6 +62,55 @@ static void *syscall_mmap(void *addr, u32 length, i32 prot, i32 flags, i32 fd, u
 static i32 syscall_munmap(void *addr, u32 length);
 static void *syscall_brk(void *addr);
 
+#define USER_STRING_MAX PROCESS_PATH_MAX
+#define SIMPLE_STAT_SIZE (sizeof(u32) * 6)
+
+u8 validate_user_buffer(const void *ptr, u32 length, u8 write) {
+    process_t *proc = process_current();
+    if (length == 0) {
+        return 1;
+    }
+    if (!proc || !proc->pagedir || !ptr) {
+        return 0;
+    }
+    return paging_validate_user_range((page_directory_t *)proc->pagedir, (u32)ptr, length, write);
+}
+
+u8 validate_user_ptr(const void *ptr, u8 write) {
+    return validate_user_buffer(ptr, 1, write);
+}
+
+u8 validate_user_string(const char *str, u32 max_length) {
+    if (!str || max_length == 0) {
+        return 0;
+    }
+
+    for (u32 i = 0; i < max_length; i++) {
+        if (!validate_user_ptr(str + i, 0)) {
+            return 0;
+        }
+        if (str[i] == 0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static u8 copy_user_string(char *dst, const char *src, u32 dst_size) {
+    if (!dst || dst_size == 0 || !validate_user_string(src, dst_size)) {
+        return 0;
+    }
+    for (u32 i = 0; i < dst_size; i++) {
+        dst[i] = src[i];
+        if (dst[i] == 0) {
+            return 1;
+        }
+    }
+    dst[dst_size - 1] = 0;
+    return 0;
+}
+
 /* Syscall handler - called from INT 0x80 */
 static void syscall_handler(registers_t *regs) {
     /* For INT 0x80, we need to distinguish syscall number from interrupt_number */
@@ -81,6 +131,10 @@ static void syscall_handler(registers_t *regs) {
             
         case SYS_WRITE: {
             if (arg1 == 1) {  /* stdout */
+                if (!validate_user_buffer((const void *)arg2, (u32)arg3, 0)) {
+                    regs->eax = (u32)-1;
+                    break;
+                }
                 for (u32 i = 0; i < arg3; i++) {
                     vga_putch(((char *)arg2)[i]);
                 }
@@ -227,6 +281,9 @@ static u32 syscall_write(u32 fd, const void *buffer, u32 size) {
     if (fd >= PROCESS_MAX_FDS) {
         return (u32)-1;
     }
+    if (!validate_user_buffer(buffer, size, 0)) {
+        return (u32)-1;
+    }
 
     u32 handle = proc->fd_table[fd];
     if (handle == VFS_INVALID_FD) {
@@ -246,8 +303,13 @@ static i32 syscall_exec(const char *path) {
         return -1;
     }
 
+    char kpath[PROCESS_PATH_MAX];
+    if (!copy_user_string(kpath, path, sizeof(kpath))) {
+        return -1;
+    }
+
     char resolved[PROCESS_PATH_MAX];
-    if (!process_resolve_path(proc->cwd, path, resolved, PROCESS_PATH_MAX)) {
+    if (!process_resolve_path(proc->cwd, kpath, resolved, PROCESS_PATH_MAX)) {
         return -1;
     }
 
@@ -268,7 +330,7 @@ static i32 syscall_exec(const char *path) {
         paging_load_directory(current->pagedir);
     }
 
-    u32 entry = elf_load(elf_data);
+    u32 entry = elf_load(elf_data, size);
     kfree(elf_data);
 
     if (!entry) {
@@ -322,8 +384,13 @@ static u32 syscall_open(const char *path, i32 flags) {
     process_t *proc = process_current();
     if (!proc || !path) return -1;
 
+    char kpath[PROCESS_PATH_MAX];
+    if (!copy_user_string(kpath, path, sizeof(kpath))) {
+        return (u32)-1;
+    }
+
     char resolved[PROCESS_PATH_MAX];
-    if (!process_resolve_path(proc->cwd, path, resolved, PROCESS_PATH_MAX)) {
+    if (!process_resolve_path(proc->cwd, kpath, resolved, PROCESS_PATH_MAX)) {
         return -1;
     }
     
@@ -348,6 +415,7 @@ static u32 syscall_read(u32 fd, void *buffer, u32 size) {
     process_t *proc = process_current();
     if (!proc) return -1;
     if (fd >= PROCESS_MAX_FDS) return -1;
+    if (!validate_user_buffer(buffer, size, 1)) return (u32)-1;
     
     u32 handle = proc->fd_table[fd];
     if (handle == VFS_INVALID_FD) return -1;
@@ -392,12 +460,18 @@ static u32 syscall_lseek(u32 fd, i32 offset, i32 whence) {
 
 static u32 syscall_stat(const char *path, void *statbuf) {
     if (!path || !statbuf) return -1;
+    if (!validate_user_buffer(statbuf, SIMPLE_STAT_SIZE, 1)) return (u32)-1;
 
     process_t *proc = process_current();
     if (!proc) return -1;
 
+    char kpath[PROCESS_PATH_MAX];
+    if (!copy_user_string(kpath, path, sizeof(kpath))) {
+        return (u32)-1;
+    }
+
     char resolved[PROCESS_PATH_MAX];
-    if (!process_resolve_path(proc->cwd, path, resolved, PROCESS_PATH_MAX)) {
+    if (!process_resolve_path(proc->cwd, kpath, resolved, PROCESS_PATH_MAX)) {
         return -1;
     }
 

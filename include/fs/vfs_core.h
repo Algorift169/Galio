@@ -71,6 +71,7 @@ u8 vfs_core_reload_root_from_disk(void);
 vfs_inode_t *vfs_core_inode_by_number(u32 inode_number);
 u32 vfs_core_open(const char *path);
 u32 vfs_core_open_nodisk(const char *path);
+u32 vfs_core_retain(u32 fd);
 u32 vfs_core_close(u32 fd);
 u32 vfs_core_write(u32 fd, const void *buffer, u32 size);
 u32 vfs_core_read(u32 fd, void *buffer, u32 size);

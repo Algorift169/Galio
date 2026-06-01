@@ -532,10 +532,19 @@ static u32 vfs_core_open_internal(const char *path) {
 u32 vfs_core_open(const char *path) {
     return vfs_core_open_internal(path);
 }
+u32 vfs_core_retain(u32 fd) {
+    if (fd >= VFS_MAX_FILE_HANDLES) return 0;
+    if (vfs_files[fd].ref_count == 0 || !vfs_files[fd].inode) return 0;
+    vfs_files[fd].ref_count++;
+    return 1;
+}
 u32 vfs_core_close(u32 fd) {
     if (fd >= VFS_MAX_FILE_HANDLES) return 0;
     if (vfs_files[fd].ref_count == 0) return 0;
-    vfs_files[fd].ref_count = 0; vfs_files[fd].inode = NULL; vfs_files[fd].pos = 0; vfs_files[fd].flags = 0;
+    vfs_files[fd].ref_count--;
+    if (vfs_files[fd].ref_count == 0) {
+        vfs_files[fd].inode = NULL; vfs_files[fd].pos = 0; vfs_files[fd].flags = 0;
+    }
     return 1;
 }
 u32 vfs_core_write(u32 fd, const void *buffer, u32 size) {
