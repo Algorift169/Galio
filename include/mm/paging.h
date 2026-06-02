@@ -49,4 +49,10 @@ page_directory_t *paging_clone_directory(page_directory_t *src);
 void paging_load_directory(page_directory_t *pd);
 paging_fault_result_t paging_handle_page_fault(registers_t *regs);
 
+/* Kernel mapping helpers - allow mapping/unmapping into the global kernel page directory
+ * These are used by process management to create per-process kernel stacks with
+ * an unmapped guard page. They operate on the internal kernel page directory.
+ */
+void paging_map_kernel(u32 vaddr, u32 paddr, u32 flags);
+void paging_unmap_kernel(u32 vaddr);
 #endif /* PAGING_H */

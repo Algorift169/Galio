@@ -50,6 +50,8 @@ SRCS = kernel/kmain.c \
        kernel/arch/x86/cpu/gdt.c \
        kernel/arch/x86/cpu/tss.c \
        kernel/arch/x86/cpu/idt.c \
+	kernel/process/spinlock.c \
+	kernel/security/security.c \
        kernel/arch/x86/cpu/irq.c \
        kernel/arch/x86/cpu/isr.c \
        kernel/mm/paging.c \

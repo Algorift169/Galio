@@ -104,7 +104,9 @@ static const char shell_hostname[] = "galio";
 
 static void shell_print_prompt(void) {
     const char *host = shell_hostname;
-    if (kernel_auth.registered && kernel_auth.username[0]) host = kernel_auth.username;
+    if (session_current() && session_current()->registered && session_current()->username[0]) {
+        host = session_current()->username;
+    }
     SHELL_COLOR_CMD();
     kprintf( "{ %s @ galio }-< %s > ", host, current_dir);
     SHELL_COLOR_RESET();
@@ -655,7 +657,7 @@ static void shell_execute_command(void) {
     }
 
     /* Handle rex (sudo-like) commands */
-    if (strncmp(input.buffer, "rex ", 4) == 0) {
+    if (strncmp(input.buffer, "rex", 3) == 0 && (input.buffer[3] == ' ' || input.buffer[3] == '\0')) {
         /* Check if already authorized in this session */
         if (!auth_is_authorized()) {
             /* Not authorized - prompt for password */
@@ -691,7 +693,7 @@ static void shell_execute_command(void) {
         }
         
         /* Now execute the privileged command (already authorized) */
-        const char *cmd = input.buffer + 4;
+        const char *cmd = input.buffer + 3;
         
         /* Skip leading spaces */
         while (*cmd == ' ') cmd++;

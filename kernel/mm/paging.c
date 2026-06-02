@@ -198,6 +198,10 @@ page_directory_t *paging_create_user_directory(void) {
 
     if (!kernel_pd) return pd;
 
+    /* User page directories should not expose the low kernel mappings.
+     * Keep the first page unmapped in user space to ensure NULL dereferences
+     * fault in user mode even if the kernel itself still needs virtual page 0.
+     */
     for (u32 i = KERNEL_PDE_START; i < PAGE_ENTRIES; i++) {
         if (kernel_pd->directory[i] & PAGE_PRESENT) {
             pd->directory[i] = kernel_pd->directory[i] & ~PAGE_USER;
@@ -218,6 +222,28 @@ void paging_map(page_directory_t *pd, u32 vaddr, u32 paddr, u32 flags) {
 
     table[get_page_table_index(vaddr)] = (paddr & 0xFFFFF000u) | (flags & (PAGE_PRESENT | PAGE_RW | PAGE_USER | PAGE_WRITETHROUGH | PAGE_NOCACHE));
     __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
+}
+
+/* Map a kernel virtual address into the global kernel page directory. This
+ * helper allows creating per-process kernel mappings (e.g. stacks) while
+ * preserving the rest of kernel mappings. Uses the internal `kernel_pd`.
+ */
+void paging_map_kernel(u32 vaddr, u32 paddr, u32 flags) {
+    if (!kernel_pd) return;
+    map_kernel_region(kernel_pd, vaddr, paddr, flags & (PAGE_PRESENT | PAGE_RW | PAGE_USER | PAGE_WRITETHROUGH | PAGE_NOCACHE));
+    __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
+}
+
+/* Unmap a kernel virtual address from the global kernel page directory. */
+void paging_unmap_kernel(u32 vaddr) {
+    if (!kernel_pd) return;
+    u32 pd_idx = get_page_directory_index(vaddr);
+    u32 pt_idx = get_page_table_index(vaddr);
+    if (kernel_pd->tables[pd_idx]) {
+        u32 *table = kernel_pd->tables[pd_idx];
+        table[pt_idx] = 0;
+        __asm__ volatile("invlpg (%0)" : : "r"(vaddr) : "memory");
+    }
 }
 
 void paging_unmap(page_directory_t *pd, u32 vaddr) {

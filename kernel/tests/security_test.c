@@ -1,11 +1,37 @@
-/* security_test.c - Kernel security hardening tests */
+/* security_test.c - Kernel security hardening tests (combined)
+ * These tests exercise PID allocation, user pointer validation and basic
+ * paging behaviors. They are small and safe to run during boot tests.
+ */
 #include "kprintf.h"
+#include "process.h"
+#include "syscall.h"
 #include "paging.h"
 #include "pmem.h"
 
 void security_test(void) {
-    kprintf("[KTEST] security_test\n");
+    kprintf("[KTEST] Running security tests...\n");
 
+    /* PID allocator uniqueness (allocate few PIDs and ensure no duplicates) */
+    u32 seen[8] = {0};
+    for (u32 i = 0; i < 8; i++) {
+        u32 pid = process_allocate_pid();
+        kprintf("[KTEST] Allocated PID %u\n", pid);
+        for (u32 j = 0; j < i; j++) {
+            if (seen[j] == pid) {
+                kprintf("[KTEST][FAIL] PID reused: %u\n", pid);
+                return;
+            }
+        }
+        seen[i] = pid;
+    }
+
+    /* Validate user pointer rejection for kernel address */
+    if (validate_user_ptr((void *)KERNEL_BASE, 0)) {
+        kprintf("[KTEST][FAIL] Kernel address accepted as user pointer\n");
+        return;
+    }
+
+    /* Basic paging checks: create a temporary page directory and map a user page */
     page_directory_t *pd = paging_create_directory();
     if (!pd) {
         kprintf("[KTEST FAIL] security_test: paging_create_directory failed\n");
@@ -44,5 +70,6 @@ void security_test(void) {
     }
     pmem_free((u32)pd->directory, 1);
     pmem_free(phys, 1);
-    kprintf("[KTEST] security_test completed\n");
+
+    kprintf("[KTEST] Security tests passed (combined checks)\n");
 }

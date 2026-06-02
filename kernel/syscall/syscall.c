@@ -66,14 +66,19 @@ static void *syscall_brk(void *addr);
 #define SIMPLE_STAT_SIZE (sizeof(u32) * 6)
 
 u8 validate_user_buffer(const void *ptr, u32 length, u8 write) {
+    if (length == 0) return 1;
+    if (!ptr) return 0; /* reject NULL unless length == 0 */
+
+    u32 start = (u32)ptr;
+    u32 end = start + length - 1;
+    /* Detect wraparound/overflow */
+    if (end < start) return 0;
+    /* Reject any range that touches kernel space */
+    if (end >= KERNEL_SPACE_START) return 0;
+
     process_t *proc = process_current();
-    if (length == 0) {
-        return 1;
-    }
-    if (!proc || !proc->pagedir || !ptr) {
-        return 0;
-    }
-    return paging_validate_user_range((page_directory_t *)proc->pagedir, (u32)ptr, length, write);
+    if (!proc || !proc->pagedir) return 0;
+    return paging_validate_user_range((page_directory_t *)proc->pagedir, start, length, write);
 }
 
 u8 validate_user_ptr(const void *ptr, u8 write) {
@@ -81,9 +86,8 @@ u8 validate_user_ptr(const void *ptr, u8 write) {
 }
 
 u8 validate_user_string(const char *str, u32 max_length) {
-    if (!str || max_length == 0) {
-        return 0;
-    }
+    if (max_length == 0) return 0;
+    if (!str) return 0;
 
     for (u32 i = 0; i < max_length; i++) {
         if (!validate_user_ptr(str + i, 0)) {
@@ -266,8 +270,20 @@ static u32 syscall_fork(void) {
     /* Child gets 0 return value */
     child->regs.eax = 0;
 
-    /* Copy page directory (simplified - should do copy-on-write) */
-    child->pagedir = paging_clone_directory(current->pagedir);
+    /* Replace child's default address space with a clone of the parent.
+     * Free the child's original address space first to avoid leaking the
+     * page directory created by process_create(). If cloning fails, clean
+     * up the child process to avoid leaking resources.
+     */
+    process_free_address_space(child);
+    page_directory_t *clone = paging_clone_directory(current->pagedir);
+    if (!clone) {
+        /* cloning failed, clean up child and return error */
+        child->state = PROCESS_ZOMBIE;
+        process_reap(child);
+        return -1;
+    }
+    child->pagedir = clone;
 
     kprintf("Fork: parent PID=%u, child PID=%u\n", current->pid, child_pid);
     return child_pid;

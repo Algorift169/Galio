@@ -16,6 +16,14 @@
 #define PROCESS_PATH_MAX 512
 #define PROCESS_TIME_SLICE 10
 
+/* Basic user model */
+#define UID_ROOT 0
+#define UID_USER 1000
+
+/* Kernel stack region for per-process stacks with guard pages */
+#define KERNEL_STACK_BASE 0xC1000000u
+#define KERNEL_STACK_SLOT_SIZE (PROCESS_STACK_SIZE + 4096) /* stack + guard (PAGE_SIZE=4096) */
+
 typedef enum {
     PROCESS_READY,
     PROCESS_RUNNING,
@@ -71,6 +79,8 @@ typedef struct {
     u32 gid;
     u32 pending_signals;
     u32 exit_code;
+    /* Kernel stack physical base (0 if allocated from kmalloc) */
+    u32 kernel_stack_phys;
 } process_t;
 
 void process_init(void);
@@ -85,6 +95,8 @@ process_t *process_get_any(u32 pid);
 process_t *process_find_child(u32 parent_pid, i32 pid);
 process_t *process_find_any_child(u32 parent_pid);
 void process_free_address_space(process_t *proc);
+u32 process_allocate_pid(void);
+u8 process_is_superuser(process_t *proc);
 void process_reap(process_t *proc);
 i32 process_waitpid(i32 pid);
 u32 process_getppid(void);

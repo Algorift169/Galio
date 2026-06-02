@@ -8,6 +8,9 @@
 #include "vfs.h"
 #include "pmem.h"
 #include "tss.h"
+#include "spinlock.h"
+#include "security/security.h"
+#include "auth.h"
 
 #define PAGE_SIZE 4096
 
@@ -23,6 +26,45 @@ static process_t processes[MAX_PROCESSES];
 static u32 next_pid = 1;
 static process_t *current_process = NULL;
 static u32 process_count = 0;
+static spinlock_t process_table_lock;
+
+/* Allocate a PID safely, avoid returning 0 and avoid collisions on wrap-around.
+ * This scans the process table for active PIDs to ensure uniqueness.
+ */
+u32 process_allocate_pid(void) {
+    u32 start = next_pid ? next_pid : 1;
+    u32 pid = start;
+    for (;;) {
+        /* Skip 0 */
+        if (pid == 0) pid = 1;
+
+        /* Check for collision */
+        u8 inuse = 0;
+        for (u32 i = 0; i < MAX_PROCESSES; i++) {
+            if (processes[i].pid == pid && processes[i].state != PROCESS_ZOMBIE) {
+                inuse = 1;
+                break;
+            }
+        }
+        if (!inuse) {
+            next_pid = pid + 1;
+            if (next_pid == 0) next_pid = 1;
+            return pid;
+        }
+
+        pid++;
+        if (pid == start) {
+            /* No free PID found */
+            security_panic("PID allocator exhausted or corrupted");
+            return 0;
+        }
+    }
+}
+
+u8 process_is_superuser(process_t *proc) {
+    if (!proc) return 0;
+    return proc->uid == UID_ROOT;
+}
 
 /* Idle process main function */
 void idle_main(void) {
@@ -46,6 +88,9 @@ void process_init(void) {
         processes[i].state = PROCESS_ZOMBIE;
     }
 
+    /* Initialize process table lock */
+    spinlock_init(&process_table_lock);
+
     /* Create idle process */
     process_create(idle_main, 0);
     current_process = &processes[1];
@@ -56,31 +101,39 @@ void process_init(void) {
 }
 
 u32 process_create(void (*entry)(void), u32 priority) {
+    /* Protect process table modifications */
+    spin_lock(&process_table_lock);
+
     if (process_count >= MAX_PROCESSES) {
+        spin_unlock(&process_table_lock);
         kprintf("process_create: Too many processes\n");
         return 0;
     }
 
     process_t *proc = NULL;
+    u32 proc_index = 0xFFFFFFFFu;
     for (u32 i = 0; i < MAX_PROCESSES; i++) {
         if (processes[i].pid == 0) {
             proc = &processes[i];
+            proc_index = i;
             break;
         }
     }
 
     if (!proc) {
+        spin_unlock(&process_table_lock);
         kprintf("process_create: No free process slots\n");
         return 0;
     }
 
-    proc->pid = next_pid++;
+    proc->pid = process_allocate_pid();
     proc->parent_pid = current_process ? current_process->pid : 0;
     proc->state = PROCESS_READY;
     proc->priority = priority;
     proc->ticks = 0;
     proc->pagedir = paging_create_user_directory();
     if (!proc->pagedir) {
+        spin_unlock(&process_table_lock);
         kprintf("process_create: Failed to create user page directory\n");
         proc->pid = 0;
         proc->state = PROCESS_ZOMBIE;
@@ -114,8 +167,17 @@ u32 process_create(void (*entry)(void), u32 priority) {
         paging_map(proc->pagedir, addr, phys, PAGE_PRESENT | PAGE_RW | PAGE_USER);
     }
     proc->waiting_for_pid = -1;
-    proc->uid = 0;
-    proc->gid = 0;
+    /* Basic security model: boot processes remain root; init and spawned processes inherit an active session when available. */
+    if (!current_process) {
+        proc->uid = UID_ROOT;
+        proc->gid = UID_ROOT;
+    } else if (current_process->pid == 1 && current_process->uid == UID_ROOT && session_current() && session_current()->authenticated) {
+        proc->uid = session_current()->uid;
+        proc->gid = session_current()->gid;
+    } else {
+        proc->uid = current_process->uid;
+        proc->gid = current_process->gid;
+    }
     proc->pending_signals = 0;
     proc->exit_code = 0;
     strncpy(proc->cwd, "/", PROCESS_PATH_MAX - 1);
@@ -128,12 +190,16 @@ u32 process_create(void (*entry)(void), u32 priority) {
         proc->mmap_regions[i].anonymous = 0;
     }
 
-    /* Allocate kernel stack */
-    proc->stack = (u32 *)kmalloc(PROCESS_STACK_SIZE);
-    proc->stack_size = PROCESS_STACK_SIZE;
-
-    if (!proc->stack) {
-        kprintf("process_create: Failed to allocate stack\n");
+    /* Allocate kernel stack as reserved physical pages and map them into a
+     * per-process kernel virtual slot with an unmapped guard page below it.
+     * This causes stack overflows to fault instead of corrupting adjacent memory.
+     */
+    u32 stack_frames = (PROCESS_STACK_SIZE + 4095) / 4096;
+    u32 phys = pmem_alloc(stack_frames);
+    if (!phys) {
+        spin_unlock(&process_table_lock);
+        kprintf("process_create: Failed to allocate kernel stack frames\n");
+        /* cleanup user pages */
         for (u32 addr = stack_map_base; addr < USER_STACK_TOP; addr += PAGE_SIZE) {
             u32 paddr = paging_get_physical(proc->pagedir, addr);
             if (paddr) {
@@ -148,8 +214,17 @@ u32 process_create(void (*entry)(void), u32 priority) {
         return 0;
     }
 
+    /* Map stack into kernel virtual slot: leave first page in slot unmapped as guard */
+    u32 slot_base = KERNEL_STACK_BASE + (proc_index * KERNEL_STACK_SLOT_SIZE);
+    for (u32 i = 0; i < stack_frames; i++) {
+        paging_map_kernel(slot_base + PAGE_SIZE + i * PAGE_SIZE, phys + i * PAGE_SIZE, PAGE_PRESENT | PAGE_RW);
+    }
+    proc->stack = (u32 *)(slot_base + PAGE_SIZE);
+    proc->stack_size = stack_frames * PAGE_SIZE;
+    proc->kernel_stack_phys = phys;
+
     /* Initialize stack and registers */
-    u32 stack_top = (u32)proc->stack + PROCESS_STACK_SIZE - 4;
+    u32 stack_top = (u32)proc->stack + proc->stack_size - 4;
     
     proc->regs.esp = stack_top;
     proc->regs.ebp = stack_top;
@@ -170,8 +245,8 @@ u32 process_create(void (*entry)(void), u32 priority) {
     for (u32 fd_idx = 0; fd_idx < PROCESS_MAX_FDS; fd_idx++) {
         proc->fd_table[fd_idx] = VFS_INVALID_FD;
     }
-
     process_count++;
+    spin_unlock(&process_table_lock);
     // kprintf("Process created: PID=%u, priority=%u\n", proc->pid, priority);
 
     return proc->pid;
@@ -218,17 +293,33 @@ void process_free_address_space(process_t *proc) {
 
 static void process_cleanup(process_t *proc) {
     if (!proc || proc->pid == 0) return;
+    /* Protect process table state while cleaning up */
+    spin_lock(&process_table_lock);
     process_free_address_space(proc);
     if (proc->stack) {
-        kfree(proc->stack);
-        proc->stack = NULL;
+        /* If stack was allocated from physical pages, unmap and free; otherwise kfree */
+        if (proc->kernel_stack_phys) {
+            u32 stack_frames = (proc->stack_size + 4095) / 4096;
+            u32 slot_base = (u32)proc->stack - PAGE_SIZE;
+            for (u32 i = 0; i < stack_frames; i++) {
+                paging_unmap_kernel(slot_base + PAGE_SIZE + i * PAGE_SIZE);
+            }
+            pmem_free(proc->kernel_stack_phys, stack_frames);
+            proc->kernel_stack_phys = 0;
+            proc->stack = NULL;
+            proc->stack_size = 0;
+        } else {
+            kfree(proc->stack);
+            proc->stack = NULL;
+        }
     }
     proc->pid = 0;
     proc->state = PROCESS_ZOMBIE;
     proc->mmap_count = 0;
     proc->heap_start = USER_HEAP_START;
     proc->brk = USER_HEAP_START;
-    process_count--;
+    if (process_count > 0) process_count--;
+    spin_unlock(&process_table_lock);
 }
 
 void process_oom_kill(void) {
