@@ -105,8 +105,8 @@ static const char shell_hostname[] = "galio";
 
 static void shell_print_prompt(void) {
     const char *host = shell_hostname;
-    if (session_current() && session_current()->registered && session_current()->username[0]) {
-        host = session_current()->username;
+    if (kernel_auth.registered && kernel_auth.username[0]) {
+        host = kernel_auth.username;
     }
     SHELL_COLOR_CMD();
     kprintf( "{ %s @ galio }-< %s > ", host, current_dir);
@@ -321,13 +321,11 @@ static int shell_parse_pipeline(const char *line, char out_cmds[][256], int *out
     char cur[256];
     int ci = 0;
 
-    /* Detect trailing & (after trimming whitespace) */
     int last = len - 1;
     while (last >= 0 && (line[last] == ' ' || line[last] == '\t')) last--;
     if (last >= 0 && line[last] == '&') {
         bg = 1;
-        /* ignore the & when parsing; treat as removed */
-        len = last; /* exclusive end */
+        len = last;
     }
 
     for (int i = 0; i < len; i++) {
@@ -335,10 +333,8 @@ static int shell_parse_pipeline(const char *line, char out_cmds[][256], int *out
         if (c == '\'' && !in_dq) { in_sq = !in_sq; cur[ci++] = c; continue; }
         if (c == '"' && !in_sq) { in_dq = !in_dq; cur[ci++] = c; continue; }
         if (c == '|' && !in_sq && !in_dq) {
-            /* end current */
             while (ci > 0 && (cur[ci-1] == ' ' || cur[ci-1] == '\t')) ci--;
             cur[ci] = 0;
-            /* trim leading */
             int s = 0; while (cur[s] == ' ' || cur[s] == '\t') s++;
             strncpy(out_cmds[n], cur + s, 255);
             out_cmds[n][255] = 0;
@@ -406,7 +402,6 @@ static void shell_remove_job(shell_job_t *job) {
     job->cmdline[0] = 0;
 }
 
-/* Execute pipeline of commands (each entry is a full command string). */
 static void shell_run_pipeline(char cmds[][256], int n, int bg) {
     if (n <= 0) return;
     if (n > MAX_PIPE_STAGES) {
@@ -428,22 +423,17 @@ static void shell_run_pipeline(char cmds[][256], int n, int bg) {
     for (int i = 0; i < n; i++) {
         int pid = sc_syscall1(SYS_FORK, 0);
         if (pid == 0) {
-            /* Child */
-            /* stdin from previous pipe */
             if (i > 0) {
                 sc_syscall2(SYS_DUP2, pipefds[i-1][0], 0);
             }
-            /* stdout to next pipe */
             if (i < n-1) {
                 sc_syscall2(SYS_DUP2, pipefds[i][1], 1);
             }
-            /* Close all pipe fds */
             for (int j = 0; j < n-1; j++) {
                 sc_syscall1(SYS_CLOSE, pipefds[j][0]);
                 sc_syscall1(SYS_CLOSE, pipefds[j][1]);
             }
 
-            /* Build argv (simple split, respecting quotes) */
             char *argv[16];
             char argbuf[256];
             char argv_storage[16][256];
@@ -474,7 +464,6 @@ static void shell_run_pipeline(char cmds[][256], int n, int bg) {
 
             if (argc == 0) sc_syscall1(SYS_EXIT, 1);
 
-            /* Resolve binary path: if contains '/', use as-is; else prefix /bin/ */
             char pathbuf[256];
             if (shell_strchr(argv[0], '/')) {
                 strncpy(pathbuf, argv[0], sizeof(pathbuf)-1);
@@ -492,7 +481,6 @@ static void shell_run_pipeline(char cmds[][256], int n, int bg) {
             child_pids[i] = pid;
         } else {
             SHELL_COLOR_ERR(); kprintf("fork() failed\n"); SHELL_COLOR_RESET();
-            /* close pipes */
             for (int j = 0; j < n-1; j++) {
                 sc_syscall1(SYS_CLOSE, pipefds[j][0]);
                 sc_syscall1(SYS_CLOSE, pipefds[j][1]);
@@ -501,15 +489,12 @@ static void shell_run_pipeline(char cmds[][256], int n, int bg) {
         }
     }
 
-    /* Parent closes all pipe fds */
     for (int j = 0; j < n-1; j++) {
         sc_syscall1(SYS_CLOSE, pipefds[j][0]);
         sc_syscall1(SYS_CLOSE, pipefds[j][1]);
     }
 
     if (bg) {
-        /* store job and return */
-        /* join child pids into single command line string */
         char combined[256] = {0};
         for (int i = 0; i < n; i++) {
             if (i) strncat(combined, " | ", sizeof(combined)-strlen(combined)-1);
@@ -519,7 +504,6 @@ static void shell_run_pipeline(char cmds[][256], int n, int bg) {
         return;
     }
 
-    /* Foreground: wait for last child */
     int lastpid = child_pids[n-1];
     if (lastpid > 0) sc_syscall1(SYS_WAITPID, lastpid);
 }
@@ -527,7 +511,6 @@ static void shell_run_pipeline(char cmds[][256], int n, int bg) {
 u8 shell_dir_command(const char *args, const char *current_dir, u8 replace, u8 privileged) {
     if (!args || *args == 0) {
         SHELL_COLOR_CMD();
-        // Optional: show usage if desired, but keeping original style
         SHELL_COLOR_RESET();
         return 0;
     }
@@ -563,7 +546,6 @@ u8 shell_dir_command(const char *args, const char *current_dir, u8 replace, u8 p
             strncat(fullpath, ptr, sizeof(fullpath) - strlen(fullpath) - 1);
         }
 
-        /* Ensure parent directories exist */
         char parent[256];
         const char *parent_path = fullpath;
         int parent_len = strlen(parent_path) - 1;
@@ -604,7 +586,6 @@ u8 shell_dir_command(const char *args, const char *current_dir, u8 replace, u8 p
                 kprintf("[DIR] Path exists and is not a directory: %s\n", fullpath);
                 SHELL_COLOR_RESET();
             } else {
-                /* Directory already exists – treat as success (no error) */
                 any_success = 1;
             }
         } else {
@@ -619,8 +600,7 @@ u8 shell_dir_command(const char *args, const char *current_dir, u8 replace, u8 p
 
     return any_success;
 }
-/* Parse and execute command */
-/* Parse and execute command */
+
 static void shell_execute_command(void) {
     if (input.len == 0) return;
 
@@ -628,14 +608,12 @@ static void shell_execute_command(void) {
     shell_add_history(input.buffer);
     kprintf("\n");
 
-    /* Parse for pipes and background '&' */
     {
         char cmds[MAX_PIPE_STAGES][256];
         int stages = 0;
         int bg = 0;
         shell_parse_pipeline(input.buffer, cmds, &stages, &bg);
         if (stages > 1) {
-            /* disallow rex inside pipeline for now */
             for (int i = 0; i < stages; i++) {
                 if (strncmp(cmds[i], "rex", 3) == 0 && (cmds[i][3] == ' ' || cmds[i][3] == '\0')) {
                     SHELL_COLOR_ERR(); kprintf("rex inside pipelines is not supported\n"); SHELL_COLOR_RESET();
@@ -649,7 +627,6 @@ static void shell_execute_command(void) {
             input.len = 0;
             return;
         } else if (stages == 1 && bg) {
-            /* background single command: run as external */
             shell_run_pipeline(cmds, stages, bg);
             shell_print_prompt();
             input.len = 0;
@@ -657,11 +634,8 @@ static void shell_execute_command(void) {
         }
     }
 
-    /* Handle rex (sudo-like) commands */
     if (strncmp(input.buffer, "rex", 3) == 0 && (input.buffer[3] == ' ' || input.buffer[3] == '\0')) {
-        /* Check if already authorized in this session */
         if (!auth_is_authorized()) {
-            /* Not authorized - prompt for password */
             SHELL_COLOR_CMD();
             kprintf("[REX] Privileged command requires authentication\n");
             SHELL_COLOR_RESET();
@@ -676,7 +650,6 @@ static void shell_execute_command(void) {
                 return;
             }
             
-            /* Verify password against kernel_auth credentials */
             if (!auth_verify_password(kernel_auth.username, password)) {
                 SHELL_COLOR_ERR();
                 kprintf("[REX] Access denied: Invalid password\n");
@@ -686,17 +659,13 @@ static void shell_execute_command(void) {
                 return;
             }
             
-            /* Password correct - authorize for this session */
             auth_authorize();
             SHELL_COLOR_CMD();
             kprintf("[REX] Password accepted. Privileged mode enabled for this session.\n");
             SHELL_COLOR_RESET();
         }
         
-        /* Now execute the privileged command (already authorized) */
         const char *cmd = input.buffer + 3;
-        
-        /* Skip leading spaces */
         while (*cmd == ' ') cmd++;
         
         if (strlen(cmd) == 0) {
@@ -1063,7 +1032,7 @@ static void shell_execute_command(void) {
     input.len = 0;
 }
 
-/* Poll keyboard for input */
+/* Poll keyboard for input - will never stop, exceptions handled by kernel */
 static void shell_poll_keyboard(void) {
     u8 scancode = 0;
     u8 is_pressed = 0;
@@ -1075,7 +1044,6 @@ static void shell_poll_keyboard(void) {
 
     u8 raw_scancode = scancode & 0x7F;
 
-    /* Track shift keys */
     if (raw_scancode == 0x2A || raw_scancode == 0x36) {
         shift_pressed = is_pressed;
         return;
@@ -1085,9 +1053,7 @@ static void shell_poll_keyboard(void) {
         return;
     }
 
-    /* ============================================================ */
-    /* HANDLE EXTENDED KEYS (Page Up/Down, Arrows)                   */
-    /* ============================================================ */
+    /* Extended keys (arrows, page up/down) */
     if (extended) {
         switch (raw_scancode) {
             case 0x48:  /* Up arrow */
@@ -1125,27 +1091,15 @@ static void shell_poll_keyboard(void) {
                 vga_scrollback_down();
                 return;
         }
-        /* If we get here, it's an extended key we don't handle - ignore it */
         return;
     }
 
-    /* ============================================================ */
-    /* NON-EXTENDED KEYS (regular keys, plus some keyboards send    */
-    /* arrows without E0)                                           */
-    /* ============================================================ */
-    
-    /* Page Up (some keyboards send without E0) */
+    /* Non-extended special keys */
     if (raw_scancode == 0x49) {
         vga_scrollback_up();
         return;
     }
     
-    /* Page Down (some keyboards send without E0) - BUT this conflicts with 'q'!
-     * Only treat as Page Down if we're SURE it's not a regular 'q'.
-     * Since non-extended 0x51 is ALWAYS 'q', we should NOT handle it here.
-     * The extended case above handles the real Page Down. */
-    
-    /* Arrow keys without E0 prefix (some keyboards) */
     if (raw_scancode == 0x48) {
         if (history.index > 0) {
             history.index--;
@@ -1175,13 +1129,12 @@ static void shell_poll_keyboard(void) {
         return;
     }
 
-    /* Block arrow key scancodes that shouldn't print characters */
-    if (raw_scancode == 0x51) return;
+    /* Block Page Down scancode from becoming 'q' */
+    if (raw_scancode == 0x51) {
+        return;
+    }
 
-    /* ============================================================ */
-    /* NORMAL CHARACTER INPUT                                       */
-    /* ============================================================ */
-
+    /* Normal character input */
     if (raw_scancode >= sizeof(ascii_table)) return;
 
     u8 c = shift_pressed ? ascii_table_shift[raw_scancode] : ascii_table[raw_scancode];
@@ -1223,7 +1176,6 @@ void shell_run(void) {
     kprintf("                                                             ");
     kprintf("                                                             ");
     kprintf("                                                             ");
-    //kprintf("                                                             ");
     
     SHELL_COLOR_RESET();
 

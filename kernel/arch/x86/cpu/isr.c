@@ -60,7 +60,7 @@ void isr_handler(registers_t *regs) {
     if (int_no < 32) {
         vga_puts("\n=== CPU EXCEPTION ===\n");
         kprintf("Exception: %s (INT %d)\n", exception_names[int_no], int_no);
-        print_registers(regs);
+        //print_registers(regs);
 
         if (exception_has_error_code(int_no)) {
             kprintf("  Error code: %08X\n", regs->error_code);
