@@ -1,24 +1,29 @@
 #include "display/display.h"
+#include "panel/panel.h"
 #include "vga.h"
 #include "common.h"
 
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
 
-static int cursor_x = 40;
-static int cursor_y = 12;
+static int cursor_x = 0;
+static int cursor_y = 3;
 
 void display_init(void) {
     vga_clear();
-    cursor_x = 40;
-    cursor_y = 12;
+    panel_init();
+    panel_draw_header();
+    cursor_x = 0;
+    cursor_y = 3;
     vga_move_hardware_cursor(cursor_x, cursor_y);
 }
 
 void display_enter_userland_mode(void) {
     vga_clear();
-    cursor_x = 40;
-    cursor_y = 12;
+    panel_init();
+    panel_draw_header();
+    cursor_x = 0;
+    cursor_y = 3;
     vga_move_hardware_cursor(cursor_x, cursor_y);
 }
 

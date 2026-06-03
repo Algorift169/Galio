@@ -1,4 +1,5 @@
 #include "display/pk.h"
+#include "display/display.h"
 #include "vga.h"
 #include "cpu.h"
 #include "kprintf.h"
@@ -15,14 +16,9 @@
 #define KEY_EXTENDED     0xE0
 
 static int waiting_for_extended = 0;
-static int cursor_x = 40;
-static int cursor_y = 12;
 
 void poll_keyboard_init(void) {
     waiting_for_extended = 0;
-    cursor_x = 40;
-    cursor_y = 12;
-    vga_move_hardware_cursor(cursor_x, cursor_y);
     kprintf("Keyboard polling initialized - use arrow keys to move VGA cursor\n");
 }
 
@@ -64,36 +60,20 @@ void poll_keyboard_handle_arrows(void) {
         
         switch (scancode) {
             case KEY_UP_ARROW:
+                display_move_cursor(0, -1);
+                break;
             case KEY_DOWN_ARROW:
+                display_move_cursor(0, 1);
+                break;
             case KEY_LEFT_ARROW:
+                display_move_cursor(-1, 0);
+                break;
             case KEY_RIGHT_ARROW:
+                display_move_cursor(1, 0);
                 break;
             default:
-                return;
-        }
-    }
-    
-    /* Handle arrow keys with or without the extended prefix */
-    if (scancode == KEY_UP_ARROW || scancode == KEY_DOWN_ARROW || scancode == KEY_LEFT_ARROW || scancode == KEY_RIGHT_ARROW) {
-        switch (scancode) {
-            case KEY_UP_ARROW:
-                cursor_y--;
-                if (cursor_y < 0) cursor_y = 0;
-                break;
-            case KEY_DOWN_ARROW:
-                cursor_y++;
-                if (cursor_y >= 25) cursor_y = 24;
-                break;
-            case KEY_LEFT_ARROW:
-                cursor_x--;
-                if (cursor_x < 0) cursor_x = 0;
-                break;
-            case KEY_RIGHT_ARROW:
-                cursor_x++;
-                if (cursor_x >= 80) cursor_x = 79;
                 break;
         }
-        vga_move_hardware_cursor(cursor_x, cursor_y);
         return;
     }
     
@@ -103,9 +83,4 @@ void poll_keyboard_handle_arrows(void) {
         vga_clear();
         for(;;) __asm__ volatile("hlt");
     }
-}
-
-void poll_keyboard_get_cursor_pos(int *x, int *y) {
-    if (x) *x = cursor_x;
-    if (y) *y = cursor_y;
 }

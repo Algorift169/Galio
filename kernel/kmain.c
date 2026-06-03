@@ -3,6 +3,7 @@
 #include "idt.h"
 #include "irq.h"
 #include "kprintf.h"
+#include "display/display.h"
 #include "serial.h"
 #include "pmem.h"
 #include "paging.h"
@@ -339,17 +340,14 @@ void kmain(void *multiboot_ptr) {
 
     if (selected_mode == 1) {
         /* Enter shell mode */
+        display_enter_userland_mode();
         shell_run();
         for (;;) {
             __asm__ volatile("hlt");
         }
     } else if (selected_mode == 2) {
         /* Enter cursor movement mode - move the VGA hardware cursor */
-        vga_clear();
-        //kprintf("=== VGA CURSOR MOVEMENT MODE ===\n");
-        //kprintf("Use ARROW KEYS to move the blinking cursor\n");
-        //kprintf("Press ESC to exit to kernel panic\n\n");
-        //kprintf("Current cursor position: ");
+        display_enter_userland_mode();
         
         /* Get current cursor position */
         int cursor_x = 40, cursor_y = 12;
