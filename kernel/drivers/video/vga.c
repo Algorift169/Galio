@@ -24,6 +24,25 @@ static u8 scrollback_mode = 0;
 static char current_line[VGA_WIDTH + 1];
 static u32 current_line_len = 0;
 
+
+/* Move VGA hardware cursor to specific column and row */
+void vga_move_hardware_cursor(int x, int y) {
+    if (x < 0) x = 0;
+    if (x >= VGA_WIDTH) x = VGA_WIDTH - 1;
+    if (y < 0) y = 0;
+    if (y >= VGA_HEIGHT) y = VGA_HEIGHT - 1;
+    
+    cursor_x = x;
+    cursor_y = y;
+    vga_update_cursor();
+}
+
+/* Get current hardware cursor position */
+void vga_get_hardware_cursor(int *x, int *y) {
+    if (x) *x = cursor_x;
+    if (y) *y = cursor_y;
+}
+
 static void scrollback_push_line(void) {
     if (current_line_len >= VGA_WIDTH) {
         current_line[VGA_WIDTH] = '\0';

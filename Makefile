@@ -21,7 +21,8 @@ INCLUDES = -Iinclude \
            -Iinclude/syscall \
            -Itools/shell/include \
            -Itools/shell/commands \
-           -Itools/shell/editor
+           -Itools/shell/editor \
+           -Iui/include
 
 CFLAGS = -m32 -ffreestanding -O2 -Wall -Wextra $(INCLUDES) -Wno-array-bounds -Wno-unused-function
 ASFLAGS = -f elf32
@@ -76,6 +77,9 @@ SRCS = kernel/kmain.c \
        kernel/drivers/timer/pit.c \
        kernel/drivers/video/vga.c \
        kernel/drivers/usb/usb.c \
+       ui/src/display/display.c \
+       ui/src/display/pk.c \
+       ui/src/mouse/mouse.c \
        kernel/pci/pci.c \
        kernel/drivers/net/e1000.c \
        kernel/drivers/net/wifi.c \

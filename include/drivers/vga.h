@@ -14,4 +14,7 @@ void vga_backspace(void);
 void vga_newline(void);
 void vga_set_color(unsigned char color);
 
+void vga_move_hardware_cursor(int x, int y);
+void vga_get_hardware_cursor(int *x, int *y);
+
 #endif /* VGA_H */

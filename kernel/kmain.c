@@ -167,7 +167,6 @@ static void vfs_verify_disk_write(void) {
         kprintf("[VFS] Disk verification failed: read back %d bytes, expected %u\n", read, written);
         return;
     }
-
 }
 
 /* Entry point from bootloader - receives Multiboot info */
@@ -289,51 +288,6 @@ void kmain(void *multiboot_ptr) {
         kprintf("No EXT2 partition found, using RAM filesystem only\n");
     }
 
-    /* FILESYSTEM TESTS DISABLED - they cause crashes in disk mode */
-    // kprintf("\n");
-    // kprintf("╔══════════════════════════════════════════════════════════════╗\n");
-    // kprintf("║           FILESYSTEM VERIFICATION & DEBUG OUTPUT             ║\n");
-    // kprintf("╚══════════════════════════════════════════════════════════════╝\n");
-    // kprintf("\n");
-    // 
-    // kprintf("[TEST 1] Filesystem Statistics\n");
-    // kprintf("─────────────────────────────────────────────────────────────\n");
-    // vfs_stats();
-    // kprintf("\n");
-    // 
-    // kprintf("[TEST 2] Root Directory Contents\n");
-    // kprintf("─────────────────────────────────────────────────────────────\n");
-    // vfs_listdir("/");
-    // kprintf("\n");
-    // 
-    // kprintf("[TEST 3] Reading /etc/hostname\n");
-    // kprintf("─────────────────────────────────────────────────────────────\n");
-    // char hostname_buf[256];
-    // u32 bytes_read = vfs_read("/etc/hostname", hostname_buf, 255);
-    // if (bytes_read > 0) {
-    //     hostname_buf[bytes_read] = 0;
-    //     kprintf("Successfully read %u bytes\n", bytes_read);
-    //     kprintf("  Content: %s", hostname_buf);
-    // } else {
-    //     kprintf("FAILED to read /etc/hostname\n");
-    // }
-    // kprintf("\n");
-    // 
-    // kprintf("[TEST 4] Reading /boot/config.txt\n");
-    // kprintf("─────────────────────────────────────────────────────────────\n");
-    // char config_buf[512];
-    // bytes_read = vfs_read("/boot/config.txt", config_buf, 511);
-    // if (bytes_read > 0) {
-    //     config_buf[bytes_read] = 0;
-    //     kprintf("Successfully read %u bytes\n", bytes_read);
-    //     kprintf("  Content:\n%s", config_buf);
-    // } else {
-    //     kprintf("FAILED to read /boot/config.txt\n");
-    // }
-    // kprintf("\n");
-    // kprintf("Filesystem tests completed.\n");
-    // kprintf("─────────────────────────────────────────────────────────────\n");
-
     auth_bootstrap();
 
     vga_clear();
@@ -342,93 +296,138 @@ void kmain(void *multiboot_ptr) {
     } else {
         kprintf("Welcome to Galio !\n");
     }
-    kprintf("Please press Enter to continue\n\n");
-    /* Create init process early so the embedded ELF gets scheduled
-       (previously creation was after shell and unreachable) */
-    // kprintf("Creating init process...\n");
+    kprintf("Press 1 to enter GSH (Shell)\n");
+    kprintf("Press 2 to enter Cursor Movement Mode\n\n");
+
+    /* Create init process early so the embedded ELF gets scheduled */
     u32 init_pid = process_create(init_main, 1);
     if (!init_pid) {
         kprintf("Failed to create init process!\n");
         for(;;);
     }
 
-    /* Init will be scheduled later by the existing flow */
+    /* Keep interrupts enabled for keyboard input */
+    __asm__ volatile("sti");
+    
+    /* Unmask keyboard IRQ */
+    irq_unmask(1);
 
-    /* ELF test disabled - needs proper kernel virtual address mapping */
-    // kprintf("Loading ELF loader smoke test...\n");
-    // u32 elf_entry = elf_load(&_binary_test_elf_bin_start);
-    // if (elf_entry) {
-    //     kprintf("ELF loaded successfully, entry point: %08X\n", elf_entry);
-    //     kprintf("Executing test ELF...\n");
-    //     ((void (*)(void))elf_entry)();
-    // } else {
-    //     kprintf("ELF_LOADER_TEST: FAILED\n");
-    // }
+    int selected_mode = 0;
+    kprintf("Waiting for input...\n");
 
-    /* Disable all interrupts while polling the keyboard manually */
-    __asm__ volatile("cli");
+    while (selected_mode == 0) {
+        u8 scancode = 0;
+        u8 is_pressed = 0;
+        u8 extended = 0;
 
-    /* Mask all IRQs on both PICs */
-    outb(0x21, 0xFF);  /* Master PIC */
-    outb(0xA1, 0xFF);  /* Slave PIC */
-
-    /* Poll for 'c' key press using direct port I/O */
-    while (1) {
-        u8 status = inb(0x64);
-        
-        if (status & 0x01) {
-            u8 scancode = inb(0x60);
-            
-            if (scancode == 0x1C) {  /* Enter key */
-                /* Drain keyboard buffer */
-                while (inb(0x64) & 0x01) {
-                    inb(0x60);
-                }
-                kprintf("\nEnter pressed! Launching shell...\n\n");
-                break;
+        if (keyboard_read_event(&scancode, &is_pressed, &extended) && is_pressed && !extended) {
+            u8 raw = scancode & 0x7F;
+            if (raw == 0x02) {  /* '1' key */
+                selected_mode = 1;
+                kprintf("\nSelected: GSH Shell\n\n");
+            } else if (raw == 0x03) {  /* '2' key */
+                selected_mode = 2;
+                kprintf("\nSelected: Cursor Movement Mode\n\n");
             }
         }
         
-        /* Small delay to avoid busy loop */
+        /* Small delay to prevent CPU spinning */
         for (volatile int i = 0; i < 1000; i++);
     }
 
     extern void shell_run(void);
 
-    /* Enable interrupts so IRQ-driven keyboard events can be delivered to the shell and editor. */
-    __asm__ volatile("sti");
-    irq_unmask(1);  /* keyboard IRQ */
-    shell_run();
-
-    /* shell_run should not return. */
-    for (;;) {
-        __asm__ volatile("hlt");
-    }
-
-    /* Restore timer IRQ so the scheduler can run once interrupts are enabled */
-    irq_unmask(0);
-
-    /* Ensure init process exists (may have been created earlier) */
-    if (!init_pid) {
-        // kprintf("Creating init process...\n");
-        init_pid = process_create(init_main, 1);
-        if (!init_pid) {
-            kprintf("Failed to create init process!\n");
-            for(;;);
+    if (selected_mode == 1) {
+        /* Enter shell mode */
+        shell_run();
+        for (;;) {
+            __asm__ volatile("hlt");
         }
+    } else if (selected_mode == 2) {
+        /* Enter cursor movement mode - move the VGA hardware cursor */
+        vga_clear();
+        //kprintf("=== VGA CURSOR MOVEMENT MODE ===\n");
+        //kprintf("Use ARROW KEYS to move the blinking cursor\n");
+        //kprintf("Press ESC to exit to kernel panic\n\n");
+        //kprintf("Current cursor position: ");
+        
+        /* Get current cursor position */
+        int cursor_x = 40, cursor_y = 12;
+        vga_move_hardware_cursor(cursor_x, cursor_y);
+        
+        int last_x = -1, last_y = -1;
+        
+        for (;;) {
+            u8 scancode = 0;
+            u8 is_pressed = 0;
+            u8 extended = 0;
+            
+            if (keyboard_read_event(&scancode, &is_pressed, &extended) && is_pressed) {
+                u8 raw = scancode & 0x7F;
+                
+                /* Handle arrow keys, whether extended or not */
+                if (extended || raw == 0x48 || raw == 0x50 || raw == 0x4B || raw == 0x4D) {
+                    switch (raw) {
+                        case 0x48:  /* Up arrow */
+                            cursor_y--;
+                            if (cursor_y < 0) cursor_y = 0;
+                            vga_move_hardware_cursor(cursor_x, cursor_y);
+                            break;
+                        case 0x50:  /* Down arrow */
+                            cursor_y++;
+                            if (cursor_y >= 25) cursor_y = 24;
+                            vga_move_hardware_cursor(cursor_x, cursor_y);
+                            break;
+                        case 0x4B:  /* Left arrow */
+                            cursor_x--;
+                            if (cursor_x < 0) cursor_x = 0;
+                            vga_move_hardware_cursor(cursor_x, cursor_y);
+                            break;
+                        case 0x4D:  /* Right arrow */
+                            cursor_x++;
+                            if (cursor_x >= 80) cursor_x = 79;
+                            vga_move_hardware_cursor(cursor_x, cursor_y);
+                            break;
+                    }
+                }
+                
+                /* ESC key to exit */
+                if (!extended && raw == 0x01) {
+                    //kprintf("\n\nESC pressed - exiting\n");
+                    break;
+                }
+            }
+            
+            /* Update position display every 50ms */
+            static int counter = 0;
+            counter++;
+            if (counter >= 50 && (cursor_x != last_x || cursor_y != last_y)) {
+                /* Save cursor position */
+                int old_x, old_y;
+                vga_get_hardware_cursor(&old_x, &old_y);
+                
+                /* Print at fixed position */
+                vga_move_hardware_cursor(25, 2);
+                //kprintf("(%d, %d)  ", cursor_x, cursor_y);
+                
+                /* Restore cursor */
+                vga_move_hardware_cursor(old_x, old_y);
+                
+                last_x = cursor_x;
+                last_y = cursor_y;
+                counter = 0;
+            }
+            
+            for (volatile int i = 0; i < 100; i++);
+            __asm__ volatile("hlt");
+        }
+        
+        vga_clear();
+        //kprintf("Exited cursor movement mode. Halting.\n");
+        for (;;) __asm__ volatile("hlt");
     }
-
-    process_set_boot_current();
-
-    /* Switch to idle process to start multitasking */
-    kprintf("Kernel initialization complete. Starting multitasking.\n");
-    process_yield();
-
-    /* Enable interrupts after first yield */
-    __asm__ volatile("sti");
 
     /* Should never reach here */
-    kprintf("ERROR: Returned from multitasking start!\n");
     for (;;) {
         __asm__ volatile("hlt");
     }
