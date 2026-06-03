@@ -43,6 +43,6 @@ void tty_update_cursor(void) {
     vga_update_cursor();
 }
 
-u8 tty_read_key(u8 *scancode, u8 *is_pressed) {
-    return keyboard_read_event(scancode, is_pressed);
+u8 tty_read_key(u8 *scancode, u8 *is_pressed, u8 *extended) {
+    return keyboard_read_event(scancode, is_pressed, extended);
 }

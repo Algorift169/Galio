@@ -16,6 +16,7 @@
 typedef struct {
     u8 scancode;
     u8 is_pressed;
+    u8 extended;
 } keyboard_event_t;
 
 static keyboard_event_t event_queue[KEYBOARD_QUEUE_SIZE];
@@ -24,6 +25,7 @@ static volatile u8 queue_tail = 0;
 static u8 shift_pressed = 0;
 static u8 ctrl_pressed = 0;
 static u8 alt_pressed = 0;
+static u8 poll_pending_extended = 0;
 static key_callback_t user_callback = NULL;
 
 static inline u8 keyboard_queue_empty(void) {
@@ -36,20 +38,21 @@ static inline u8 keyboard_queue_full(void) {
     return next == queue_tail;
 }
 
-static void keyboard_enqueue(u8 scancode, u8 is_pressed) {
+static void keyboard_enqueue(u8 scancode, u8 is_pressed, u8 extended) {
     if (keyboard_queue_full()) {
         return;
     }
 
     event_queue[queue_head].scancode = scancode;
     event_queue[queue_head].is_pressed = is_pressed;
+    event_queue[queue_head].extended = extended;
     queue_head++;
     if (queue_head == KEYBOARD_QUEUE_SIZE) {
         queue_head = 0;
     }
 }
 
-static u8 keyboard_dequeue(u8 *scancode, u8 *is_pressed) {
+static u8 keyboard_dequeue(u8 *scancode, u8 *is_pressed, u8 *extended) {
     if (keyboard_queue_empty()) {
         return 0;
     }
@@ -59,6 +62,9 @@ static u8 keyboard_dequeue(u8 *scancode, u8 *is_pressed) {
     }
     if (is_pressed) {
         *is_pressed = event_queue[queue_tail].is_pressed;
+    }
+    if (extended) {
+        *extended = event_queue[queue_tail].extended;
     }
 
     queue_tail++;
@@ -97,12 +103,15 @@ static void keyboard_handler(registers_t *regs) {
     u8 scancode = inb(KEYBOARD_DATA);
     u8 is_pressed = !(scancode & 0x80);
 
+    static u8 pending_extended = 0;
     if (scancode == 0xE0) {
-        keyboard_enqueue(scancode, is_pressed);
+        pending_extended = 1;
         return;
     }
 
     u8 raw_scancode = scancode & 0x7F;
+    u8 extended = pending_extended;
+    pending_extended = 0;
 
     if (raw_scancode == LSHIFT_PRESSED || raw_scancode == RSHIFT_PRESSED) {
         shift_pressed = is_pressed;
@@ -112,7 +121,7 @@ static void keyboard_handler(registers_t *regs) {
         alt_pressed = is_pressed;
     }
 
-    keyboard_enqueue(scancode, is_pressed);
+    keyboard_enqueue(raw_scancode, is_pressed, extended);
 
     if (user_callback) {
         user_callback(raw_scancode, is_pressed);
@@ -134,12 +143,40 @@ u8 keyboard_has_event(void) {
     return !keyboard_queue_empty();
 }
 
-u8 keyboard_read_event(u8 *scancode, u8 *is_pressed) {
+static u8 keyboard_poll_port_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
+    u8 status = inb(KEYBOARD_CTRL);
+    if (!(status & 0x01)) {
+        return 0;
+    }
+
+    u8 data = inb(KEYBOARD_DATA);
+    u8 pressed = !(data & 0x80);
+    if (data == 0xE0) {
+        poll_pending_extended = 1;
+        return 0;
+    }
+
+    u8 raw_scancode = data & 0x7F;
+    u8 ext = poll_pending_extended;
+    poll_pending_extended = 0;
+
+    if (scancode) *scancode = raw_scancode;
+    if (is_pressed) *is_pressed = pressed;
+    if (extended) *extended = ext;
+    return 1;
+}
+
+u8 keyboard_read_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
     u8 result;
     __asm__ volatile("cli");
-    result = keyboard_dequeue(scancode, is_pressed);
+    result = keyboard_dequeue(scancode, is_pressed, extended);
     __asm__ volatile("sti");
-    return result;
+    if (result) {
+        return 1;
+    }
+
+    /* Fallback direct polling if IRQ-driven queue is empty or IRQ delivery is unreliable. */
+    return keyboard_poll_port_event(scancode, is_pressed, extended);
 }
 
 u8 scancode_to_ascii(u8 scancode) {

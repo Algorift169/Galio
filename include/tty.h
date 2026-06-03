@@ -15,6 +15,7 @@ void tty_newline(void);
 void tty_move_cursor(int dx, int dy);
 void tty_update_cursor(void);
 
-u8 tty_read_key(u8 *scancode, u8 *is_pressed);
+/* Returns 1 and fills scancode/is_pressed/extended if an event is available. */
+u8 tty_read_key(u8 *scancode, u8 *is_pressed, u8 *extended);
 
 #endif /* TTY_H */

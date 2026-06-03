@@ -3,6 +3,7 @@
 #include "vga.h"
 #include "kprintf.h"
 #include "string.h"
+#include "drivers/keyboard.h"
 #include <string.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -99,7 +100,6 @@ typedef struct {
 static shell_input_t input;
 static shell_history_t history = {0};
 static dir_history_t dir_history = {0};
-static u8 extended_key = 0;
 static char current_dir[256] = HOME_DIR;
 static const char shell_hostname[] = "galio";
 
@@ -1063,88 +1063,147 @@ static void shell_execute_command(void) {
     input.len = 0;
 }
 
-/* Poll keyboard for input (no IRQs) */
+/* Poll keyboard for input */
 static void shell_poll_keyboard(void) {
-    u8 status = inb(0x64);
+    u8 scancode = 0;
+    u8 is_pressed = 0;
+    u8 extended = 0;
 
-    if (status & 0x01) {
-        u8 scancode = inb(0x60);
+    if (!keyboard_read_event(&scancode, &is_pressed, &extended)) {
+        return;
+    }
 
-        if (scancode == 0xE0) {
-            extended_key = 1;
-            return;
-        }
+    u8 raw_scancode = scancode & 0x7F;
 
-        u8 is_pressed = !(scancode & 0x80);
-        u8 raw_scancode = scancode & 0x7F;
+    /* Track shift keys */
+    if (raw_scancode == 0x2A || raw_scancode == 0x36) {
+        shift_pressed = is_pressed;
+        return;
+    }
 
-        if (raw_scancode == 0x2A || raw_scancode == 0x36) {
-            shift_pressed = is_pressed;
-            return;
-        }
+    if (!is_pressed) {
+        return;
+    }
 
-        if (!is_pressed) {
-            if (extended_key) extended_key = 0;
-            return;
-        }
-
-        if (extended_key) {
-            extended_key = 0;
-            if (raw_scancode == 0x48) {
+    /* ============================================================ */
+    /* HANDLE EXTENDED KEYS (Page Up/Down, Arrows)                   */
+    /* ============================================================ */
+    if (extended) {
+        switch (raw_scancode) {
+            case 0x48:  /* Up arrow */
                 if (history.index > 0) {
                     history.index--;
                     shell_clear_line();
                     strncpy(input.buffer, history.history[history.index], SHELL_BUFFER_SIZE - 1);
+                    input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
                     input.len = strlen(input.buffer);
                     shell_print_buffer();
                 }
                 return;
-            } else if (raw_scancode == 0x50) {
+                
+            case 0x50:  /* Down arrow */
                 if (history.index < history.count - 1) {
                     history.index++;
                     shell_clear_line();
                     strncpy(input.buffer, history.history[history.index], SHELL_BUFFER_SIZE - 1);
+                    input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
                     input.len = strlen(input.buffer);
                     shell_print_buffer();
                 } else if (history.index == history.count - 1) {
                     history.index = history.count;
                     shell_clear_line();
                     input.len = 0;
+                    input.buffer[0] = 0;
                 }
                 return;
-            } else if (raw_scancode == 0x49) {
+                
+            case 0x49:  /* Page Up */
                 vga_scrollback_up();
                 return;
-            } else if (raw_scancode == 0x51) {
+                
+            case 0x51:  /* Page Down */
                 vga_scrollback_down();
                 return;
-            }
-            return;
         }
+        /* If we get here, it's an extended key we don't handle - ignore it */
+        return;
+    }
 
-        if (raw_scancode >= sizeof(ascii_table)) return;
+    /* ============================================================ */
+    /* NON-EXTENDED KEYS (regular keys, plus some keyboards send    */
+    /* arrows without E0)                                           */
+    /* ============================================================ */
+    
+    /* Page Up (some keyboards send without E0) */
+    if (raw_scancode == 0x49) {
+        vga_scrollback_up();
+        return;
+    }
+    
+    /* Page Down (some keyboards send without E0) - BUT this conflicts with 'q'!
+     * Only treat as Page Down if we're SURE it's not a regular 'q'.
+     * Since non-extended 0x51 is ALWAYS 'q', we should NOT handle it here.
+     * The extended case above handles the real Page Down. */
+    
+    /* Arrow keys without E0 prefix (some keyboards) */
+    if (raw_scancode == 0x48) {
+        if (history.index > 0) {
+            history.index--;
+            shell_clear_line();
+            strncpy(input.buffer, history.history[history.index], SHELL_BUFFER_SIZE - 1);
+            input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
+            input.len = strlen(input.buffer);
+            shell_print_buffer();
+        }
+        return;
+    }
+    
+    if (raw_scancode == 0x50) {
+        if (history.index < history.count - 1) {
+            history.index++;
+            shell_clear_line();
+            strncpy(input.buffer, history.history[history.index], SHELL_BUFFER_SIZE - 1);
+            input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
+            input.len = strlen(input.buffer);
+            shell_print_buffer();
+        } else if (history.index == history.count - 1) {
+            history.index = history.count;
+            shell_clear_line();
+            input.len = 0;
+            input.buffer[0] = 0;
+        }
+        return;
+    }
 
-        u8 c = shift_pressed ? ascii_table_shift[raw_scancode] : ascii_table[raw_scancode];
-        if (c == 0) return;
+    /* Block arrow key scancodes that shouldn't print characters */
+    if (raw_scancode == 0x51) return;
 
-        if (c == '\b') {
-            if (input.len > 0) {
-                input.len--;
-                vga_putch('\b');
-                vga_putch(' ');
-                vga_putch('\b');
-            }
-        } else if (c == '\n') {
-            vga_putch('\n');
-            shell_execute_command();
-        } else if (c == '\t') {
-            return;
-        } else if (c >= 32 && c < 127) {
-            if (input.len < SHELL_BUFFER_SIZE - 1) {
-                input.buffer[input.len] = c;
-                input.len++;
-                vga_putch(c);
-            }
+    /* ============================================================ */
+    /* NORMAL CHARACTER INPUT                                       */
+    /* ============================================================ */
+
+    if (raw_scancode >= sizeof(ascii_table)) return;
+
+    u8 c = shift_pressed ? ascii_table_shift[raw_scancode] : ascii_table[raw_scancode];
+    if (c == 0) return;
+
+    if (c == '\b') {
+        if (input.len > 0) {
+            input.len--;
+            vga_putch('\b');
+            vga_putch(' ');
+            vga_putch('\b');
+        }
+    } else if (c == '\n') {
+        vga_putch('\n');
+        shell_execute_command();
+    } else if (c == '\t') {
+        return;
+    } else if (c >= 32 && c < 127) {
+        if (input.len < SHELL_BUFFER_SIZE - 1) {
+            input.buffer[input.len] = c;
+            input.len++;
+            vga_putch(c);
         }
     }
 }

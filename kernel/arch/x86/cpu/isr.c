@@ -26,6 +26,11 @@ static const char *exception_names[] = {
     "Reserved", "Reserved", "Reserved", "Reserved", "Security exception", "Reserved"
 };
 
+static u8 exception_has_error_code(u32 int_no) {
+    return int_no == 8 || int_no == 10 || int_no == 11 || int_no == 12 ||
+           int_no == 13 || int_no == 14 || int_no == 17;
+}
+
 static void print_registers(registers_t *regs) {
     vga_puts("Registers:\n");
     kprintf("  EAX=%08X  EBX=%08X  ECX=%08X  EDX=%08X\n",
@@ -45,32 +50,32 @@ static void print_registers(registers_t *regs) {
 /* Main ISR handler - called from assembly */
 void isr_handler(registers_t *regs) {
     u32 int_no = regs->interrupt_number;
-    
+
     if (int_no == 0x80) {
         if (handlers[int_no] != NULL)
             handlers[int_no](regs);
         return;
     }
-    
+
     if (int_no < 32) {
         vga_puts("\n=== CPU EXCEPTION ===\n");
         kprintf("Exception: %s (INT %d)\n", exception_names[int_no], int_no);
         print_registers(regs);
-        if (int_no == 14) {
-            if (paging_handle_page_fault(regs) == PAGE_FAULT_HANDLED) {
-                return;
-            }
 
+        if (exception_has_error_code(int_no)) {
+            kprintf("  Error code: %08X\n", regs->error_code);
+        }
+
+        if (int_no == 14) {
             u32 cr2;
             __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
-            kprintf("Page fault at CR2=%08X\n", cr2);
-
             u32 present = regs->error_code & 0x1;
             u32 write = regs->error_code & 0x2;
             u32 user = regs->error_code & 0x4;
             u32 reserved = regs->error_code & 0x8;
             u32 instr = regs->error_code & 0x10;
 
+            kprintf("Page fault at CR2=%08X\n", cr2);
             kprintf("  Cause: %s, %s, %s\n",
                     present ? "protection violation" : "non-present page",
                     write ? "write" : "read",
@@ -89,21 +94,23 @@ void isr_handler(registers_t *regs) {
             }
             process_t *current = process_current();
             kprintf("  Process PID=%u\n", current ? current->pid : 0xFFFFFFFFu);
+
+            if (paging_handle_page_fault(regs) == PAGE_FAULT_HANDLED) {
+                //return;
+            }
         }
-        /* If this fault came from user mode, convert to a signal for the process
-         * so the kernel keeps running and the process can be terminated or handled. */
+
         process_t *current = process_current();
         if ((regs->cs & 3) == 3 && current) {
-            kprintf("Delivering SIGSEGV to PID=%u\n", current->pid);
+            kprintf("Delivering SIGSEGV to PID=%u and keeping kernel alive\n", current->pid);
             process_send_signal(current->pid, SIGSEGV);
             return;
         }
 
-        vga_puts("=== HALTED ===\n");
-        disable_interrupts();
-        halt();
+        kprintf("Kernel exception ignored, continuing execution.\n");
+        return;
     }
-    
+
     if (handlers[int_no] != NULL) {
         handlers[int_no](regs);
     }
