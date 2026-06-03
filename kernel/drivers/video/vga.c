@@ -230,7 +230,7 @@ void vga_putch(char c) {
 }
 
 void vga_scrollback_up(void) {
-    if (scrollback_count <= VGA_HEIGHT) return;
+    if (scrollback_count < VGA_HEIGHT) return;
     scrollback_mode = 1;
     u32 max_offset = scrollback_count - VGA_HEIGHT;
     if (scrollback_offset + SCROLLBACK_STEP >= max_offset) {

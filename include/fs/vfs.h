@@ -95,6 +95,7 @@ void vfs_debug(void);
 
 /* Advanced operations */
 void vfs_tree(void);
+void vfs_tree_dir(const char *path);
 u32 vfs_count_files(const char *path);
 u32 vfs_count_dirs(const char *path);
 u32 vfs_dir_size(const char *path);

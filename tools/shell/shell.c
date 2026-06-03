@@ -17,6 +17,7 @@
 #include "recycle.h"
 #include "clean.h"
 #include "delete.h"
+#include "tree.h"
 #include "net.h"
 #include "editor.h"
 
@@ -868,6 +869,10 @@ static void shell_execute_command(void) {
         vga_clear();
         SHELL_COLOR_OUT();
         kprintf("                                GSH                                  \n");
+    } else if (strcmp(input.buffer, "tree") == 0) {
+        SHELL_COLOR_OUT();
+        shell_tree_command(current_dir);
+        SHELL_COLOR_RESET();
         kprintf("                                                                     \n");
         kprintf("                                                                     \n");
         SHELL_COLOR_RESET();
@@ -877,6 +882,8 @@ static void shell_execute_command(void) {
         kprintf(" |                     GSH  - Available Commands:                   |\n");
         kprintf(" |__________________________________________________________________|\n");
         kprintf(" |  ls       - List directory contents                              |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" |  tree     - Show directory tree for current directory             |\n");
         kprintf(" |__________________________________________________________________|\n");
         kprintf(" |  dir      - Create directory (usage: dir <path1> [path2] ...)     |\n");
         kprintf(" |__________________________________________________________________|\n");
