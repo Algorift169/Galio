@@ -75,6 +75,8 @@ SRCS = kernel/kmain.c \
        kernel/drivers/keyboard/keyboard.c \
        kernel/drivers/serial/serial.c \
        kernel/drivers/timer/pit.c \
+       kernel/drivers/rtc/rtc.c \
+	kernel/time.c \
        kernel/drivers/video/vga.c \
        kernel/drivers/usb/usb.c \
        ui/src/display/display.c \

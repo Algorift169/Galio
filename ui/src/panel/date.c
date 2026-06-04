@@ -25,19 +25,17 @@ static u32 utoa_digits(u32 num, char *buf, u32 min_width) {
     return pad + len;
 }
 
-void panel_format_date(u32 seconds, char *date_str) {
-    u32 days = seconds / 86400;
-    u32 hours = (seconds % 86400) / 3600;
-    u32 minutes = (seconds % 3600) / 60;
+void panel_format_date(const DateTime *dt, char *date_str) {
+    if (!dt || !date_str) {
+        date_str[0] = '\0';
+        return;
+    }
 
     u32 pos = 0;
-    if (days > 0) {
-        pos += utoa_digits(days, &date_str[pos], 0);
-        date_str[pos++] = 'd';
-        date_str[pos++] = ' ';
-    }
-    pos += utoa_digits(hours, &date_str[pos], 2);
-    date_str[pos++] = ':';
-    pos += utoa_digits(minutes, &date_str[pos], 2);
+    pos += utoa_digits(dt->day, &date_str[pos], 2);
+    date_str[pos++] = '/';
+    pos += utoa_digits(dt->month, &date_str[pos], 2);
+    date_str[pos++] = '/';
+    pos += utoa_digits(dt->year, &date_str[pos], 4);
     date_str[pos] = '\0';
 }

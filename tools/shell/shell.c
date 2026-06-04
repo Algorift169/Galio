@@ -11,6 +11,7 @@
 #include "arch/x86/cpu.h"
 #include "vfs.h"
 #include "auth.h"
+#include "kernel_time.h"
 #include "new.h"
 #include "file.h"
 #include "write.h"
@@ -845,6 +846,23 @@ static void shell_execute_command(void) {
         kprintf("                                                                     \n");
         kprintf("                                                                     \n");
         SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "date") == 0) {
+        DateTime now = kernel_time_get_datetime();
+        SHELL_COLOR_OUT();
+        kprintf("%04u-%02u-%02u\n", now.year, now.month, now.day);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "time") == 0) {
+        DateTime now = kernel_time_get_datetime();
+        SHELL_COLOR_OUT();
+        kprintf("%02u:%02u:%02u\n", now.hour, now.minute, now.second);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "datetime") == 0) {
+        DateTime now = kernel_time_get_datetime();
+        SHELL_COLOR_OUT();
+        kprintf("%04u-%02u-%02u %02u:%02u:%02u\n",
+                now.year, now.month, now.day,
+                now.hour, now.minute, now.second);
+        SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "help", 4) == 0) {
         SHELL_COLOR_OUT();
         kprintf("\n____________________________________________________________________\n");
@@ -883,6 +901,9 @@ static void shell_execute_command(void) {
         kprintf(" | uname    - Show system name                                      |\n");
         kprintf(" |__________________________________________________________________|\n");
         kprintf(" | pwd      - Print current directory                               |\n");
+        kprintf(" | date     - Print current wall-clock date                         |\n");
+        kprintf(" | time     - Print current wall-clock time                         |\n");
+        kprintf(" | datetime - Print current wall-clock date and time                 |\n");
         kprintf(" |__________________________________________________________________|\n");
         kprintf(" | goto     - Change directory (usage: goto <path>)                 |\n");
         kprintf(" |__________________________________________________________________|\n");

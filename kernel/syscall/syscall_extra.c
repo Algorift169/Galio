@@ -3,6 +3,7 @@
 #include "process.h"
 #include "signals.h"
 #include "pit.h"
+#include "kernel_time.h"
 #include "vfs.h"
 #include "elf.h"
 #include "heap.h"
@@ -397,16 +398,15 @@ u32 syscall_getcwd(char *buffer, u32 size) {
 }
 
 u32 syscall_time(void) {
-    return pit_get_ticks() / 100;
+    return kernel_time_get_seconds();
 }
 
 i32 syscall_gettimeofday(struct timeval *tv, void *tz) {
     if (!tv || !validate_user_buffer(tv, sizeof(*tv), 1)) {
         return -1;
     }
-    u32 ticks = pit_get_ticks();
-    tv->tv_sec = ticks / 100;
-    tv->tv_usec = (ticks % 100) * 10000;
+    tv->tv_sec = kernel_time_get_seconds();
+    tv->tv_usec = kernel_time_get_microseconds();
     (void)tz;
     return 0;
 }

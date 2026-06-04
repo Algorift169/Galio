@@ -10,6 +10,38 @@
 #define VFS_MAX_PATH 512
 #define VFS_MAX_FILENAME 256
 
+static void build_boot_time_string(char *out, size_t size) {
+    const char *date = __DATE__; /* "Mmm dd yyyy" */
+    const char *time = __TIME__; /* "hh:mm:ss" */
+    char month_str[4] = {0};
+    int day = 0;
+    int year = 0;
+
+    memcpy(month_str, date, 3);
+    if (date[4] == ' ') {
+        day = date[5] - '0';
+    } else {
+        day = (date[4] - '0') * 10 + (date[5] - '0');
+    }
+    year = (date[7] - '0') * 1000 + (date[8] - '0') * 100 + (date[9] - '0') * 10 + (date[10] - '0');
+
+    int month = 1;
+    const char *months[] = {
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    };
+    for (int i = 0; i < 12; i++) {
+        if (strncmp(month_str, months[i], 3) == 0) {
+            month = i + 1;
+            break;
+        }
+    }
+
+    snprintf(out, size, "%04d-%02d-%02d %s", year, month, day, time);
+}
+
+static char boot_config_txt[256] = {0};
+
 typedef struct {
     char path[VFS_MAX_PATH];
     unsigned int size;
@@ -148,12 +180,8 @@ static file_spec_t files[] = {
 
     /* Boot & Config */
     {"/boot/config.txt",
-        "kernel=galio\n"
-        "version=0.1.0\n"
-        "arch=x86-32\n"
-        "bootloader=GRUB\n"
-        "boot_time=2026-05-09\n",
-        91, 0},
+        boot_config_txt,
+        0, 0},
 
     {"/boot/grub.cfg",
         "menuentry 'Galio Kernel' {\n"
@@ -524,6 +552,25 @@ int main(int argc, char *argv[]) {
     if (!fp) {
         perror("Cannot open output file");
         return 1;
+    }
+
+    /* Build a current initrd boot config with a runtime boot_time value. */
+    {
+        char boot_time_string[32];
+        build_boot_time_string(boot_time_string, sizeof(boot_time_string));
+        snprintf(boot_config_txt, sizeof(boot_config_txt),
+                 "kernel=galio\n"
+                 "version=0.1.0\n"
+                 "arch=x86-32\n"
+                 "bootloader=GRUB\n"
+                 "boot_time=%s\n",
+                 boot_time_string);
+        for (int i = 0; i < file_count; i++) {
+            if (strcmp(files[i].path, "/boot/config.txt") == 0) {
+                files[i].size = (unsigned int)strlen(boot_config_txt);
+                break;
+            }
+        }
     }
 
     /* If a developer wifi scan file exists, read and attach it to the

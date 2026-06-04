@@ -2,7 +2,8 @@
 #define PANEL_DATE_H
 
 #include "common.h"
+#include "kernel_time.h"
 
-void panel_format_date(u32 seconds, char *date_str);
+void panel_format_date(const DateTime *dt, char *date_str);
 
 #endif /* PANEL_DATE_H */

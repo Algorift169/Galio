@@ -4,6 +4,7 @@
 #include "irq.h"
 #include "kprintf.h"
 #include "display/display.h"
+#include "panel/panel.h"
 #include "serial.h"
 #include "pmem.h"
 #include "paging.h"
@@ -20,6 +21,8 @@
 #include "scheduler.h"
 #include "auth.h"
 #include "string.h"
+#include <string.h>
+#include "kernel_time.h"
 #include "pci.h"
 #include "net/net.h"
 #include "net/wifi.h"
@@ -179,6 +182,8 @@ void kmain(void *multiboot_ptr) {
 
     kprintf("Initializing VGA...\n");
     vga_init();
+    /* Initialize display and panel (draw header and register update callback) */
+    display_init();
 
     kprintf("Initializing GDT...\n");
     gdt_init();
@@ -241,6 +246,9 @@ void kmain(void *multiboot_ptr) {
 
     kprintf("Initializing timer (100 Hz)...\n");
     pit_init(100);
+    /* Initialize wall-clock from CMOS/RTC if available */
+    kernel_time_initialize();
+    panel_draw_header();
 
     kprintf("Initializing scheduler...\n");
     scheduler_init();
@@ -252,6 +260,41 @@ void kmain(void *multiboot_ptr) {
 
     extern u8 _binary_initrd_bin_start;
     vfs_init(&_binary_initrd_bin_start);
+    /* Attempt to read boot wall-clock time from /boot/config.txt and set it */
+    {
+        char cfg[128];
+        for (u32 i = 0; i < sizeof(cfg); i++) cfg[i] = 0;
+        u32 r = vfs_read("/boot/config.txt", cfg, sizeof(cfg) - 1);
+        if (r > 0) {
+            const char *key = "boot_time=";
+            char *p = NULL;
+            for (u32 i = 0; cfg[i]; i++) {
+                if (strncmp(&cfg[i], key, strlen(key)) == 0) {
+                    p = &cfg[i + strlen(key)];
+                    break;
+                }
+            }
+            if (p) {
+                char datebuf[32];
+                u32 di = 0;
+                while (*p && *p != '\n' && di + 1 < sizeof(datebuf)) {
+                    datebuf[di++] = *p++;
+                }
+                datebuf[di] = '\0';
+                u32 epoch = kernel_time_parse_yyyy_mm_dd_to_epoch(datebuf);
+                if (epoch) {
+                    DateTime current_time = kernel_time_get_datetime();
+                    if (current_time.year < 1970) {
+                        kernel_time_set_boot_seconds(epoch);
+                        kprintf("[TIME] Boot time set from config: %s (epoch=%u)\n", datebuf, epoch);
+                        panel_draw_header();
+                    } else {
+                        kprintf("[TIME] RTC valid; ignoring stale boot_time config: %s\n", datebuf);
+                    }
+                }
+            }
+        }
+    }
     vfs_ensure_home_dirs();
     vfs_debug();
 
