@@ -81,6 +81,8 @@ SRCS = kernel/kmain.c \
        ui/src/display/pk.c \
        ui/src/mouse/mouse.c \
        ui/src/panel/panel.c \
+       ui/src/panel/clock.c \
+       ui/src/panel/date.c \
        kernel/pci/pci.c \
        kernel/drivers/net/e1000.c \
        kernel/drivers/net/wifi.c \
