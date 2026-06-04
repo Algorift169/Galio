@@ -28,13 +28,10 @@ static u32 utoa_digits(u32 num, char *buf, u32 min_width) {
 void panel_format_time(u32 seconds, char *time_str) {
     u32 hours = (seconds / 3600) % 24;
     u32 minutes = (seconds / 60) % 60;
-    u32 secs = seconds % 60;
 
     u32 pos = 0;
     pos += utoa_digits(hours, &time_str[pos], 2);
     time_str[pos++] = ':';
     pos += utoa_digits(minutes, &time_str[pos], 2);
-    time_str[pos++] = ':';
-    pos += utoa_digits(secs, &time_str[pos], 2);
     time_str[pos] = '\0';
 }
