@@ -266,6 +266,7 @@ void kmain(void *multiboot_ptr) {
         for (u32 i = 0; i < sizeof(cfg); i++) cfg[i] = 0;
         u32 r = vfs_read("/boot/config.txt", cfg, sizeof(cfg) - 1);
         if (r > 0) {
+            kprintf("[TIME] Loaded /boot/config.txt (%u bytes)\n", r);
             const char *key = "boot_time=";
             char *p = NULL;
             for (u32 i = 0; cfg[i]; i++) {
@@ -293,6 +294,50 @@ void kmain(void *multiboot_ptr) {
                     }
                 }
             }
+
+            const char *tz_key = "timezone_offset_hours=";
+            char *tz = NULL;
+            for (u32 i = 0; cfg[i]; i++) {
+                if (strncmp(&cfg[i], tz_key, strlen(tz_key)) == 0) {
+                    tz = &cfg[i + strlen(tz_key)];
+                    break;
+                }
+            }
+            bool tz_found = false;
+            if (tz) {
+                tz_found = true;
+                int sign = 1;
+                if (*tz == '+') {
+                    tz++;
+                } else if (*tz == '-') {
+                    sign = -1;
+                    tz++;
+                }
+                int offset = 0;
+                if (!(*tz >= '0' && *tz <= '9')) {
+                    kprintf("[TIME] Invalid timezone_offset_hours value\n");
+                } else {
+                    while (*tz >= '0' && *tz <= '9') {
+                        offset = offset * 10 + (*tz - '0');
+                        tz++;
+                    }
+                    offset *= sign;
+                    if (offset < -24 || offset > 24) {
+                        kprintf("[TIME] timezone_offset_hours out of range: %d\n", offset);
+                    } else {
+                        s32 offset_seconds = (s32)offset * 3600;
+                        kernel_time_set_timezone_offset_seconds(offset_seconds);
+                        const char *sign_str = (offset < 0) ? "-" : "+";
+                        kprintf("[TIME] Timezone offset configured: %s%u hours\n", sign_str, (offset < 0) ? (u32)(-offset) : (u32)offset);
+                        panel_draw_header();
+                    }
+                }
+            }
+            if (!tz_found) {
+                kprintf("[TIME] No timezone_offset_hours config found; defaulting to +6 hours (Bangladesh)\n");
+            }
+        } else {
+            kprintf("[TIME] /boot/config.txt not found or empty; using default timezone offset +6 hours (Bangladesh)\n");
         }
     }
     vfs_ensure_home_dirs();

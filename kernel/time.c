@@ -6,8 +6,10 @@
 #include "arch/x86/cpu.h"
 
 static DateTime current_datetime = {0};
-static u32 current_epoch_seconds = 0;
+static u32 base_epoch_seconds = 0;
+static u32 wall_epoch_seconds = 0;
 static u32 uptime_ticks = 0;
+static s32 timezone_offset_seconds = 6 * 3600; /* default to Bangladesh UTC+6 */
 static bool time_initialized = false;
 
 static bool kernel_time_is_valid_datetime(const DateTime *dt) {
@@ -106,11 +108,25 @@ static DateTime kernel_time_datetime_from_epoch(u32 epoch) {
     return dt;
 }
 
+static void kernel_time_apply_offset(void) {
+    s64 adjusted = (s64)base_epoch_seconds + (s64)timezone_offset_seconds;
+    if (adjusted < 0) {
+        adjusted = 0;
+    }
+    wall_epoch_seconds = (u32)adjusted;
+    current_datetime = kernel_time_datetime_from_epoch(wall_epoch_seconds);
+}
+
 void kernel_time_update(void) {
     uptime_ticks++;
     if (uptime_ticks % 100u == 0u) {
-        current_epoch_seconds++;
-        kernel_time_advance_one_second(&current_datetime);
+        base_epoch_seconds++;
+        s64 adjusted = (s64)base_epoch_seconds + (s64)timezone_offset_seconds;
+        if (adjusted < 0) {
+            adjusted = 0;
+        }
+        wall_epoch_seconds = (u32)adjusted;
+        current_datetime = kernel_time_datetime_from_epoch(wall_epoch_seconds);
     }
 }
 
@@ -124,18 +140,35 @@ void kernel_time_initialize(void) {
     if (!kernel_time_is_valid_datetime(&rtc_time)) {
         kprintf("[TIME] RTC read failed or returned invalid values\n");
         current_datetime = (DateTime){0};
-        current_epoch_seconds = 0;
+        base_epoch_seconds = 0;
+        wall_epoch_seconds = 0;
     } else {
         current_datetime = rtc_time;
-        current_epoch_seconds = kernel_time_datetime_to_epoch(&rtc_time);
-        kprintf("[TIME] RTC initialized: %02u/%02u/%04u %02u:%02u:%02u (epoch=%u)\n",
-                rtc_time.day,
-                rtc_time.month,
+        base_epoch_seconds = kernel_time_datetime_to_epoch(&rtc_time);
+        wall_epoch_seconds = base_epoch_seconds;
+        kprintf("[TIME] RTC raw: %04u-%02u-%02u %02u:%02u:%02u\n",
                 rtc_time.year,
+                rtc_time.month,
+                rtc_time.day,
                 rtc_time.hour,
                 rtc_time.minute,
-                rtc_time.second,
-                current_epoch_seconds);
+                rtc_time.second);
+        kprintf("[TIME] RTC epoch: %u\n", base_epoch_seconds);
+        kprintf("[TIME] Timezone offset before apply: %d seconds\n", timezone_offset_seconds);
+        kernel_time_apply_offset();
+        kprintf("[TIME] Adjusted epoch: %u\n", wall_epoch_seconds);
+        DateTime adjusted = kernel_time_get_datetime();
+        kprintf("[TIME] Final wall-clock: %04u-%02u-%02u %02u:%02u:%02u\n",
+                adjusted.year,
+                adjusted.month,
+                adjusted.day,
+                adjusted.hour,
+                adjusted.minute,
+                adjusted.second);
+        if (timezone_offset_seconds != 0) {
+            kprintf("[TIME] Timezone offset applied: %d seconds\n",
+                    timezone_offset_seconds);
+        }
     }
     uptime_ticks = 0;
     time_initialized = true;
@@ -147,11 +180,11 @@ DateTime kernel_time_get_datetime(void) {
 }
 
 u32 kernel_time_get_seconds(void) {
-    return current_epoch_seconds;
+    return wall_epoch_seconds;
 }
 
 u32 kernel_time_get_epoch_seconds(void) {
-    return kernel_time_get_seconds();
+    return wall_epoch_seconds;
 }
 
 u32 kernel_time_get_uptime_seconds(void) {
@@ -167,14 +200,41 @@ void kernel_time_set_boot_seconds(u32 seconds) {
 }
 
 void kernel_time_set_epoch_seconds(u32 seconds) {
-    current_epoch_seconds = seconds;
-    current_datetime = kernel_time_datetime_from_epoch(seconds);
+    base_epoch_seconds = seconds;
+    s64 adjusted = (s64)base_epoch_seconds + (s64)timezone_offset_seconds;
+    if (adjusted < 0) {
+        adjusted = 0;
+    }
+    wall_epoch_seconds = (u32)adjusted;
+    current_datetime = kernel_time_datetime_from_epoch(wall_epoch_seconds);
 }
 
 void kernel_time_set_datetime(const DateTime *dt) {
     if (!dt || !kernel_time_is_valid_datetime(dt)) return;
-    current_datetime = *dt;
-    current_epoch_seconds = kernel_time_datetime_to_epoch(dt);
+    base_epoch_seconds = kernel_time_datetime_to_epoch(dt);
+    s64 adjusted = (s64)base_epoch_seconds + (s64)timezone_offset_seconds;
+    if (adjusted < 0) {
+        adjusted = 0;
+    }
+    wall_epoch_seconds = (u32)adjusted;
+    current_datetime = kernel_time_datetime_from_epoch(wall_epoch_seconds);
+}
+
+void kernel_time_set_timezone_offset_seconds(s32 offset_seconds) {
+    timezone_offset_seconds = offset_seconds;
+    kprintf("[TIME] timezone_offset_seconds set: %d\n", timezone_offset_seconds);
+    if (time_initialized) {
+        kernel_time_apply_offset();
+        kprintf("[TIME] timezone offset applied in setter; final epoch=%u\n", wall_epoch_seconds);
+        DateTime adjusted = kernel_time_get_datetime();
+        kprintf("[TIME] final displayed time after offset: %04u-%02u-%02u %02u:%02u:%02u\n",
+                adjusted.year,
+                adjusted.month,
+                adjusted.day,
+                adjusted.hour,
+                adjusted.minute,
+                adjusted.second);
+    }
 }
 
 void kernel_time_sync_with_rtc(void) {
@@ -183,12 +243,17 @@ void kernel_time_sync_with_rtc(void) {
         kprintf("[TIME] RTC synchronization failed: invalid RTC values\n");
         return;
     }
-    current_datetime = rtc_time;
-    current_epoch_seconds = kernel_time_datetime_to_epoch(&rtc_time);
-    kprintf("[TIME] Synchronized clock from RTC: %02u/%02u/%04u %02u:%02u:%02u\n",
-            rtc_time.day,
-            rtc_time.month,
+    base_epoch_seconds = kernel_time_datetime_to_epoch(&rtc_time);
+    s64 adjusted = (s64)base_epoch_seconds + (s64)timezone_offset_seconds;
+    if (adjusted < 0) {
+        adjusted = 0;
+    }
+    wall_epoch_seconds = (u32)adjusted;
+    current_datetime = kernel_time_datetime_from_epoch(wall_epoch_seconds);
+    kprintf("[TIME] Synchronized clock from RTC: %04u-%02u-%02u %02u:%02u:%02u\n",
             rtc_time.year,
+            rtc_time.month,
+            rtc_time.day,
             rtc_time.hour,
             rtc_time.minute,
             rtc_time.second);

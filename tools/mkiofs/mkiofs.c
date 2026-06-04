@@ -563,7 +563,8 @@ int main(int argc, char *argv[]) {
                  "version=0.1.0\n"
                  "arch=x86-32\n"
                  "bootloader=GRUB\n"
-                 "boot_time=%s\n",
+                 "boot_time=%s\n"
+                 "timezone_offset_hours=6\n",
                  boot_time_string);
         for (int i = 0; i < file_count; i++) {
             if (strcmp(files[i].path, "/boot/config.txt") == 0) {

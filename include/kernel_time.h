@@ -37,6 +37,7 @@ u32 kernel_time_get_microseconds(void);
 void kernel_time_set_boot_seconds(u32 seconds);
 void kernel_time_set_epoch_seconds(u32 seconds);
 void kernel_time_set_datetime(const DateTime *dt);
+void kernel_time_set_timezone_offset_seconds(s32 offset_seconds);
 
 /* Manual synchronization helpers. */
 void kernel_time_sync_with_rtc(void);
