@@ -11,6 +11,7 @@
 static volatile u16 *vga_buf = (u16*)0xB8000;
 static u32 cursor_x = 0;
 static u32 cursor_y = 0;
+static int hardware_cursor_enabled = 1;
 
 /* Current foreground+background attribute byte (default: white on black) */
 static u8 vga_current_color = VGA_COLOR_WHITE;
@@ -125,11 +126,30 @@ static void ensure_live_screen(void) {
 }
 
 void vga_update_cursor(void) {
+    if (!hardware_cursor_enabled) {
+        return;
+    }
+
     u16 pos = cursor_y * VGA_WIDTH + cursor_x;
     outb(0x3D4, 0x0F);
     outb(0x3D5, (u8)(pos & 0xFF));
     outb(0x3D4, 0x0E);
     outb(0x3D5, (u8)((pos >> 8) & 0xFF));
+}
+
+void vga_disable_hardware_cursor(void) {
+    hardware_cursor_enabled = 0;
+    outb(0x3D4, 0x0A);
+    outb(0x3D5, 0x20);
+}
+
+void vga_enable_hardware_cursor(void) {
+    hardware_cursor_enabled = 1;
+    outb(0x3D4, 0x0A);
+    outb(0x3D5, 0x00);
+    outb(0x3D4, 0x0B);
+    outb(0x3D5, 0x0F);
+    vga_update_cursor();
 }
 
 static void scroll(void) {
@@ -193,6 +213,20 @@ static void vga_putch_at(char c, u32 x, u32 y) {
     if (x < VGA_WIDTH && y < VGA_HEIGHT) {
         vga_buf[y * VGA_WIDTH + x] = (u16)(c | (vga_current_color << 8));
     }
+}
+
+unsigned short vga_read_cell(int x, int y) {
+    if (x < 0 || x >= VGA_WIDTH || y < 0 || y >= VGA_HEIGHT) {
+        return (u16)(' ' | (VGA_COLOR_WHITE << 8));
+    }
+    return vga_buf[y * VGA_WIDTH + x];
+}
+
+void vga_write_cell(int x, int y, char c, unsigned char color) {
+    if (x < 0 || x >= VGA_WIDTH || y < 0 || y >= VGA_HEIGHT) {
+        return;
+    }
+    vga_buf[y * VGA_WIDTH + x] = (u16)(c | (color << 8));
 }
 
 void vga_backspace(void) {

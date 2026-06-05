@@ -5,6 +5,7 @@
 #include "kprintf.h"
 #include "display/display.h"
 #include "panel/panel.h"
+#include "mouse/cursor.h"
 #include "serial.h"
 #include "pmem.h"
 #include "paging.h"
@@ -434,82 +435,26 @@ void kmain(void *multiboot_ptr) {
             __asm__ volatile("hlt");
         }
     } else if (selected_mode == 2) {
-        /* Enter cursor movement mode - move the VGA hardware cursor */
+        /* Enter cursor movement mode with mouse support */
         display_enter_userland_mode();
-        
-        /* Get current cursor position */
-        int cursor_x = 40, cursor_y = 12;
-        vga_move_hardware_cursor(cursor_x, cursor_y);
         
         int last_x = -1, last_y = -1;
         
         for (;;) {
-            u8 scancode = 0;
-            u8 is_pressed = 0;
-            u8 extended = 0;
-            
-            if (keyboard_read_event(&scancode, &is_pressed, &extended) && is_pressed) {
-                u8 raw = scancode & 0x7F;
-                
-                /* Handle arrow keys, whether extended or not */
-                if (extended || raw == 0x48 || raw == 0x50 || raw == 0x4B || raw == 0x4D) {
-                    switch (raw) {
-                        case 0x48:  /* Up arrow */
-                            cursor_y--;
-                            if (cursor_y < 0) cursor_y = 0;
-                            vga_move_hardware_cursor(cursor_x, cursor_y);
-                            break;
-                        case 0x50:  /* Down arrow */
-                            cursor_y++;
-                            if (cursor_y >= 25) cursor_y = 24;
-                            vga_move_hardware_cursor(cursor_x, cursor_y);
-                            break;
-                        case 0x4B:  /* Left arrow */
-                            cursor_x--;
-                            if (cursor_x < 0) cursor_x = 0;
-                            vga_move_hardware_cursor(cursor_x, cursor_y);
-                            break;
-                        case 0x4D:  /* Right arrow */
-                            cursor_x++;
-                            if (cursor_x >= 80) cursor_x = 79;
-                            vga_move_hardware_cursor(cursor_x, cursor_y);
-                            break;
-                    }
-                }
-                
-                /* ESC key to exit */
-                if (!extended && raw == 0x01) {
-                    //kprintf("\n\nESC pressed - exiting\n");
-                    break;
-                }
-            }
-            
-            /* Update position display every 50ms */
-            static int counter = 0;
-            counter++;
-            if (counter >= 50 && (cursor_x != last_x || cursor_y != last_y)) {
-                /* Save cursor position */
-                int old_x, old_y;
-                vga_get_hardware_cursor(&old_x, &old_y);
-                
-                /* Print at fixed position */
-                vga_move_hardware_cursor(25, 2);
-                //kprintf("(%d, %d)  ", cursor_x, cursor_y);
-                
-                /* Restore cursor */
-                vga_move_hardware_cursor(old_x, old_y);
-                
+            cursor_poll();
+            int cursor_x = 0, cursor_y = 0;
+            cursor_get_position(&cursor_x, &cursor_y);
+
+            if (cursor_x != last_x || cursor_y != last_y) {
                 last_x = cursor_x;
                 last_y = cursor_y;
-                counter = 0;
             }
-            
+
             for (volatile int i = 0; i < 100; i++);
             __asm__ volatile("hlt");
         }
         
         vga_clear();
-        //kprintf("Exited cursor movement mode. Halting.\n");
         for (;;) __asm__ volatile("hlt");
     }
 

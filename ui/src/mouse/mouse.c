@@ -22,6 +22,8 @@
 
 static int mouse_x = 40;
 static int mouse_y = 12;
+static int mouse_residual_x = 0;
+static int mouse_residual_y = 0;
 static u8 packet[4];
 static u8 packet_index = 0;
 static u8 packet_length = 3;
@@ -76,8 +78,17 @@ static u8 mouse_get_device_id(void) {
 }
 
 static void update_mouse_state(s8 dx, s8 dy, u8 buttons) {
-    mouse_x += dx;
-    mouse_y -= dy;  /* Invert Y axis for natural movement */
+    mouse_residual_x += dx;
+    mouse_residual_y += dy;
+
+    int scaled_dx = mouse_residual_x / 10;
+    int scaled_dy = mouse_residual_y / 10;
+
+    mouse_residual_x -= scaled_dx * 10;
+    mouse_residual_y -= scaled_dy * 10;
+
+    mouse_x += scaled_dx;
+    mouse_y -= scaled_dy;  /* Invert Y axis for natural movement */
     
     /* Clamp to screen bounds (80x25) */
     if (mouse_x < 0) mouse_x = 0;
@@ -87,7 +98,7 @@ static void update_mouse_state(s8 dx, s8 dy, u8 buttons) {
 }
 
 void mouse_init(void) {
-    kprintf("Initializing mouse...\n");
+    /* kprintf("Initializing mouse...\n"); */
     
     /* Enable auxiliary port */
     outb(PS2_COMMAND_PORT, PS2_CMD_ENABLE_AUX);
@@ -128,7 +139,7 @@ void mouse_init(void) {
         u8 id = mouse_get_device_id();
         if (id == 3) {
             packet_length = 4;
-            kprintf("Mouse: Scroll wheel detected (4-byte packets)\n");
+            /* kprintf("Mouse: Scroll wheel detected (4-byte packets)\n"); */
         }
     }
     
@@ -136,7 +147,7 @@ void mouse_init(void) {
     mouse_y = 12;
     packet_index = 0;
     
-    kprintf("Mouse initialized (packet length: %u)\n", packet_length);
+    /* kprintf("Mouse initialized (packet length: %u)\n", packet_length); */
 }
 
 void mouse_poll_position(void) {

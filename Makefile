@@ -82,6 +82,7 @@ SRCS = kernel/kmain.c \
        ui/src/display/display.c \
        ui/src/display/pk.c \
        ui/src/mouse/mouse.c \
+       ui/src/mouse/cursor.c \
        ui/src/panel/panel.c \
        ui/src/panel/clock.c \
        ui/src/panel/date.c \

@@ -13,11 +13,12 @@ void vga_update_cursor(void);
 void vga_backspace(void);
 void vga_newline(void);
 void vga_set_color(unsigned char color);
+void vga_write_cell(int x, int y, char c, unsigned char color);
+unsigned short vga_read_cell(int x, int y);
 
 void vga_move_hardware_cursor(int x, int y);
 void vga_get_hardware_cursor(int *x, int *y);
-
-void vga_move_hardware_cursor(int x, int y);
-void vga_get_hardware_cursor(int *x, int *y);
+void vga_disable_hardware_cursor(void);
+void vga_enable_hardware_cursor(void);
 
 #endif /* VGA_H */
