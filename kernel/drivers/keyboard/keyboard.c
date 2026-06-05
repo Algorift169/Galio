@@ -101,6 +101,12 @@ static const u8 scancode_table_shift[] = {
 static void keyboard_handler(registers_t *regs) {
     (void)regs;
     u8 scancode = inb(KEYBOARD_DATA);
+
+    /* Filter out mouse data: if bit 3 is set in first byte, it's likely a mouse packet */
+    if (scancode & 0x08) {
+        return;
+    }
+
     u8 is_pressed = !(scancode & 0x80);
 
     static u8 pending_extended = 0;
@@ -150,6 +156,12 @@ static u8 keyboard_poll_port_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
     }
 
     u8 data = inb(KEYBOARD_DATA);
+    
+    /* Filter out mouse data: if bit 3 is set, it's likely a mouse packet */
+    if (data & 0x08) {
+        return 0;
+    }
+
     u8 pressed = !(data & 0x80);
     if (data == 0xE0) {
         poll_pending_extended = 1;
