@@ -414,10 +414,10 @@ void kmain(void *multiboot_ptr) {
             u8 raw = scancode & 0x7F;
             if (raw == 0x02) {  /* '1' key */
                 selected_mode = 1;
-                kprintf("\nSelected: GSH Shell\n\n");
+                //kprintf("\nSelected: GSH Shell\n\n");
             } else if (raw == 0x03) {  /* '2' key */
                 selected_mode = 2;
-                kprintf("\nSelected: Cursor Movement Mode\n\n");
+                //kprintf("\nSelected: Cursor Movement Mode\n\n");
             }
         }
         
@@ -429,7 +429,7 @@ void kmain(void *multiboot_ptr) {
 
     if (selected_mode == 1) {
         /* Enter shell mode */
-        display_enter_userland_mode();
+        display_enter_shell_mode();
         shell_run();
         for (;;) {
             __asm__ volatile("hlt");

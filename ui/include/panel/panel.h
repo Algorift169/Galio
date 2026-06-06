@@ -17,4 +17,7 @@ void panel_draw_header(void);
 /* Update panel (called periodically) */
 void panel_update(void);
 
+/* Enable or disable panel rendering and periodic updates */
+void panel_set_enabled(u8 enabled);
+
 #endif /* PANEL_H */

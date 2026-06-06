@@ -57,6 +57,11 @@ void isr_handler(registers_t *regs) {
         return;
     }
 
+    /* Ignore NMI (INT 2) completely */
+    if (int_no == 2) {
+        return;
+    }
+
     if (int_no < 32) {
         vga_puts("\n=== CPU EXCEPTION ===\n");
         kprintf("Exception: %s (INT %d)\n", exception_names[int_no], int_no);

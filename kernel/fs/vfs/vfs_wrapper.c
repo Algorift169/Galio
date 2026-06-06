@@ -229,14 +229,14 @@ void vfs_listdir(const char *path) {
             if (ext2_read_block(inode.block[i], buffer) != 0) continue;
             
             ext2_dirent_t *dent = (ext2_dirent_t *)buffer;
-            while ((u8 *)dent < buffer + block_size) {
+            while ((u8 *)dent < buffer + blk_size) {
                 u8 *dent_ptr = (u8 *)dent;
-                u32 remaining = (u32)((buffer + block_size) - dent_ptr);
+                u32 remaining = (u32)((buffer + blk_size) - dent_ptr);
 
                 if (dent->rec_len == 0 || dent->rec_len > remaining) break;
 
                 if (dent->inode == 0 || dent->name_len == 0) {
-                    if (dent_ptr + dent->rec_len > buffer + block_size) break;
+                    if (dent_ptr + dent->rec_len > buffer + blk_size) break;
                     dent = (ext2_dirent_t *)(dent_ptr + dent->rec_len);
                     continue;
                 }
@@ -260,7 +260,7 @@ void vfs_listdir(const char *path) {
                         }
                     }
                 }
-                if (dent_ptr + dent->rec_len > buffer + block_size) break;
+                if (dent_ptr + dent->rec_len > buffer + blk_size) break;
                 dent = (ext2_dirent_t *)(dent_ptr + dent->rec_len);
             }
         }
@@ -926,22 +926,31 @@ static u32 vfs_remove_recursive_disk(const char *path) {
         return ext2_unlink(path) == 0 ? 1 : 0;
     }
 
-    u8 buffer[block_size];
+    u32 block_size_local = ext2_get_block_size();
+    u8 *buffer = kmalloc(block_size_local);
+    if (!buffer) return 0;
+    
+    u32 result = 1;
     for (u32 i = 0; i < 12 && inode.block[i]; i++) {
         if (ext2_read_block(inode.block[i], buffer) != 0) continue;
         ext2_dirent_t *dent = (ext2_dirent_t *)buffer;
-        while ((u8 *)dent < buffer + block_size) {
-            if (dent->rec_len == 0 || dent->rec_len > block_size) break;
+        while ((u8 *)dent < buffer + block_size_local) {
+            if (dent->rec_len == 0 || dent->rec_len > block_size_local) break;
             if (dent->inode && !vfs_disk_entry_is_dot(dent)) {
                 char child_path[VFS_MAX_PATH];
                 vfs_build_disk_child_path(path, dent, child_path);
-                if (!vfs_remove_recursive_disk(child_path)) return 0;
+                if (!vfs_remove_recursive_disk(child_path)) {
+                    result = 0;
+                    break;
+                }
             }
             dent = (ext2_dirent_t *)((u8 *)dent + dent->rec_len);
         }
+        if (!result) break;
     }
-
-    return ext2_rmdir(path) == 0 ? 1 : 0;
+    
+    kfree(buffer);
+    return result && (ext2_rmdir(path) == 0 ? 1 : 0);
 }
 
 static u32 vfs_remove_recursive_dentry(vfs_dentry_t *dentry) {
@@ -1042,15 +1051,20 @@ u32 vfs_remove_dir_contents(const char *path) {
         }
         u32 removed = 0;
         u8 success = 1;
-        u8 buffer[block_size];
+        u32 block_size_local = ext2_get_block_size();
+        u8 *buffer = kmalloc(block_size_local);
+        if (!buffer) {
+            kprintf("[VFS] ERROR: Out of memory reading directory\n");
+            return 0;
+        }
         for (u32 i = 0; i < 12 && inode.block[i]; i++) {
             if (ext2_read_block(inode.block[i], buffer) != 0) {
                 success = 0;
                 continue;
             }
             ext2_dirent_t *dent = (ext2_dirent_t *)buffer;
-            while ((u8 *)dent < buffer + block_size) {
-                if (dent->rec_len == 0 || dent->rec_len > block_size) break;
+            while ((u8 *)dent < buffer + block_size_local) {
+                if (dent->rec_len == 0 || dent->rec_len > block_size_local) break;
                 if (dent->inode && !vfs_disk_entry_is_dot(dent)) {
                     char child_path[VFS_MAX_PATH];
                     vfs_build_disk_child_path(path, dent, child_path);
@@ -1063,10 +1077,11 @@ u32 vfs_remove_dir_contents(const char *path) {
                 }
                 /* bounds safe advance */
                 u8 *dent_ptr = (u8 *)dent;
-                if (dent_ptr + dent->rec_len > buffer + block_size) break;
+                if (dent_ptr + dent->rec_len > buffer + block_size_local) break;
                 dent = (ext2_dirent_t *)(dent_ptr + dent->rec_len);
             }
         }
+        kfree(buffer);
         return success;
     }
     vfs_dentry_t *dentry = vfs_core_lookup(path, 0);

@@ -21,4 +21,9 @@ void vga_get_hardware_cursor(int *x, int *y);
 void vga_disable_hardware_cursor(void);
 void vga_enable_hardware_cursor(void);
 
+/* Button support functions */
+void vga_draw_button_text(int x, int y, const char *text, unsigned char color);
+void vga_draw_button_box(int x, int y, int width, int height, unsigned char color);
+void vga_draw_button(int x, int y, int width, int height, const char *text, unsigned char text_color, unsigned char bg_color);
+
 #endif /* VGA_H */

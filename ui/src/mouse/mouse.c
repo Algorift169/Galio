@@ -1,12 +1,12 @@
 #include "mouse/mouse.h"
 #include "arch/x86/cpu.h"
-#include "kprintf.h"
 
 #define PS2_DATA_PORT      0x60
 #define PS2_STATUS_PORT    0x64
 #define PS2_COMMAND_PORT   0x64
 
 #define PS2_CMD_ENABLE_AUX 0xA8
+#define PS2_CMD_DISABLE_AUX 0xA7
 #define PS2_CMD_WRITE_BYTE 0x60
 #define PS2_CMD_READ_BYTE  0x20
 #define PS2_CMD_SEND_TO_AUX 0xD4
@@ -27,6 +27,7 @@ static int mouse_residual_y = 0;
 static u8 packet[4];
 static u8 packet_index = 0;
 static u8 packet_length = 3;
+static u8 mouse_buttons = 0;
 
 static void ps2_wait_input(void) {
     while (inb(PS2_STATUS_PORT) & PS2_STATUS_INPUT_BUFFER) {
@@ -98,8 +99,6 @@ static void update_mouse_state(s8 dx, s8 dy, u8 buttons) {
 }
 
 void mouse_init(void) {
-    /* kprintf("Initializing mouse...\n"); */
-    
     /* Enable auxiliary port */
     outb(PS2_COMMAND_PORT, PS2_CMD_ENABLE_AUX);
     for (volatile int i = 0; i < 1000; i++);
@@ -139,15 +138,12 @@ void mouse_init(void) {
         u8 id = mouse_get_device_id();
         if (id == 3) {
             packet_length = 4;
-            /* kprintf("Mouse: Scroll wheel detected (4-byte packets)\n"); */
         }
     }
     
     mouse_x = 40;
     mouse_y = 12;
     packet_index = 0;
-    
-    /* kprintf("Mouse initialized (packet length: %u)\n", packet_length); */
 }
 
 void mouse_poll_position(void) {
@@ -185,10 +181,56 @@ void mouse_poll_position(void) {
     s8 dy = (s8)packet[2];
     u8 buttons = packet[0] & 0x07;
     
+    mouse_buttons = buttons;
     update_mouse_state(dx, dy, buttons);
+}
+
+u8 mouse_get_buttons(void) {
+    return mouse_buttons;
+}
+
+void mouse_flush_port(void) {
+    while (inb(PS2_STATUS_PORT) & PS2_STATUS_OUTPUT_BUFFER) {
+        (void)inb(PS2_DATA_PORT);
+    }
+}
+
+void mouse_disable(void) {
+    /* Disable mouse data reporting and mask the mouse IRQ. */
+    mouse_send_data(0xF5);  /* Disable data reporting */
+    mouse_buttons = 0;
+
+    ps2_wait_input();
+    outb(PS2_COMMAND_PORT, PS2_CMD_DISABLE_AUX);
+
+    ps2_wait_input();
+    outb(PS2_COMMAND_PORT, PS2_CMD_READ_BYTE);
+    ps2_wait_output();
+    u8 command_byte = inb(PS2_DATA_PORT);
+    command_byte &= ~0x02;  /* Disable auxiliary (mouse) IRQ */
+
+    ps2_wait_input();
+    outb(PS2_COMMAND_PORT, PS2_CMD_WRITE_BYTE);
+    ps2_wait_input();
+    outb(PS2_DATA_PORT, command_byte);
+
+    mouse_flush_port();
 }
 
 void mouse_get_position(int *x, int *y) {
     if (x) *x = mouse_x;
     if (y) *y = mouse_y;
+}
+
+s8 mouse_get_scroll_delta(void) {
+    static s8 last_scroll = 0;
+    s8 delta = 0;
+    
+    /* Only read scroll data if in 4-byte mode */
+    if (packet_length == 4) {
+        s8 current = (s8)packet[3];
+        delta = current - last_scroll;
+        last_scroll = current;
+    }
+    return delta;
 }

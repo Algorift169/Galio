@@ -21,6 +21,12 @@ void display_enter_userland_mode(void) {
     cursor_init();
 }
 
+void display_enter_shell_mode(void) {
+    panel_set_enabled(0);
+    vga_clear();
+    vga_disable_hardware_cursor();
+}
+
 void display_draw_cursor_at(int x, int y) {
     if (x < 0) x = 0;
     if (x >= VGA_WIDTH) x = VGA_WIDTH - 1;

@@ -5,13 +5,9 @@
 #include "lib/string.h"
 
 void net_dump_packet(const uint8_t *data, u32 len) {
-    for (u32 i = 0; i < len; i++) {
-        if (i % 16 == 0) kprintf("%04x: ", i);
-        kprintf("%02x ", data[i]);
-        if ((i + 1) % 8 == 0) kprintf(" ");
-        if ((i + 1) % 16 == 0) kprintf("\n");
-    }
-    if (len % 16) kprintf("\n");
+    /* Debug output disabled - prevents accidental data dumping */
+    (void)data;
+    (void)len;
 }
 
 void net_print_stats(void) {

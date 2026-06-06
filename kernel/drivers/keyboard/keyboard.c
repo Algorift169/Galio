@@ -102,11 +102,6 @@ static void keyboard_handler(registers_t *regs) {
     (void)regs;
     u8 scancode = inb(KEYBOARD_DATA);
 
-    /* Filter out mouse data: if bit 3 is set in first byte, it's likely a mouse packet */
-    if (scancode & 0x08) {
-        return;
-    }
-
     u8 is_pressed = !(scancode & 0x80);
 
     static u8 pending_extended = 0;
@@ -156,11 +151,6 @@ static u8 keyboard_poll_port_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
     }
 
     u8 data = inb(KEYBOARD_DATA);
-    
-    /* Filter out mouse data: if bit 3 is set, it's likely a mouse packet */
-    if (data & 0x08) {
-        return 0;
-    }
 
     u8 pressed = !(data & 0x80);
     if (data == 0xE0) {
@@ -176,6 +166,13 @@ static u8 keyboard_poll_port_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
     if (is_pressed) *is_pressed = pressed;
     if (extended) *extended = ext;
     return 1;
+}
+
+void keyboard_flush_queue(void) {
+    __asm__ volatile("cli");
+    queue_head = 0;
+    queue_tail = 0;
+    __asm__ volatile("sti");
 }
 
 u8 keyboard_read_event(u8 *scancode, u8 *is_pressed, u8 *extended) {

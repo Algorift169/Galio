@@ -1,5 +1,7 @@
 #include "mouse/cursor.h"
 #include "mouse/mouse.h"
+#include "buttons/gsh.h"
+#include "buttons/galio.h"
 #include "vga.h"
 #include "common.h"
 
@@ -12,6 +14,7 @@ static int cursor_x = 0;
 static int cursor_y = 3;
 static u16 saved_cell = 0;
 static int cursor_active = 0;
+static u8 last_mouse_buttons = 0;
 
 static void restore_previous_cell(void) {
     if (!cursor_active) {
@@ -59,9 +62,34 @@ void cursor_poll(void) {
     mouse_poll_position();
     int mx, my;
     mouse_get_position(&mx, &my);
+    u8 buttons = mouse_get_buttons();
+
     if (mx != cursor_x || my != cursor_y) {
         set_cursor_pos(mx, my);
     }
+
+    /* Handle hover state for the top-row buttons */
+    gsh_button_set_hovered(gsh_button_contains(mx, my));
+    galio_button_set_hovered(galio_button_contains(mx, my));
+
+    /* Left button click triggers the button action when pressed over the button */
+    if ((buttons & 0x01) && !(last_mouse_buttons & 0x01)) {
+        if (gsh_button_contains(mx, my)) {
+            gsh_button_click();
+        } else if (galio_button_contains(mx, my)) {
+            galio_button_click();
+        }
+    }
+
+    /* Handle scroll wheel */
+    s8 scroll = mouse_get_scroll_delta();
+    if (scroll > 0) {
+        vga_scrollback_up();
+    } else if (scroll < 0) {
+        vga_scrollback_down();
+    }
+
+    last_mouse_buttons = buttons;
 }
 
 void cursor_set_position(int x, int y) {
