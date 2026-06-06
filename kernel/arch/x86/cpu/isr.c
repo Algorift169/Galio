@@ -62,6 +62,11 @@ void isr_handler(registers_t *regs) {
         return;
     }
 
+    /* Ignore divide by zero (INT 0) completely */
+    if (int_no == 0) {
+        return;
+    }
+
     if (int_no < 32) {
         vga_puts("\n=== CPU EXCEPTION ===\n");
         kprintf("Exception: %s (INT %d)\n", exception_names[int_no], int_no);
