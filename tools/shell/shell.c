@@ -625,6 +625,9 @@ u8 shell_dir_command(const char *args, const char *current_dir, u8 replace, u8 p
 static void shell_execute_command(void) {
     if (input.len == 0) return;
 
+    if (input.len >= SHELL_BUFFER_SIZE) {
+        input.len = SHELL_BUFFER_SIZE - 1;
+    }
     input.buffer[input.len] = 0;
     shell_add_history(input.buffer);
     kprintf("\n");
@@ -1099,7 +1102,9 @@ static void shell_poll_keyboard(void) {
                     history.index--;
                     shell_clear_line();
                     strncpy(input.buffer, history.history[history.index], SHELL_BUFFER_SIZE - 1);
+                    input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
                     input.len = strlen(input.buffer);
+                    if (input.len >= SHELL_BUFFER_SIZE) input.len = SHELL_BUFFER_SIZE - 1;
                     shell_print_buffer();
                 }
                 return;
@@ -1108,7 +1113,9 @@ static void shell_poll_keyboard(void) {
                     history.index++;
                     shell_clear_line();
                     strncpy(input.buffer, history.history[history.index], SHELL_BUFFER_SIZE - 1);
+                    input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
                     input.len = strlen(input.buffer);
+                    if (input.len >= SHELL_BUFFER_SIZE) input.len = SHELL_BUFFER_SIZE - 1;
                     shell_print_buffer();
                 } else if (history.index == history.count - 1) {
                     history.index = history.count;
@@ -1126,7 +1133,13 @@ static void shell_poll_keyboard(void) {
             return;
         }
 
-        if (raw_scancode >= sizeof(ascii_table)) return;
+        if (raw_scancode >= sizeof(ascii_table)) {
+            return;
+        }
+
+        if (raw_scancode >= sizeof(ascii_table_shift)) {
+            return;
+        }
 
         u8 c = shift_pressed ? ascii_table_shift[raw_scancode] : ascii_table[raw_scancode];
         if (c == 0) return;
