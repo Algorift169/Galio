@@ -1075,6 +1075,13 @@ static void shell_poll_keyboard(void) {
     u8 status = inb(0x64);
 
     if (status & 0x01) {
+        /* Check if this is mouse data (bit 5 of status port indicates auxiliary device buffer) */
+        if (status & 0x20) {
+            /* Mouse data - discard it without processing */
+            inb(0x60);
+            return;
+        }
+
         u8 scancode = inb(0x60);
 
         if (scancode == 0xE0) {

@@ -135,6 +135,13 @@ static u8 read_char(void) {
     while (1) {
         u8 status = inb(0x64);
         if (status & 0x01) {
+            /* Check if this is mouse data (bit 5 of status port indicates auxiliary device buffer) */
+            if (status & 0x20) {
+                /* Mouse data - discard it without processing */
+                inb(0x60);
+                continue;
+            }
+
             u8 scancode = inb(0x60);
             u8 is_pressed = !(scancode & 0x80);
             u8 raw_scancode = scancode & 0x7F;

@@ -15,9 +15,13 @@ static u8 vga_current_color = VGA_COLOR_WHITE;
 void vga_update_cursor(void) {
     u16 pos = cursor_y * VGA_WIDTH + cursor_x;
     outb(0x3D4, 0x0F);
+    for (volatile int i = 0; i < 10; i++);  /* Small delay for VGA controller */
     outb(0x3D5, (u8)(pos & 0xFF));
+    for (volatile int i = 0; i < 10; i++);  /* Small delay for VGA controller */
     outb(0x3D4, 0x0E);
+    for (volatile int i = 0; i < 10; i++);  /* Small delay for VGA controller */
     outb(0x3D5, (u8)((pos >> 8) & 0xFF));
+    for (volatile int i = 0; i < 10; i++);  /* Small delay for VGA controller */
 }
 
 static void scroll(void) {
@@ -87,7 +91,6 @@ void vga_newline(void) {
     if (cursor_y >= VGA_HEIGHT) {
         scroll();
         cursor_y = VGA_HEIGHT - 1;
-        if (cursor_y >= VGA_HEIGHT) cursor_y = VGA_HEIGHT - 1;
     }
     vga_update_cursor();
 }
@@ -177,12 +180,16 @@ void vga_get_hardware_cursor(int *x, int *y) {
 
 void vga_disable_hardware_cursor(void) {
     outb(0x3D4, 0x0A);
+    for (volatile int i = 0; i < 10; i++);
     outb(0x3D5, 0x20);
+    for (volatile int i = 0; i < 10; i++);
 }
 
 void vga_enable_hardware_cursor(void) {
     outb(0x3D4, 0x0A);
+    for (volatile int i = 0; i < 10; i++);
     outb(0x3D5, 0x00);
+    for (volatile int i = 0; i < 10; i++);
 }
 
 void vga_draw_button_box(int x, int y, int width, int height, unsigned char color) {

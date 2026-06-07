@@ -141,6 +141,13 @@ static void editor_poll_keyboard(editor_buffer_t *buf, u8 *save_flag, u8 *exit_f
         return;
     }
 
+    /* Check if this is mouse data (bit 5 of status port indicates auxiliary device buffer) */
+    if (status & 0x20) {
+        /* Mouse data - discard it without processing */
+        inb(0x60);
+        return;
+    }
+
     u8 scancode = inb(0x60);
     u8 is_pressed = !(scancode & 0x80);
 
