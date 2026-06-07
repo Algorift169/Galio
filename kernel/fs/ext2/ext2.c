@@ -57,6 +57,7 @@ static i32 ext2_cache_store(u32 block_num, const void *buffer) {
 }
 
 static u32 ext2_block_to_lba(u32 block_num);
+static const char *ext2_canonicalize_path(const char *path, char *buffer, u32 buffer_size);
 
 static i32 ext2_cache_read_block(u32 block_num, void *buffer) {
     i32 slot = ext2_cache_find(block_num);
@@ -78,6 +79,80 @@ static i32 ext2_cache_write_block(u32 block_num, const void *buffer) {
     if (ata_write_sectors(sector, sectors, buffer) < 0) return -1;
     ext2_cache_store(block_num, buffer);
     return 0;
+}
+
+static const char *ext2_canonicalize_path(const char *path, char *buffer, u32 buffer_size) {
+    if (!path || !buffer || buffer_size == 0) return NULL;
+
+    const char *src = path;
+    if (path[0] == '.') {
+        if (path[1] == '\0') {
+            if (buffer_size < 2) return NULL;
+            buffer[0] = '/';
+            buffer[1] = '\0';
+            return buffer;
+        }
+        if (path[1] == '/') {
+            src = path + 2;
+        } else {
+            return NULL;
+        }
+    } else if (path[0] == '/') {
+        src = path + 1;
+    } else {
+        return NULL;
+    }
+
+    u32 pos = 0;
+    if (buffer_size < 2) return NULL;
+    buffer[pos++] = '/';
+
+    u32 i = 0;
+    while (src[i] != '\0') {
+        while (src[i] == '/') i++;
+        if (src[i] == '\0') break;
+        if (pos + 1 >= buffer_size) return NULL;
+
+        const char *start = src + i;
+        u32 comp_len = 0;
+        while (src[i] != '\0' && src[i] != '/') {
+            if (comp_len + 1 < buffer_size) {
+                comp_len++;
+            }
+            i++;
+        }
+
+        if (comp_len == 0) continue;
+
+        if (src[start - src] == '.' && comp_len == 1 && start[0] == '.') {
+            if (pos > 1) {
+                while (pos > 1 && buffer[pos - 1] != '/') pos--; // pop last component
+            }
+            continue;
+        }
+
+        if (src[start - src] == '.' && comp_len == 2 && start[0] == '.' && start[1] == '.') {
+            if (pos > 1) {
+                while (pos > 1 && buffer[pos - 1] != '/') pos--; // pop last component
+            }
+            continue;
+        }
+
+        if (buffer[pos - 1] != '/') {
+            if (pos + 1 >= buffer_size) return NULL;
+            buffer[pos++] = '/';
+        }
+        if (pos + comp_len >= buffer_size) return NULL;
+        memcpy(buffer + pos, start, comp_len);
+        pos += comp_len;
+    }
+
+    if (pos == 1) {
+        buffer[1] = '\0';
+    } else {
+        buffer[pos] = '\0';
+    }
+    return buffer;
 }
 
 /* Set the filesystem base LBA on disk (partition start) */
@@ -377,9 +452,11 @@ i32 ext2_read_data(u32 inode_num, void *buffer, u32 size, u32 offset) {
 }
 
 u32 ext2_find_inode(const char *path) {
-    if (!path || path[0] != '/') return 0;
+    char canonical[256];
+    const char *absolute = ext2_canonicalize_path(path, canonical, sizeof(canonical));
+    if (!absolute || absolute[0] != '/') return 0;
     u32 current_inode = EXT2_ROOT_INODE;
-    const char *p = path + 1;
+    const char *p = absolute + 1;
     while (*p) {
         while (*p == '/') p++;
         if (!*p) break;
@@ -387,6 +464,7 @@ u32 ext2_find_inode(const char *path) {
         while (*end && *end != '/') end++;
         char name[256];
         u32 len = end - p;
+        if (len >= sizeof(name)) return 0;
         memcpy(name, p, len);
         name[len] = 0;
         ext2_inode_t inode;
@@ -399,7 +477,7 @@ u32 ext2_find_inode(const char *path) {
             while ((u8 *)dent < buffer + block_size) {
                 /* Validate rec_len to prevent infinite loops */
                 if (dent->rec_len == 0 || dent->rec_len > block_size) break;
-                if (dent->inode && strncmp(dent->name, name, dent->name_len) == 0) {
+                if (dent->inode && dent->name_len == len && strncmp(dent->name, name, len) == 0) {
                     current_inode = dent->inode;
                     found = 1;
                     break;
@@ -618,16 +696,18 @@ i32 ext2_remove_directory_entry(u32 dir_inode, const char *name) {
 }
 
 static i32 ext2_parent_and_name(const char *path, char *parent, char *name) {
-    if (!path || path[0] != '/') return -1;
+    char canonical[256];
+    const char *absolute = ext2_canonicalize_path(path, canonical, sizeof(canonical));
+    if (!absolute || absolute[0] != '/') return -1;
     const char *last_slash = NULL;
-    for (const char *p = path; *p; p++) if (*p == '/') last_slash = p;
+    for (const char *p = absolute; *p; p++) if (*p == '/') last_slash = p;
     if (!last_slash) return -1;
-    if (last_slash == path) {
+    if (last_slash == absolute) {
         strcpy(parent, "/");
-        strcpy(name, path + 1);
+        strcpy(name, absolute + 1);
     } else {
-        u32 parent_len = last_slash - path;
-        memcpy(parent, path, parent_len);
+        u32 parent_len = last_slash - absolute;
+        memcpy(parent, absolute, parent_len);
         parent[parent_len] = 0;
         strcpy(name, last_slash + 1);
     }
@@ -635,8 +715,11 @@ static i32 ext2_parent_and_name(const char *path, char *parent, char *name) {
 }
 
 i32 ext2_unlink(const char *path) {
-    if (!path || strcmp(path, "/") == 0) return -1;
-    u32 inode_num = ext2_find_inode(path);
+    if (!path || strcmp(path, ".") == 0) return -1;
+    char canonical[256];
+    const char *absolute = ext2_canonicalize_path(path, canonical, sizeof(canonical));
+    if (!absolute || absolute[0] != '/') return -1;
+    u32 inode_num = ext2_find_inode(absolute);
     if (inode_num == 0) return -1;
     ext2_inode_t inode;
     if (ext2_read_inode(inode_num, &inode) != 0) return -1;
@@ -651,8 +734,11 @@ i32 ext2_unlink(const char *path) {
 }
 
 i32 ext2_rmdir(const char *path) {
-    if (!path || strcmp(path, "/") == 0) return -1;
-    u32 inode_num = ext2_find_inode(path);
+    if (!path || strcmp(path, ".") == 0) return -1;
+    char canonical[256];
+    const char *absolute = ext2_canonicalize_path(path, canonical, sizeof(canonical));
+    if (!absolute || absolute[0] != '/') return -1;
+    u32 inode_num = ext2_find_inode(absolute);
     if (inode_num == 0) return -1;
     ext2_inode_t inode;
     if (ext2_read_inode(inode_num, &inode) != 0) return -1;
@@ -796,17 +882,19 @@ write_inode_and_return:
 
 i32 ext2_create_file(const char *path, u32 mode) {
     (void)mode;
-    if (!path || path[0] != '/') return -1;
+    char canonical[256];
+    const char *absolute = ext2_canonicalize_path(path, canonical, sizeof(canonical));
+    if (!absolute || absolute[0] != '/') return -1;
     char parent_path[256];
     char filename[256];
-    const char *last_slash = path;
-    for (const char *p = path; *p; p++) if (*p == '/') last_slash = p;
-    if (last_slash == path) {
+    const char *last_slash = absolute;
+    for (const char *p = absolute; *p; p++) if (*p == '/') last_slash = p;
+    if (last_slash == absolute) {
         parent_path[0] = '/'; parent_path[1] = 0;
-        strcpy(filename, path + 1);
+        strcpy(filename, absolute + 1);
     } else {
-        u32 parent_len = last_slash - path;
-        memcpy(parent_path, path, parent_len);
+        u32 parent_len = last_slash - absolute;
+        memcpy(parent_path, absolute, parent_len);
         parent_path[parent_len] = 0;
         strcpy(filename, last_slash + 1);
     }
@@ -827,17 +915,19 @@ i32 ext2_create_file(const char *path, u32 mode) {
 
 i32 ext2_create_directory(const char *path, u32 mode) {
     (void)mode;
-    if (!path || path[0] != '/') return -1;
+    char canonical[256];
+    const char *absolute = ext2_canonicalize_path(path, canonical, sizeof(canonical));
+    if (!absolute || absolute[0] != '/') return -1;
     char parent_path[256];
     char dirname[256];
-    const char *last_slash = path;
-    for (const char *p = path; *p; p++) if (*p == '/') last_slash = p;
-    if (last_slash == path) {
+    const char *last_slash = absolute;
+    for (const char *p = absolute; *p; p++) if (*p == '/') last_slash = p;
+    if (last_slash == absolute) {
         parent_path[0] = '/'; parent_path[1] = 0;
-        strcpy(dirname, path + 1);
+        strcpy(dirname, absolute + 1);
     } else {
-        u32 parent_len = last_slash - path;
-        memcpy(parent_path, path, parent_len);
+        u32 parent_len = last_slash - absolute;
+        memcpy(parent_path, absolute, parent_len);
         parent_path[parent_len] = 0;
         strcpy(dirname, last_slash + 1);
     }

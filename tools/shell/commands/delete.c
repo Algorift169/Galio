@@ -1,6 +1,7 @@
 #include "delete.h"
 #include "kprintf.h"
 #include "string.h"
+#include "path.h"
 #include "vfs.h"
 
 static const char *skip_spaces(const char *str) {
@@ -15,45 +16,20 @@ static void build_fullpath(const char *args, const char *current_dir, char *out_
         return;
     }
 
-    if (*src == '/') {
-        strncpy(out_path, src, VFS_MAX_PATH - 1);
-        out_path[VFS_MAX_PATH - 1] = 0;
-        return;
-    }
-
-    strncpy(out_path, current_dir, VFS_MAX_PATH - 1);
-    out_path[VFS_MAX_PATH - 1] = 0;
-    int len = strlen(out_path);
-    if (len > 0 && out_path[len - 1] != '/') {
-        strncat(out_path, "/", VFS_MAX_PATH - len - 1);
-    }
-    strncat(out_path, src, VFS_MAX_PATH - strlen(out_path) - 1);
+    path_resolve(current_dir, src, out_path, VFS_MAX_PATH);
 }
 
 static void get_parent_dir(const char *path, char *out_parent) {
-    const char *last = path;
-    const char *scan = path;
-    while (*scan) {
-        if (*scan == '/') last = scan + 1;
-        scan++;
-    }
-
-    if (last == path) {
-        strncpy(out_parent, "/", VFS_MAX_PATH - 1);
-        out_parent[VFS_MAX_PATH - 1] = 0;
-        return;
-    }
-
-    u32 len = last - path;
-    if (len >= VFS_MAX_PATH) len = VFS_MAX_PATH - 1;
-    memcpy(out_parent, path, len);
-    out_parent[len] = 0;
+    path_parent(path, out_parent, VFS_MAX_PATH);
 }
 
 static u8 is_root_child_path(const char *path) {
+    char normalized[VFS_MAX_PATH];
+    path_normalize(path, normalized, VFS_MAX_PATH);
+    if (strcmp(normalized, ".") == 0) return 0;
     char parent[VFS_MAX_PATH];
-    get_parent_dir(path, parent);
-    return strcmp(parent, "/") == 0;
+    path_parent(normalized, parent, VFS_MAX_PATH);
+    return strcmp(parent, ".") == 0;
 }
 
 static u8 delete_single_path(const char *fullpath, u8 privileged) {
@@ -67,7 +43,7 @@ static u8 delete_single_path(const char *fullpath, u8 privileged) {
         return 0;
     }
 
-    if (strcmp(fullpath, "/") == 0) {
+    if (strcmp(fullpath, ".") == 0) {
         kprintf("[DELETE] Cannot delete root directory\n");
         return 0;
     }

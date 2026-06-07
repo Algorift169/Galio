@@ -184,7 +184,7 @@ static vfs_dentry_t *vfs_create_dentry(vfs_dentry_t *parent, const char *name, v
 }
 static void vfs_build_path_from_dentry(vfs_dentry_t *dentry, char *buffer) {
     if (!dentry || !buffer) return;
-    if (dentry == vfs_root_dentry) { buffer[0] = '/'; buffer[1] = 0; return; }
+    if (dentry == vfs_root_dentry) { buffer[0] = '.'; buffer[1] = 0; return; }
     char temp[VFS_MAX_PATH]; temp[0] = 0;
     vfs_dentry_t *walker = dentry;
     while (walker && walker != vfs_root_dentry) {
@@ -196,41 +196,86 @@ static void vfs_build_path_from_dentry(vfs_dentry_t *dentry, char *buffer) {
         strncpy(temp, next, VFS_MAX_PATH-1); temp[VFS_MAX_PATH-1] = 0;
         walker = walker->parent;
     }
-    if (temp[0] == 0) { buffer[0] = '/'; buffer[1] = 0; }
+    if (temp[0] == 0) { buffer[0] = '.'; buffer[1] = 0; }
     else { strncpy(buffer, temp, VFS_MAX_PATH-1); buffer[VFS_MAX_PATH-1] = 0; }
 }
 static char *vfs_normalize(const char *path, char *buffer) {
     if (!path || !buffer) return NULL;
     u32 di = 0, i = 0;
+
+    if (path[0] == '/') {
+        buffer[di++] = '.';
+        if (path[1] == '\0') {
+            buffer[di] = 0;
+            return buffer;
+        }
+        buffer[di++] = '/';
+        i = 1;
+    } else if (path[0] == '.' && (path[1] == '/' || path[1] == '\0')) {
+        buffer[di++] = '.';
+        if (path[1] == '\0') {
+            buffer[di] = 0;
+            return buffer;
+        }
+        buffer[di++] = '/';
+        i = 2;
+    }
+
     while (path[i] && di+1 < VFS_MAX_PATH) {
         if (path[i] == '/' && i>0 && path[i-1]=='/') { i++; continue; }
         buffer[di++] = path[i++];
     }
     buffer[di] = 0;
     if (di>1 && buffer[di-1]=='/') buffer[--di] = 0;
-    if (di==0) { buffer[0]='/'; buffer[1]=0; }
+    if (di==0) { buffer[0]='.'; buffer[1]=0; }
     return buffer;
 }
 static void vfs_split_parent(const char *path, char *parent, char *name) {
     char normalized[VFS_MAX_PATH];
     vfs_normalize(path, normalized);
-    if (strcmp(normalized,"/")==0) { strcpy(parent,"/"); name[0]=0; return; }
-    const char *slash = NULL;
-    for (const char *p = normalized; *p; p++) if (*p=='/') slash = p;
-    if (!slash || slash==normalized) {
-        strcpy(parent,"/"); strcpy(name, normalized+1); return;
+    if (strcmp(normalized, ".") == 0) {
+        strcpy(parent, ".");
+        name[0] = 0;
+        return;
     }
+
+    const char *slash = NULL;
+    for (const char *p = normalized; *p; p++) {
+        if (*p == '/') slash = p;
+    }
+
+    if (!slash) {
+        strcpy(parent, ".");
+        strcpy(name, normalized);
+        return;
+    }
+
+    if (slash == normalized) {
+        strcpy(parent, ".");
+        strcpy(name, normalized + 1);
+        return;
+    }
+
+    if (slash == normalized + 1 && normalized[0] == '.' && normalized[1] == '/') {
+        strcpy(parent, ".");
+        strcpy(name, normalized + 2);
+        return;
+    }
+
     u32 parent_len = slash - normalized;
-    if (parent_len >= VFS_MAX_PATH) parent_len = VFS_MAX_PATH-1;
-    memcpy(parent, normalized, parent_len); parent[parent_len]=0;
-    strcpy(name, slash+1);
+    if (parent_len >= VFS_MAX_PATH) parent_len = VFS_MAX_PATH - 1;
+    memcpy(parent, normalized, parent_len);
+    parent[parent_len] = 0;
+    strcpy(name, slash + 1);
 }
 static vfs_dentry_t *vfs_lookup_internal(const char *path) {
     char normalized[VFS_MAX_PATH];
     vfs_normalize(path, normalized);
-    if (strcmp(normalized,"/")==0) return vfs_root_dentry;
+    if (strcmp(normalized,".")==0) return vfs_root_dentry;
     vfs_dentry_t *current = vfs_root_dentry;
-    const char *cursor = normalized + 1;
+    const char *cursor = normalized;
+    if (normalized[0] == '.' && normalized[1] == '/') cursor = normalized + 2;
+    else if (normalized[0] == '/') cursor = normalized + 1;
     u32 depth = 0;
     while (*cursor && depth++ < 256) {
         const char *next = cursor;
@@ -296,7 +341,7 @@ static vfs_dentry_t *vfs_make_directory_internal(const char *path, u8 force) {
     if (!path) return NULL;
     char normalized[VFS_MAX_PATH];
     vfs_normalize(path, normalized);
-    if (strcmp(normalized,"/")==0) return vfs_root_dentry;
+    if (strcmp(normalized,".")==0) return vfs_root_dentry;
     char parent_path[VFS_MAX_PATH], name[VFS_MAX_FILENAME];
     vfs_split_parent(normalized, parent_path, name);
     if (vfs_disk_mode) {
@@ -476,7 +521,7 @@ static void vfs_build_from_initrd(vfs_header_t *header) {
         if (entry->is_dir) { vfs_make_directory_internal(entry->path, 1); continue; }
         char parent[VFS_MAX_PATH], name[VFS_MAX_FILENAME];
         vfs_split_parent(entry->path, parent, name);
-        if (parent[0] != 0 && strcmp(parent,"/")!=0) vfs_make_directory_internal(parent, 1);
+        if (parent[0] != 0 && strcmp(parent,".")!=0) vfs_make_directory_internal(parent, 1);
         u32 size = entry->size;
         u8 *source = (u8 *)header + entry->offset;
         vfs_make_file_internal(entry->path, 1, source, size);
@@ -491,13 +536,13 @@ void vfs_core_init(void *initrd_addr) {
     if (!vfs_root_dentry) { kprintf("[VFS] ERROR: Root directory initialization failed\n"); return; }
     vfs_build_from_initrd(header);
     if (!vfs_disk_mode) {
-        vfs_core_create_dir("/dev", 1);
-        vfs_core_create_device("/dev/null", 0644, 1);
-        vfs_core_create_device("/dev/zero", 0644, 2);
-        vfs_core_create_device("/dev/random", 0644, 3);
-        vfs_core_create_dir("/proc", 1);
-        vfs_core_create_dir("/sys", 1);
-        vfs_core_create_dir("/tmp", 1);
+        vfs_core_create_dir("./dev", 1);
+        vfs_core_create_device("./dev/null", 0644, 1);
+        vfs_core_create_device("./dev/zero", 0644, 2);
+        vfs_core_create_device("./dev/random", 0644, 3);
+        vfs_core_create_dir("./proc", 1);
+        vfs_core_create_dir("./sys", 1);
+        vfs_core_create_dir("./tmp", 1);
     }
     kprintf("[VFS] Core filesystem initialized in RAM\n");
 }
@@ -656,6 +701,31 @@ u32 vfs_core_create_dir(const char *path, u8 force) {
             ext2_inode_t inode;
             if (ext2_read_inode(existing_inode, &inode) != 0) return 0;
             return (inode.mode & 0x4000) ? 1 : 0;
+        }
+        /* Ensure parent directories exist when forcing creation on disk */
+        if (force) {
+            /* compute parent path (strip trailing slashes first) */
+            char parent[256];
+            if (!path) return 0;
+            u32 plen = strlen(path);
+            while (plen > 1 && path[plen - 1] == '/') plen--;
+            int pos = (int)plen - 1;
+            while (pos > 0 && path[pos] != '/') pos--;
+            if (pos <= 0) {
+                /* parent is root or current; nothing to do */
+            } else {
+                u32 copy_len = (u32)pos;
+                if (copy_len >= sizeof(parent)) copy_len = sizeof(parent) - 1;
+                memcpy(parent, path, copy_len);
+                parent[copy_len] = '\0';
+                if (ext2_find_inode(parent) == 0) {
+                    /* recursively create parent */
+                    if (!vfs_core_create_dir(parent, 1)) {
+                        kprintf("[VFS] Failed to create parent dir: %s\n", parent);
+                        return 0;
+                    }
+                }
+            }
         }
         i32 inode_num = ext2_create_directory(path, 0x41ED);
         if (inode_num < 0) {

@@ -6,8 +6,8 @@
 void vfs_test(void) {
     kprintf("[KTEST] vfs_test\n");
 
-    const char *dir_path = "/ktest";
-    const char *file_path = "/ktest/hello.txt";
+    const char *dir_path = "./ktest";
+    const char *file_path = "./ktest/hello.txt";
     const char message[] = "kernel VFS test";
     char buffer[32];
 

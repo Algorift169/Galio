@@ -44,22 +44,22 @@ user_session_t *session_current(void) {
 }
 
 
-static const char *auth_user_path = "/root/usr/usr.txt";
-static const char *auth_pass_path = "/root/usr/pass.txt";
-static const char *auth_directory_path = "/root/usr";
+static const char *auth_user_path = "./root/usr/usr.txt";
+static const char *auth_pass_path = "./root/usr/pass.txt";
+static const char *auth_directory_path = "./root/usr";
 
 static i32 auth_ensure_home_directory(void) {
     if (!vfs_core_is_disk_mode()) return -1;
 
-    if (!vfs_mkdir("/root", 1)) return -1;
-    if (!vfs_mkdir("/root/home", 1)) return -1;
+    if (!vfs_mkdir("./root", 1)) return -1;
+    if (!vfs_mkdir("./root/home", 1)) return -1;
 
     if (kernel_auth.username[0] == 0) return 0;
 
     char home_path[64];
-    u32 base_len = strlen("/root/home/");
+    u32 base_len = strlen("./root/home/");
     if (base_len + strlen(kernel_auth.username) >= sizeof(home_path)) return -1;
-    strncpy(home_path, "/root/home/", sizeof(home_path) - 1);
+    strncpy(home_path, "./root/home/", sizeof(home_path) - 1);
     home_path[sizeof(home_path) - 1] = 0;
     strncat(home_path, kernel_auth.username, sizeof(home_path) - base_len - 1);
 
@@ -70,9 +70,9 @@ static i32 auth_ensure_home_directory(void) {
 static i32 auth_save_to_disk(void) {
     if (!vfs_core_is_disk_mode()) return -1;
 
-    if (!vfs_mkdir("/root", 1)) return -1;
+    if (!vfs_mkdir("./root", 1)) return -1;
     if (!vfs_mkdir(auth_directory_path, 1)) return -1;
-    if (!vfs_mkdir("/root/home", 1)) return -1;
+    if (!vfs_mkdir("./root/home", 1)) return -1;
 
     if (!vfs_create(auth_user_path, 1)) return -1;
     if (!vfs_create(auth_pass_path, 1)) return -1;

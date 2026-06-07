@@ -1,6 +1,7 @@
 #include "file.h"
 #include "kprintf.h"
 #include "string.h"
+#include "path.h"
 #include "vfs.h"
 
 static const char *skip_spaces(const char *str) {
@@ -48,24 +49,12 @@ static void ensure_extension_on_path(char *path, u32 max_len) {
 }
 
 static void combine_path(const char *current_dir, const char *relative, char *out_path) {
-    if (relative[0] == '/') {
-        strncpy(out_path, relative, VFS_MAX_PATH - 1);
-        out_path[VFS_MAX_PATH - 1] = 0;
-        return;
-    }
-
-    strncpy(out_path, current_dir, VFS_MAX_PATH - 1);
-    out_path[VFS_MAX_PATH - 1] = 0;
-    if (strlen(out_path) > 0 && out_path[strlen(out_path) - 1] != '/') {
-        safe_strcat(out_path, "/", VFS_MAX_PATH);
-    }
-    safe_strcat(out_path, relative, VFS_MAX_PATH);
+    path_resolve(current_dir, relative, out_path, VFS_MAX_PATH);
 }
 
 static void build_target_path(const char *dir, const char *filename, char *out_path) {
-    u32 len = strlen(dir);
-    if (len == 0) {
-        strncpy(out_path, "/", VFS_MAX_PATH - 1);
+    if (!dir || *dir == '\0') {
+        strncpy(out_path, ".", VFS_MAX_PATH - 1);
         out_path[VFS_MAX_PATH - 1] = 0;
     } else {
         strncpy(out_path, dir, VFS_MAX_PATH - 1);
@@ -79,30 +68,16 @@ static void build_target_path(const char *dir, const char *filename, char *out_p
 }
 
 static void get_parent_dir(const char *path, char *out_parent) {
-    const char *last = path;
-    const char *scan = path;
-
-    while (*scan) {
-        if (*scan == '/') last = scan + 1;
-        scan++;
-    }
-
-    if (last == path) {
-        strncpy(out_parent, "/", VFS_MAX_PATH - 1);
-        out_parent[VFS_MAX_PATH - 1] = 0;
-        return;
-    }
-
-    u32 len = last - path;
-    if (len >= VFS_MAX_PATH) len = VFS_MAX_PATH - 1;
-    memcpy(out_parent, path, len);
-    out_parent[len] = 0;
+    path_parent(path, out_parent, VFS_MAX_PATH);
 }
 
 static u8 is_root_child_path(const char *path) {
+    char normalized[VFS_MAX_PATH];
+    path_normalize(path, normalized, VFS_MAX_PATH);
+    if (strcmp(normalized, ".") == 0) return 0;
     char parent[VFS_MAX_PATH];
-    get_parent_dir(path, parent);
-    return strcmp(parent, "/") == 0;
+    path_parent(normalized, parent, VFS_MAX_PATH);
+    return strcmp(parent, ".") == 0;
 }
 
 static u8 contains_slash(const char *path) {
@@ -141,7 +116,7 @@ static u8 build_path_and_filename(const char *args, const char *current_dir, cha
     filename[sizeof(filename) - 1] = 0;
     ensure_extension(filename, sizeof(filename));
 
-    combine_path(current_dir, filename, out_fullpath);
+    path_resolve(current_dir, filename, out_fullpath, VFS_MAX_PATH);
     return 1;
 }
 

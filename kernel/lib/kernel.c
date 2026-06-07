@@ -21,6 +21,21 @@ void *memcpy(void *dest, const void *src, u32 n) {
     return dest;
 }
 
+void *memmove(void *dest, const void *src, u32 n) {
+    u8 *d = (u8*)dest;
+    const u8 *s = (const u8*)src;
+    if (d == s || n == 0) return dest;
+    if (d < s) {
+        while (n--) *d++ = *s++;
+    } else {
+        /* copy backwards to handle overlap */
+        d += n;
+        s += n;
+        while (n--) *--d = *--s;
+    }
+    return dest;
+}
+
 void stack_trace(void) {
     u32 *ebp;
     __asm__ volatile("mov %%ebp, %0" : "=r"(ebp));

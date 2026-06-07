@@ -10,6 +10,8 @@
 #include "arch/x86/cpu.h"
 #include "vfs.h"
 #include "auth.h"
+#include "path.h"
+#include "display/display.h"
 #include "new.h"
 #include "file.h"
 #include "write.h"
@@ -50,8 +52,8 @@ static int shell_atoi(const char *s) {
 #define HISTORY_BUFFER_SIZE 256
 #define DIR_HISTORY_SIZE 32
 #define DIR_PATH_SIZE 256
-#define ROOT_DIR "/"
-#define HOME_DIR "/home"
+#define ROOT_DIR "."
+#define HOME_DIR "./usr/home"
 
 /*
  * Shell color helpers — VGA attribute bytes (bg nibble | fg nibble):
@@ -104,13 +106,18 @@ static char current_dir[256] = HOME_DIR;
 static const char shell_hostname[] = "galio";
 static u8 shell_should_exit = 0;
 
+static const char *shell_display_dir(const char *path, char *out, u32 out_size);
+static u8 shell_is_direct_root_child(const char *path);
+
 static void shell_print_prompt(void) {
     const char *host = shell_hostname;
+    char display_dir[DIR_PATH_SIZE];
+    const char *dir = shell_display_dir(current_dir, display_dir, sizeof(display_dir));
     if (session_current() && session_current()->registered && session_current()->username[0]) {
         host = session_current()->username;
     }
     SHELL_COLOR_CMD();
-    kprintf( "{ %s @ galio }-< %s > ", host, current_dir);
+    kprintf( "{ %s @ galio }-< %s > ", host, dir);
     SHELL_COLOR_RESET();
 }
 
@@ -146,33 +153,74 @@ static const char *shell_basename(const char *path) {
     return base;
 }
 
+static const char *shell_display_dir(const char *path, char *out, u32 out_size) {
+    if (!path || !out || out_size == 0) return ".";
+    if (strcmp(path, ROOT_DIR) == 0) {
+        out[0] = '.';
+        out[1] = 0;
+        return out;
+    }
+    if (strcmp(path, HOME_DIR) == 0) {
+        strncpy(out, "/home", out_size - 1);
+        out[out_size - 1] = 0;
+        return out;
+    }
+    u32 home_len = strlen(HOME_DIR);
+    if (strlen(path) > home_len && strncmp(path, HOME_DIR, home_len) == 0 && path[home_len] == '/') {
+        if (out_size > 1) {
+            strncpy(out, "/home", out_size - 1);
+            out[out_size - 1] = 0;
+            strncat(out, path + home_len, out_size - strlen(out) - 1);
+        }
+        return out;
+    }
+    if (shell_is_direct_root_child(path)) {
+        strncpy(out, path, out_size - 1);
+        out[out_size - 1] = 0;
+        return out;
+    }
+    if (strncmp(path, "./", 2) == 0) {
+        strncpy(out, path + 2, out_size - 1);
+        out[out_size - 1] = 0;
+        return out;
+    }
+    strncpy(out, path, out_size - 1);
+    out[out_size - 1] = 0;
+    return out;
+}
+
+static void shell_resolve_path(const char *cwd, const char *path, char *out) {
+    if (!out) return;
+    if (path_resolve(cwd, path, out, DIR_PATH_SIZE) == NULL) {
+        out[0] = 0;
+    }
+}
+
 static void shell_parent_dir(const char *path, char *out_parent) {
-    const char *last = path;
-    const char *scan = path;
-    while (*scan) {
-        if (*scan == '/') last = scan + 1;
-        scan++;
-    }
-    if (last == path) {
-        strncpy(out_parent, "/", DIR_PATH_SIZE - 1);
-        out_parent[DIR_PATH_SIZE - 1] = 0;
-        return;
-    }
-    u32 len = last - path;
-    if (len >= DIR_PATH_SIZE) len = DIR_PATH_SIZE - 1;
-    memcpy(out_parent, path, len);
-    out_parent[len] = 0;
+    if (!path || !out_parent) return;
+    path_parent(path, out_parent, DIR_PATH_SIZE);
+}
+
+static u8 shell_is_direct_root_child(const char *path) {
+    if (!path || *path == 0) return 0;
+    char normalized[DIR_PATH_SIZE];
+    if (!path_normalize(path, normalized, sizeof(normalized))) return 0;
+    if (strcmp(normalized, ".") == 0) return 0;
+
+    char parent[DIR_PATH_SIZE];
+    path_parent(normalized, parent, sizeof(parent));
+    return strcmp(parent, ".") == 0;
 }
 
 static u8 shell_find_ancestor_dir(const char *path, const char *target, char *out_match) {
     if (!path || !target || !*target) return 0;
-    if (strcmp(target, "/") == 0) return 0;
+    if (strcmp(target, ".") == 0) return 0;
 
     char candidate[DIR_PATH_SIZE];
     strncpy(candidate, path, DIR_PATH_SIZE - 1);
     candidate[DIR_PATH_SIZE - 1] = 0;
 
-    while (strcmp(candidate, "/") != 0) {
+    while (strcmp(candidate, ".") != 0) {
         char base[DIR_PATH_SIZE];
         const char *bn = shell_basename(candidate);
         strncpy(base, bn, DIR_PATH_SIZE - 1);
@@ -189,13 +237,16 @@ static u8 shell_find_ancestor_dir(const char *path, const char *target, char *ou
 }
 
 static u8 shell_ensure_directories(const char *path) {
-    if (!path || strcmp(path, "/") == 0) return 1;
+    if (!path) return 1;
 
-    char current[DIR_PATH_SIZE];
-    current[0] = '/';
-    current[1] = 0;
-    const char *cursor = path;
-    if (*cursor == '/') cursor++;
+    char normalized[DIR_PATH_SIZE];
+    if (!path_normalize(path, normalized, sizeof(normalized))) return 0;
+    if (strcmp(normalized, ".") == 0) return 1;
+
+    char current[DIR_PATH_SIZE] = ".";
+    const char *cursor = normalized;
+    if (normalized[0] == '.' && normalized[1] == '/') cursor += 2;
+    else if (normalized[0] == '/') cursor += 1;
 
     while (*cursor) {
         char segment[DIR_PATH_SIZE];
@@ -207,15 +258,19 @@ static u8 shell_ensure_directories(const char *path) {
         segment[len] = 0;
 
         char next[DIR_PATH_SIZE];
-        if (strcmp(current, "/") == 0) {
-            strncpy(next, "/", DIR_PATH_SIZE - 1);
-            next[DIR_PATH_SIZE - 1] = 0;
-            strncat(next, segment, DIR_PATH_SIZE - strlen(next) - 1);
+        next[0] = 0;
+        if (strcmp(current, ".") == 0) {
+            strncpy(next, ".", sizeof(next) - 1);
+            next[sizeof(next) - 1] = 0;
+            if (*segment) {
+                strncat(next, "/", sizeof(next) - strlen(next) - 1);
+                strncat(next, segment, sizeof(next) - strlen(next) - 1);
+            }
         } else {
-            strncpy(next, current, DIR_PATH_SIZE - 1);
-            next[DIR_PATH_SIZE - 1] = 0;
-            strncat(next, "/", DIR_PATH_SIZE - strlen(next) - 1);
-            strncat(next, segment, DIR_PATH_SIZE - strlen(next) - 1);
+            strncpy(next, current, sizeof(next) - 1);
+            next[sizeof(next) - 1] = 0;
+            strncat(next, "/", sizeof(next) - strlen(next) - 1);
+            strncat(next, segment, sizeof(next) - strlen(next) - 1);
         }
 
         if (!vfs_is_dir(next)) {
@@ -235,26 +290,14 @@ static u8 shell_ensure_directories(const char *path) {
 }
 
 static u8 is_root_child_path(const char *path) {
-    char parent[256];
-    const char *last = path;
-    const char *scan = path;
+    if (!path || *path == 0) return 0;
+    char normalized[DIR_PATH_SIZE];
+    if (!path_normalize(path, normalized, sizeof(normalized))) return 0;
+    if (strcmp(normalized, ".") == 0) return 0;
 
-    while (*scan) {
-        if (*scan == '/') last = scan + 1;
-        scan++;
-    }
-
-    if (last == path) {
-        return 0;
-    }
-
-    if (last - path >= (int)sizeof(parent)) {
-        return 0;
-    }
-
-    memcpy(parent, path, last - path);
-    parent[last - path] = 0;
-    return strcmp(parent, "/") == 0;
+    char parent[DIR_PATH_SIZE];
+    path_parent(normalized, parent, sizeof(parent));
+    return strcmp(parent, ".") == 0;
 }
 
 /* --- Pipeline & background job support --- */
@@ -550,33 +593,12 @@ u8 shell_dir_command(const char *args, const char *current_dir, u8 replace, u8 p
         char saved_char = *end;
         *end = 0;
 
-        char fullpath[256];
-        if (ptr[0] == '/') {
-            strncpy(fullpath, ptr, sizeof(fullpath) - 1);
-            fullpath[sizeof(fullpath) - 1] = 0;
-        } else {
-            strncpy(fullpath, current_dir, sizeof(fullpath) - 1);
-            fullpath[sizeof(fullpath) - 1] = 0;
-            int len = strlen(fullpath);
-            if (len > 0 && fullpath[len - 1] != '/') {
-                strncat(fullpath, "/", sizeof(fullpath) - len - 1);
-            }
-            strncat(fullpath, ptr, sizeof(fullpath) - strlen(fullpath) - 1);
-        }
+        char fullpath[DIR_PATH_SIZE];
+        shell_resolve_path(current_dir, ptr, fullpath);
 
         /* Ensure parent directories exist */
-        char parent[256];
-        const char *parent_path = fullpath;
-        int parent_len = strlen(parent_path) - 1;
-        while (parent_len > 0 && parent_path[parent_len] != '/') parent_len--;
-        if (parent_len <= 0) {
-            strncpy(parent, "/", sizeof(parent) - 1);
-            parent[sizeof(parent) - 1] = 0;
-        } else {
-            if (parent_len >= (int)sizeof(parent)) parent_len = sizeof(parent) - 1;
-            memcpy(parent, parent_path, parent_len);
-            parent[parent_len] = 0;
-        }
+        char parent[DIR_PATH_SIZE];
+        path_parent(fullpath, parent, sizeof(parent));
 
         if (!privileged && is_root_child_path(fullpath)) {
             SHELL_COLOR_ERR();
@@ -711,19 +733,7 @@ static void shell_execute_command(void) {
         } else if (strncmp(cmd, "goto ", 5) == 0) {
             const char *path = cmd + 5;
             while (*path == ' ') path++;
-            if (path[0] == '/') {
-                strncpy(current_dir, path, 255);
-            } else {
-                char fullpath[256];
-                strncpy(fullpath, current_dir, 255);
-                fullpath[255] = 0;
-                int len = strlen(fullpath);
-                if (len > 0 && fullpath[len-1] != '/') {
-                    strncat(fullpath, "/", 255 - len - 1);
-                }
-                strncat(fullpath, path, 255 - strlen(fullpath) - 1);
-                strncpy(current_dir, fullpath, 255);
-            }
+            shell_resolve_path(current_dir, path, current_dir);
             current_dir[255] = 0;
             SHELL_COLOR_CMD();
             kprintf("[REX] Changed to: %s\n", current_dir);
@@ -835,7 +845,7 @@ static void shell_execute_command(void) {
     } else if (strcmp(input.buffer, "show") == 0) {
         SHELL_COLOR_CMD();
         kprintf("[SHOW] Usage: show <filepath>\n");
-        kprintf("[SHOW] Example: show /home/Desktop/file.txt\n");
+        kprintf("[SHOW] Example: show ./usr/home/Desktop/file.txt\n");
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "recycle ", 8) == 0) {
         SHELL_COLOR_OUT();
@@ -948,20 +958,8 @@ static void shell_execute_command(void) {
         shell_dir_command("", current_dir, 0, 0);
     } else if (strncmp(input.buffer, "rmdir ", 6) == 0) {
         const char *dirname = input.buffer + 6;
-        char fullpath[256];
-
-        if (dirname[0] == '/') {
-            strncpy(fullpath, dirname, 255);
-            fullpath[255] = 0;
-        } else {
-            strncpy(fullpath, current_dir, 255);
-            fullpath[255] = 0;
-            int len = strlen(fullpath);
-            if (len > 0 && fullpath[len-1] != '/') {
-                strncat(fullpath, "/", 255 - len - 1);
-            }
-            strncat(fullpath, dirname, 255 - strlen(fullpath) - 1);
-        }
+        char fullpath[DIR_PATH_SIZE];
+        shell_resolve_path(current_dir, dirname, fullpath);
         SHELL_COLOR_OUT();
         vfs_rmdir(fullpath);
         SHELL_COLOR_RESET();
@@ -971,24 +969,12 @@ static void shell_execute_command(void) {
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "goto ", 5) == 0) {
         const char *dirname = input.buffer + 5;
-        char fullpath[256];
-
-        if (dirname[0] == '/') {
-            strncpy(fullpath, dirname, 255);
-            fullpath[255] = 0;
-        } else {
-            strncpy(fullpath, current_dir, 255);
-            fullpath[255] = 0;
-            int len = strlen(fullpath);
-            if (len > 0 && fullpath[len-1] != '/') {
-                strncat(fullpath, "/", 255 - len - 1);
-            }
-            strncat(fullpath, dirname, 255 - strlen(fullpath) - 1);
-        }
+        char fullpath[DIR_PATH_SIZE];
+        shell_resolve_path(current_dir, dirname, fullpath);
 
         if (strcmp(fullpath, ROOT_DIR) == 0) {
             SHELL_COLOR_ERR();
-            kprintf("Permission denied: use 'rex goto /' to access root\n");
+            kprintf("Permission denied: use 'rex goto .' to access root\n");
             SHELL_COLOR_RESET();
         } else if (vfs_is_dir(fullpath)) {
             if (dir_history.sp < DIR_HISTORY_SIZE) {
@@ -1013,14 +999,27 @@ static void shell_execute_command(void) {
                 strncpy(current_dir, dir_history.stack[dir_history.sp], 255);
                 current_dir[255] = 0;
             } else {
-                SHELL_COLOR_ERR();
-                kprintf("No previous directory\n");
-                SHELL_COLOR_RESET();
+                char parent[DIR_PATH_SIZE];
+                path_parent(current_dir, parent, DIR_PATH_SIZE);
+                if (strcmp(parent, current_dir) != 0 && strcmp(current_dir, ROOT_DIR) != 0) {
+                    if (strcmp(parent, ROOT_DIR) == 0) {
+                        SHELL_COLOR_ERR();
+                        kprintf("Permission denied: use 'rex goto .' to access root\n");
+                        SHELL_COLOR_RESET();
+                    } else {
+                        strncpy(current_dir, parent, 255);
+                        current_dir[255] = 0;
+                    }
+                } else {
+                    SHELL_COLOR_ERR();
+                    kprintf("No previous directory\n");
+                    SHELL_COLOR_RESET();
+                }
             }
         } else {
-            if (strcmp(target, "/") == 0) {
+            if (strcmp(target, ".") == 0 || strcmp(target, "./") == 0) {
                 SHELL_COLOR_ERR();
-                kprintf("Permission denied: use 'rex goto /' to access root\n");
+                kprintf("Permission denied: use 'rex goto .' to access root\n");
                 SHELL_COLOR_RESET();
             } else {
                 u32 found = 0;
@@ -1154,6 +1153,7 @@ static void shell_poll_keyboard(void) {
         if (c == '\b') {
             if (input.len > 0) {
                 input.len--;
+                input.buffer[input.len] = 0;
                 vga_putch('\b');
                 vga_putch(' ');
                 vga_putch('\b');
@@ -1167,6 +1167,7 @@ static void shell_poll_keyboard(void) {
             if (input.len < SHELL_BUFFER_SIZE - 1) {
                 input.buffer[input.len] = c;
                 input.len++;
+                input.buffer[input.len] = 0;
                 vga_putch(c);
             }
         }
@@ -1175,6 +1176,7 @@ static void shell_poll_keyboard(void) {
 
 void shell_run(void) {
     input.len = 0;
+    input.buffer[0] = 0;
     shell_should_exit = 0;
 
     vga_clear();
@@ -1182,7 +1184,7 @@ void shell_run(void) {
     strncpy(current_dir, HOME_DIR, sizeof(current_dir) - 1);
     current_dir[sizeof(current_dir) - 1] = 0;
 
-    vfs_cleanup_old_recycle_bin("/home/desktop/recycle", 259200000);
+    vfs_cleanup_old_recycle_bin("./usr/home/desktop/recycle", 259200000);
 
     SHELL_COLOR_OUT();
     kprintf("                          Welcome to GSh                 ");
@@ -1199,4 +1201,7 @@ void shell_run(void) {
         shell_poll_keyboard();
         for (volatile int i = 0; i < 100; i++);
     }
+
+    /* Safe cleanup after shell exit - just clear and return, don't reinitialize */
+    vga_clear();
 }

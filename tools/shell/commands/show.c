@@ -1,6 +1,7 @@
 #include "show.h"
 #include "kprintf.h"
 #include "string.h"
+#include "path.h"
 #include "vfs.h"
 
 #define SHOW_BUFFER_SIZE 4096
@@ -30,22 +31,7 @@ static void build_filepath(const char *args, const char *current_dir, char *out_
         return;
     }
 
-    if (p[0] == '/') {
-        strncpy(out_path, p, 255);
-        out_path[255] = 0;
-        return;
-    }
-
-    strncpy(target_dir, current_dir, sizeof(target_dir) - 1);
-    target_dir[sizeof(target_dir) - 1] = 0;
-    int len = strlen(target_dir);
-    if (len > 0 && target_dir[len - 1] != '/') {
-        safe_strcat(target_dir, "/", sizeof(target_dir));
-    }
-    safe_strcat(target_dir, p, sizeof(target_dir));
-    
-    strncpy(out_path, target_dir, 255);
-    out_path[255] = 0;
+    path_resolve(current_dir, p, out_path, 256);
 }
 
 static void print_box_top(const char *filename) {

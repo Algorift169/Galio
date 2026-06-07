@@ -2,6 +2,7 @@
 #include "editor.h"
 #include "kprintf.h"
 #include "string.h"
+#include "path.h"
 #include "vfs.h"
 
 static void safe_strcat(char *dest, const char *src, u32 max_len) {
@@ -14,30 +15,16 @@ static void safe_strcat(char *dest, const char *src, u32 max_len) {
 }
 
 static void get_parent_dir(const char *path, char *out_parent) {
-    const char *last = path;
-    const char *scan = path;
-
-    while (*scan) {
-        if (*scan == '/') last = scan + 1;
-        scan++;
-    }
-
-    if (last == path) {
-        strncpy(out_parent, "/", VFS_MAX_PATH - 1);
-        out_parent[VFS_MAX_PATH - 1] = 0;
-        return;
-    }
-
-    u32 len = last - path;
-    if (len >= VFS_MAX_PATH) len = VFS_MAX_PATH - 1;
-    memcpy(out_parent, path, len);
-    out_parent[len] = 0;
+    path_parent(path, out_parent, VFS_MAX_PATH);
 }
 
 static u8 is_root_child_path(const char *path) {
+    char normalized[VFS_MAX_PATH];
+    path_normalize(path, normalized, VFS_MAX_PATH);
+    if (strcmp(normalized, ".") == 0) return 0;
     char parent[VFS_MAX_PATH];
-    get_parent_dir(path, parent);
-    return strcmp(parent, "/") == 0;
+    path_parent(normalized, parent, VFS_MAX_PATH);
+    return strcmp(parent, ".") == 0;
 }
 
 static void build_filepath(const char *args, const char *current_dir, char *out_path) {
@@ -70,33 +57,30 @@ static void build_filepath(const char *args, const char *current_dir, char *out_
         if (*path_token == 0) path_token = NULL;
     }
     
-    /* Determine target directory */
+    /* Determine target path and build resolved filename path */
     char target_dir[256];
-    if (path_token && path_token[0] == '/') {
-        strncpy(target_dir, path_token, sizeof(target_dir) - 1);
-    } else if (path_token) {
-        strncpy(target_dir, current_dir, sizeof(target_dir) - 1);
-        int len = strlen(target_dir);
-        if (len > 0 && target_dir[len - 1] != '/')
-            safe_strcat(target_dir, "/", sizeof(target_dir));
-        safe_strcat(target_dir, path_token, sizeof(target_dir));
+    if (path_token) {
+        path_resolve(current_dir, path_token, target_dir, sizeof(target_dir));
     } else {
         strncpy(target_dir, current_dir, sizeof(target_dir) - 1);
+        target_dir[sizeof(target_dir) - 1] = 0;
     }
-    target_dir[sizeof(target_dir) - 1] = 0;
-    
+
     /* Build full path: target_dir + '/' + filename */
-    strncpy(out_path, target_dir, 255);
-    int len = strlen(out_path);
-    if (len > 0 && out_path[len - 1] != '/')
-        safe_strcat(out_path, "/", 256);
-    safe_strcat(out_path, p, 256);
+    char combined[256];
+    strncpy(combined, target_dir, sizeof(combined) - 1);
+    combined[sizeof(combined) - 1] = 0;
+    if (combined[strlen(combined) - 1] != '/') {
+        safe_strcat(combined, "/", sizeof(combined));
+    }
+    safe_strcat(combined, p, sizeof(combined));
+    path_resolve(current_dir, combined, out_path, VFS_MAX_PATH);
 }
 
 u8 shell_write_command(const char *args, const char *current_dir, u8 privileged) {
     if (!args || *args == 0) {
         kprintf("[WRITE] Usage: write <filename> [path]\n");
-        kprintf("[WRITE] Example: write test.txt /home/Documents\n");
+        kprintf("[WRITE] Example: write test.txt ./usr/home/Documents\n");
         return 0;
     }
 

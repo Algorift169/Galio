@@ -5,6 +5,7 @@ void vga_init(void);
 void vga_puts(const char *s);
 void vga_putch(char c);
 void vga_clear(void);
+void vga_clear_no_update(void);
 void vga_move_cursor(int dx, int dy);
 void vga_scrollback_up(void);
 void vga_scrollback_down(void);

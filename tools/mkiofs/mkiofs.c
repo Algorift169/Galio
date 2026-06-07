@@ -67,157 +67,153 @@ typedef struct {
 
 static file_spec_t files[] = {
     /* Root and core directories */
-    {"/",              NULL, 0, 1},
-    {"/boot",          NULL, 0, 1},
-    {"/bin",           NULL, 0, 1},
-    {"/sbin",          NULL, 0, 1},
-    {"/dev",           NULL, 0, 1},
-    {"/etc",           NULL, 0, 1},
-    {"/home",          NULL, 0, 1},
-    {"/lib",           NULL, 0, 1},
-    {"/mnt",           NULL, 0, 1},
-    {"/media",         NULL, 0, 1},
-    {"/proc",          NULL, 0, 1},
-    {"/root",          NULL, 0, 1},
-    {"/run",           NULL, 0, 1},
-    {"/srv",           NULL, 0, 1},
-    {"/sys",           NULL, 0, 1},
-    {"/tmp",           NULL, 0, 1},
-    {"/fuse",          NULL, 0, 1},
-    {"/lost+found",    NULL, 0, 1},
+    {".",              NULL, 0, 1},
+    {"./boot",          NULL, 0, 1},
+    {"./bin",           NULL, 0, 1},
+    {"./sbin",          NULL, 0, 1},
+    {"./dev",           NULL, 0, 1},
+    {"./etc",           NULL, 0, 1},
+    {"./lib",           NULL, 0, 1},
+    {"./mnt",           NULL, 0, 1},
+    {"./media",         NULL, 0, 1},
+    {"./proc",          NULL, 0, 1},
+    {"./root",          NULL, 0, 1},
+    {"./run",           NULL, 0, 1},
+    {"./srv",           NULL, 0, 1},
+    {"./sys",           NULL, 0, 1},
+    {"./tmp",           NULL, 0, 1},
+    {"./fuse",          NULL, 0, 1},
+    {"./lost+found",    NULL, 0, 1},
 
     /* /usr subdirectories */
-    {"/usr",           NULL, 0, 1},
-    {"/usr/bin",       NULL, 0, 1},
-    {"/usr/sbin",      NULL, 0, 1},
-    {"/usr/lib",       NULL, 0, 1},
-    {"/usr/local",     NULL, 0, 1},
-    {"/usr/local/bin", NULL, 0, 1},
-    {"/usr/local/sbin", NULL, 0, 1},
-    {"/usr/local/lib", NULL, 0, 1},
-    {"/usr/local/share", NULL, 0, 1},
-    {"/usr/share",     NULL, 0, 1},
-    {"/usr/share/doc", NULL, 0, 1},
-    {"/usr/share/man", NULL, 0, 1},
-    {"/usr/share/info", NULL, 0, 1},
-    {"/usr/include",   NULL, 0, 1},
-    {"/usr/src",       NULL, 0, 1},
-    {"/usr/games",     NULL, 0, 1},
-    {"/usr/libexec",   NULL, 0, 1},
+    {"./usr",           NULL, 0, 1},
+    {"./usr/home",     NULL, 0, 1},
+    {"./usr/bin",       NULL, 0, 1},
+    {"./usr/sbin",      NULL, 0, 1},
+    {"./usr/lib",       NULL, 0, 1},
+    {"./usr/local",     NULL, 0, 1},
+    {"./usr/local/bin", NULL, 0, 1},
+    {"./usr/local/sbin", NULL, 0, 1},
+    {"./usr/local/lib", NULL, 0, 1},
+    {"./usr/local/share", NULL, 0, 1},
+    {"./usr/share",     NULL, 0, 1},
+    {"./usr/share/doc", NULL, 0, 1},
+    {"./usr/share/man", NULL, 0, 1},
+    {"./usr/share/info", NULL, 0, 1},
+    {"./usr/include",   NULL, 0, 1},
+    {"./usr/src",       NULL, 0, 1},
+    {"./usr/games",     NULL, 0, 1},
+    {"./usr/libexec",   NULL, 0, 1},
 
     /* /var subdirectories */
-    {"/var",           NULL, 0, 1},
-    {"/var/log",       NULL, 0, 1},
-    {"/var/run",       NULL, 0, 1},
-    {"/var/spool",     NULL, 0, 1},
-    {"/var/spool/cron", NULL, 0, 1},
-    {"/var/spool/mail", NULL, 0, 1},
-    {"/var/crash",     NULL, 0, 1},
-    {"/var/lock",      NULL, 0, 1},
-    {"/var/account",   NULL, 0, 1},
-    {"/var/mail",      NULL, 0, 1},
-    {"/var/tmp",       NULL, 0, 1},
-    {"/var/cache",     NULL, 0, 1},
-    {"/var/cache/apt", NULL, 0, 1},
-    {"/var/games",     NULL, 0, 1},
+    {"./var",           NULL, 0, 1},
+    {"./var/log",       NULL, 0, 1},
+    {"./var/run",       NULL, 0, 1},
+    {"./var/spool",     NULL, 0, 1},
+    {"./var/spool/cron", NULL, 0, 1},
+    {"./var/spool/mail", NULL, 0, 1},
+    {"./var/crash",     NULL, 0, 1},
+    {"./var/lock",      NULL, 0, 1},
+    {"./var/account",   NULL, 0, 1},
+    {"./var/mail",      NULL, 0, 1},
+    {"./var/tmp",       NULL, 0, 1},
+    {"./var/cache",     NULL, 0, 1},
+    {"./var/cache/apt", NULL, 0, 1},
+    {"./var/games",     NULL, 0, 1},
 
     /* /etc subdirectories */
-    {"/etc/X11",       NULL, 0, 1},
-    {"/etc/X11/xorg.conf.d", NULL, 0, 1},
-    {"/etc/opt",       NULL, 0, 1},
-    {"/etc/sgml",      NULL, 0, 1},
-    {"/etc/init.d",    NULL, 0, 1},
-    {"/etc/rc.d",      NULL, 0, 1},
-    {"/etc/rc.d/init.d", NULL, 0, 1},
-    {"/etc/share",     NULL, 0, 1},
-    {"/etc/xml",       NULL, 0, 1},
-    {"/etc/ssl",       NULL, 0, 1},
-    {"/etc/ssl/certs", NULL, 0, 1},
-    {"/etc/ssl/private", NULL, 0, 1},
-    {"/etc/skel",      NULL, 0, 1},
-    {"/etc/pam.d",     NULL, 0, 1},
-    {"/etc/sysconfig", NULL, 0, 1},
-    {"/etc/cron.d",    NULL, 0, 1},
-    {"/etc/cron.daily", NULL, 0, 1},
-    {"/etc/cron.weekly", NULL, 0, 1},
-    {"/etc/cron.monthly", NULL, 0, 1},
-    {"/etc/cron.hourly", NULL, 0, 1},
-    {"/etc/security",  NULL, 0, 1},
-    {"/etc/selinux",   NULL, 0, 1},
-    {"/etc/iptables",  NULL, 0, 1},
-    {"/etc/network",   NULL, 0, 1},
-    {"/etc/network/if-up.d", NULL, 0, 1},
-    {"/etc/network/if-down.d", NULL, 0, 1},
-    {"/etc/network/if-pre-up.d", NULL, 0, 1},
-    {"/etc/network/if-post-down.d", NULL, 0, 1},
-    {"/etc/profile.d", NULL, 0, 1},
-    {"/etc/modprobe.d", NULL, 0, 1},
-    {"/etc/ssh",       NULL, 0, 1},
+    {"./etc/init.d",    NULL, 0, 1},
+    {"./etc/rc.d",      NULL, 0, 1},
+    {"./etc/rc.d/init.d", NULL, 0, 1},
+    {"./etc/share",     NULL, 0, 1},
+    {"./etc/xml",       NULL, 0, 1},
+    {"./etc/ssl",       NULL, 0, 1},
+    {"./etc/ssl/certs", NULL, 0, 1},
+    {"./etc/ssl/private", NULL, 0, 1},
+    {"./etc/skel",      NULL, 0, 1},
+    {"./etc/pam.d",     NULL, 0, 1},
+    {"./etc/sysconfig", NULL, 0, 1},
+    {"./etc/cron.d",    NULL, 0, 1},
+    {"./etc/cron.daily", NULL, 0, 1},
+    {"./etc/cron.weekly", NULL, 0, 1},
+    {"./etc/cron.monthly", NULL, 0, 1},
+    {"./etc/cron.hourly", NULL, 0, 1},
+    {"./etc/security",  NULL, 0, 1},
+    {"./etc/selinux",   NULL, 0, 1},
+    {"./etc/iptables",  NULL, 0, 1},
+    {"./etc/network",   NULL, 0, 1},
+    {"./etc/network/if-up.d", NULL, 0, 1},
+    {"./etc/network/if-down.d", NULL, 0, 1},
+    {"./etc/network/if-pre-up.d", NULL, 0, 1},
+    {"./etc/network/if-post-down.d", NULL, 0, 1},
+    {"./etc/profile.d", NULL, 0, 1},
+    {"./etc/modprobe.d", NULL, 0, 1},
+    {"./etc/ssh",       NULL, 0, 1},
 
     /* /opt subdirectories */
-    {"/opt",           NULL, 0, 1},
-    {"/opt/bin",       NULL, 0, 1},
-    {"/opt/sbin",      NULL, 0, 1},
-    {"/opt/etc",       NULL, 0, 1},
-    {"/opt/var",       NULL, 0, 1},
-    {"/opt/lib",       NULL, 0, 1},
-    {"/opt/share",     NULL, 0, 1},
-    {"/opt/share/doc", NULL, 0, 1},
-    {"/opt/share/man", NULL, 0, 1},
-    {"/opt/local",     NULL, 0, 1},
-    {"/opt/src",       NULL, 0, 1},
+    {"./opt",           NULL, 0, 1},
+    {"./opt/bin",       NULL, 0, 1},
+    {"./opt/sbin",      NULL, 0, 1},
+    {"./opt/etc",       NULL, 0, 1},
+    {"./opt/var",       NULL, 0, 1},
+    {"./opt/lib",       NULL, 0, 1},
+    {"./opt/share",     NULL, 0, 1},
+    {"./opt/share/doc", NULL, 0, 1},
+    {"./opt/share/man", NULL, 0, 1},
+    {"./opt/local",     NULL, 0, 1},
+    {"./opt/src",       NULL, 0, 1},
 
-    /* /home subdirectories */
-    {"/home/desktop",  NULL, 0, 1},
-    {"/home/desktop/recycle", NULL, 0, 1},
-    {"/home/downloads", NULL, 0, 1},
-    {"/home/music",    NULL, 0, 1},
-    {"/home/documents", NULL, 0, 1},
-    {"/home/videos",   NULL, 0, 1},
-    {"/home/recent",   NULL, 0, 1},
-    {"/home/images",   NULL, 0, 1},
-    {"/home/pictures", NULL, 0, 1},
+    /* /home subdirectories (moved under /usr) */
+    {"./usr/home/desktop",  NULL, 0, 1},
+    {"./usr/home/desktop/recycle", NULL, 0, 1},
+    {"./usr/home/downloads", NULL, 0, 1},
+    {"./usr/home/music",    NULL, 0, 1},
+    {"./usr/home/documents", NULL, 0, 1},
+    {"./usr/home/videos",   NULL, 0, 1},
+    {"./usr/home/recent",   NULL, 0, 1},
+    {"./usr/home/images",   NULL, 0, 1},
+    {"./usr/home/pictures", NULL, 0, 1},
 
     /* Boot & Config */
-    {"/boot/config.txt",
+    {"./boot/config.txt",
         boot_config_txt,
         0, 0},
 
-    {"/boot/grub.cfg",
+    {"./boot/grub.cfg",
         "menuentry 'Galio Kernel' {\n"
         "    multiboot /boot/galio.bin\n"
         "}\n",
         49, 0},
 
     /* System files */
-    {"/etc/hostname", "galio\n", 14, 0},
+    {"./etc/hostname", "galio\n", 14, 0},
 
-    {"/etc/fstab",
+    {"./etc/fstab",
         "# Galio Filesystem Table\n"
         "# <filesystem> <mount-point> <type> <options> <dump> <pass>\n"
-        "/dev/sda1   /           ext2    defaults    0       1\n"
-        "/dev/sda2   /var        ext2    defaults    0       2\n"
-        "/dev/sda3   /home       ext2    defaults    0       2\n"
-        "/proc       /proc       proc    defaults    0       0\n"
-        "/sys        /sys        sysfs   defaults    0       0\n"
+        "./dev/sda1   /           ext2    defaults    0       1\n"
+        "./dev/sda2   /var        ext2    defaults    0       2\n"
+        "./dev/sda3   /home       ext2    defaults    0       2\n"
+        "./proc       /proc       proc    defaults    0       0\n"
+        "./sys        /sys        sysfs   defaults    0       0\n"
         "tmpfs       /tmp        tmpfs   defaults    0       0\n"
         "tmpfs       /run        tmpfs   defaults    0       0\n",
         250, 0},
 
-    {"/etc/os-release",
+    {"./etc/os-release",
         "NAME=\"Galio \"\n"
         "VERSION=\"0.1.0\"\n"
         "ID=\"galio\"\n"
         "PRETTY_NAME=\"Galio 0.1.0\"\n",
         79, 0},
 
-    {"/etc/issue",
+    {"./etc/issue",
         "Welcome to Galio Kernel v0.1.0\n"
         "Built on x86 32-bit architecture\n"
         "=================================\n",
         95, 0},
 
-    {"/etc/welcome.txt",
+    {"./etc/welcome.txt",
         "╔═══════════════════════════════════════════╗\n"
         "║     Welcome to Galio Kernel v0.1.0        ║\n"
         "║     A Lightweight 32-bit OS Kernel        ║\n"
@@ -228,7 +224,7 @@ static file_spec_t files[] = {
         "╚═══════════════════════════════════════════╝\n",
         282, 0},
 
-    {"/etc/profile",
+    {"./etc/profile",
         "# /etc/profile: system-wide .profile file for the Bourne shell (sh(1))\n"
         "# and Bourne compatible shells (bash(1), ksh(1), pdksh(1), etc.)\n"
         "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/bin\n"
@@ -236,7 +232,7 @@ static file_spec_t files[] = {
         "export TERM=linux\n",
         220, 0},
 
-    {"/etc/bashrc",
+    {"./etc/bashrc",
         "# System-wide bashrc file\n"
         "# Executed for non-login shells\n"
         "alias ls='ls --color=auto'\n"
@@ -247,7 +243,7 @@ static file_spec_t files[] = {
         "alias cp='cp -i'\n",
         180, 0},
 
-    {"/etc/sysctl.conf",
+    {"./etc/sysctl.conf",
         "# /etc/sysctl.conf - kernel runtime parameters\n"
         "# kernel.sysrq = 1\n"
         "# net.ipv4.ip_forward = 0\n"
@@ -255,12 +251,12 @@ static file_spec_t files[] = {
         "# net.ipv4.tcp_syncookies = 1\n",
         180, 0},
 
-    {"/etc/passwd",
+    {"./etc/passwd",
         "root:x:0:0:root:/root:/bin/sh\n"
         "nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin\n",
         80, 0},
 
-    {"/etc/group",
+    {"./etc/group",
         "root:x:0:\n"
         "bin:x:1:\n"
         "daemon:x:2:\n"
@@ -294,7 +290,7 @@ static file_spec_t files[] = {
         550, 0},
 
     /* Network configuration */
-    {"/etc/network/interfaces",
+    {"./etc/network/interfaces",
         "# /etc/network/interfaces - Galio network configuration\n"
         "# This file describes the network interfaces available on this system\n"
         "auto lo\n"
@@ -305,13 +301,13 @@ static file_spec_t files[] = {
         "#iface eth0 inet dhcp\n",
         250, 0},
 
-    {"/etc/network/if-up.d/avahi-daemon",
+    {"./etc/network/if-up.d/avahi-daemon",
         "#!/bin/sh\n"
         "# avahi-daemon startup\n"
         "# TODO: start avahi daemon\n",
         60, 0},
 
-    {"/etc/ssh/sshd_config",
+    {"./etc/ssh/sshd_config",
         "# Galio SSH Daemon Configuration\n"
         "Port 22\n"
         "Protocol 2\n"
@@ -322,7 +318,7 @@ static file_spec_t files[] = {
         "PasswordAuthentication yes\n",
         250, 0},
 
-    {"/etc/security/limits.conf",
+    {"./etc/security/limits.conf",
         "# /etc/security/limits.conf\n"
         "# <domain> <type> <item> <value>\n"
         "*         soft   nofile  65535\n"
@@ -331,14 +327,14 @@ static file_spec_t files[] = {
         "*         hard   nproc   4096\n",
         180, 0},
 
-    {"/etc/cron.d/hourly",
+    {"./etc/cron.d/hourly",
         "SHELL=/bin/sh\n"
         "PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin\n"
         "# Run scripts in /etc/cron.hourly\n"
         "0 * * * * root run-parts --report /etc/cron.hourly\n",
         150, 0},
 
-    {"/etc/cron.d/daily",
+    {"./etc/cron.d/daily",
         "SHELL=/bin/sh\n"
         "PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin\n"
         "# Run scripts in /etc/cron.daily\n"
@@ -346,7 +342,7 @@ static file_spec_t files[] = {
         150, 0},
 
     /* Boot banner */
-    {"/boot/banner.txt",
+    {"./boot/banner.txt",
         "=====================================\n"
         "  Galio Kernel\n"
         "  Version: 0.1.0 (Alpha)\n"
@@ -356,14 +352,14 @@ static file_spec_t files[] = {
         139, 0},
 
     /* Process info */
-    {"/proc/cpuinfo",
+    {"./proc/cpuinfo",
         "processor   : 0\n"
         "vendor_id   : GenuineIntel\n"
         "cpu family  : 6\n"
         "stepping    : 0\n",
         83, 0},
 
-    {"/proc/meminfo",
+    {"./proc/meminfo",
         "MemTotal:         131072 kB\n"
         "MemFree:          129024 kB\n"
         "MemAvailable:     128000 kB\n"
@@ -371,26 +367,26 @@ static file_spec_t files[] = {
         "Cached:           2048 kB\n",
         130, 0},
 
-    {"/proc/version",
+    {"./proc/version",
         "Galio version 0.1.0 (built for x86 32-bit)\n",
         46, 0},
 
     /* Log files */
-    {"/var/log/boot.log",
+    {"./var/log/boot.log",
         "[BOOT] Kernel initialized\n"
         "[BOOT] VFS mounted successfully\n"
         "[BOOT] Memory manager ready\n"
         "[BOOT] Filesystem test passed\n",
         111, 0},
 
-    {"/var/log/system.log",
+    {"./var/log/system.log",
         "[SYSTEM] Uptime: 0 seconds\n"
         "[SYSTEM] Memory usage: 2.5 MB\n"
         "[SYSTEM] Processes: 1\n"
         "[SYSTEM] VFS entries: 50+\n",
         98, 0},
 
-    {"/var/log/dmesg",
+    {"./var/log/dmesg",
         "[    0.000000] Linux version (built for x86 32-bit)\n"
         "[    0.000000] Command line: \n"
         "[    0.000000] BIOS-provided physical RAM map:\n"
@@ -398,7 +394,7 @@ static file_spec_t files[] = {
         230, 0},
 
     /* User home files */
-    {"/home/Desktop/readme.txt",
+    {"./usr/home/Desktop/readme.txt",
         "Desktop Directory\n"
         "=================\n"
         "\n"
@@ -406,14 +402,14 @@ static file_spec_t files[] = {
         "Place your shortcuts and files here.\n",
         80, 0},
 
-    {"/root/.bashrc",
+    {"./root/.bashrc",
         "# Root's bash configuration\n"
         "export PS1='root@galio:~# '\n"
         "export EDITOR=vi\n"
         "alias ls='ls --color=auto'\n",
         100, 0},
 
-    {"/root/.profile",
+    {"./root/.profile",
         "# Root's profile\n"
         "if [ -f ~/.bashrc ]; then\n"
         "    . ~/.bashrc\n"
@@ -421,51 +417,51 @@ static file_spec_t files[] = {
         60, 0},
 
     /* System binaries (placeholder) */
-    {"/bin/init",
+    {"./bin/init",
         "#!/bin/galio\n"
         "# Init script\n"
         "mount_all\n"
         "start_services\n",
         49, 0},
 
-    {"/bin/sh",
+    {"./bin/sh",
         "#!/bin/galio\n"
         "# Shell executable\n"
         "# Interactive shell for Galio\n",
         49, 0},
 
-    {"/sbin/init",
+    {"./sbin/init",
         "#!/bin/galio\n"
         "# System init script\n"
         "# Root filesystem initialization\n",
         57, 0},
 
-    {"/sbin/shutdown",
+    {"./sbin/shutdown",
         "#!/bin/sh\n"
         "# Shutdown script\n"
         "echo 'Shutting down system...'\n",
         54, 0},
 
-    {"/sbin/reboot",
+    {"./sbin/reboot",
         "#!/bin/sh\n"
         "# Reboot script\n"
         "echo 'Rebooting system...'\n",
         50, 0},
 
     /* Libraries info */
-    {"/lib/version",
+    {"./lib/version",
         "libc version 1.0\n"
         "Standard library for Galio\n",
         49, 0},
 
-    {"/usr/lib/modules.txt",
+    {"./usr/lib/modules.txt",
         "Loaded modules:\n"
         "  vfs.ko - Virtual Filesystem\n"
         "  mem.ko - Memory Manager\n"
         "  proc.ko - Process Manager\n",
         89, 0},
 
-    {"/usr/share/doc/README",
+    {"./usr/share/doc/README",
         "Galio Operating System\n"
         "========================\n"
         "\n"
@@ -474,51 +470,51 @@ static file_spec_t files[] = {
         150, 0},
 
     /* Temporary directory (can be empty) */
-    {"/tmp/test.tmp",
+    {"./tmp/test.tmp",
         "Temporary file for testing\n"
         "This can be deleted anytime\n",
         57, 0},
 
     /* System info */
-    {"/sys/kernel/version",
+    {"./sys/kernel/version",
         "Galio Kernel v0.1.0\n",
         21, 0},
 
-    {"/sys/memory/total",
+    {"./sys/memory/total",
         "128 MB\n",
         8, 0},
 
-    {"/sys/memory/free",
+    {"./sys/memory/free",
         "120 MB\n",
         8, 0},
 
     /* Additional documentation */
-    {"/etc/init.d/network",
+    {"./etc/init.d/network",
         "#!/bin/sh\n"
         "# Network initialization script\n"
         "echo 'Network services starting...'\n",
         65, 0},
 
-    {"/etc/init.d/filesystem",
+    {"./etc/init.d/filesystem",
         "#!/bin/sh\n"
         "# Filesystem initialization script\n"
         "echo 'Mounting filesystems...'\n",
         67, 0},
 
-    {"/etc/init.d/ssh",
+    {"./etc/init.d/ssh",
         "#!/bin/sh\n"
         "# SSH daemon initialization script\n"
         "echo 'Starting SSH daemon...'\n",
         66, 0},
 
-    {"/etc/init.d/cron",
+    {"./etc/init.d/cron",
         "#!/bin/sh\n"
         "# Cron daemon initialization script\n"
         "echo 'Starting cron service...'\n",
         67, 0},
 
     /* Device information */
-    {"/etc/udev/udev.conf",
+    {"./etc/udev/udev.conf",
         "# /etc/udev/udev.conf - udev configuration\n"
         "# Runs programs to completion by default\n"
         "udev_log=\"info\"\n"
@@ -526,7 +522,7 @@ static file_spec_t files[] = {
         150, 0},
 
     /* Modprobe configuration */
-    {"/etc/modprobe.d/blacklist.conf",
+    {"./etc/modprobe.d/blacklist.conf",
         "# /etc/modprobe.d/blacklist.conf - blacklisted kernel modules\n"
         "# blacklist floppy\n"
         "# blacklist pcspkr\n",
@@ -536,7 +532,7 @@ static file_spec_t files[] = {
      * at build time by placing a file at tools/shell/wifi_scan.txt
      * The file will be embedded into the initrd as /etc/wifi_scan
      * and parsed by the kernel for development/testing. */
-    {"/etc/wifi_scan", NULL, 0, 0},
+    {"./etc/wifi_scan", NULL, 0, 0},
 };
 
 static int file_count = sizeof(files) / sizeof(files[0]);
@@ -567,7 +563,7 @@ int main(int argc, char *argv[]) {
                  "timezone_offset_hours=6\n",
                  boot_time_string);
         for (int i = 0; i < file_count; i++) {
-            if (strcmp(files[i].path, "/boot/config.txt") == 0) {
+            if (strcmp(files[i].path, "./boot/config.txt") == 0) {
                 files[i].size = (unsigned int)strlen(boot_config_txt);
                 break;
             }
@@ -587,9 +583,9 @@ int main(int argc, char *argv[]) {
                 char *buf = malloc(sz);
                 if (buf) {
                     if (fread(buf, 1, sz, wf) == (size_t)sz) {
-                        /* find the index for /etc/wifi_scan */
+                        /* find the index for ./etc/wifi_scan */
                         for (int i = 0; i < file_count; i++) {
-                            if (strcmp(files[i].path, "/etc/wifi_scan") == 0) {
+                            if (strcmp(files[i].path, "./etc/wifi_scan") == 0) {
                                 files[i].data = buf;
                                 files[i].size = (unsigned int)sz;
                                 break;

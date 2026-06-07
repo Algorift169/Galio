@@ -467,7 +467,7 @@ void vfs_tree_dir(const char *path) {
             return;
         }
 
-        const char *label = (strcmp(norm_path, "/") == 0) ? "/" : vfs_basename(norm_path);
+        const char *label = (strcmp(norm_path, ".") == 0) ? ".": vfs_basename(norm_path);
         kprintf("%s\n", label);
 
         u32 dirs = 0, files = 0;
@@ -482,7 +482,7 @@ void vfs_tree_dir(const char *path) {
         return;
     }
 
-    const char *label = (strcmp(norm_path, "/") == 0) ? "/" : vfs_basename(norm_path);
+    const char *label = (strcmp(norm_path, ".") == 0) ? "." : vfs_basename(norm_path);
     kprintf("%s\n", label);
 
     u32 dirs = 0, files = 0;
@@ -574,7 +574,7 @@ static void vfs_stats_disk_recursive(const char *current_path, u32 *dirs, u32 *f
                             (*dirs)++;
                             char next_path[VFS_MAX_PATH];
                             next_path[0] = 0;
-                            if (strcmp(current_path, "/") == 0) {
+                            if (strcmp(current_path, ".") == 0) {
                                 strncpy(next_path, "/", VFS_MAX_PATH - 1);
                                 next_path[VFS_MAX_PATH - 1] = 0;
                             } else {
@@ -582,7 +582,7 @@ static void vfs_stats_disk_recursive(const char *current_path, u32 *dirs, u32 *f
                                 next_path[VFS_MAX_PATH - 1] = 0;
                             }
                             if (strlen(next_path) + 1 + name_len < VFS_MAX_PATH) {
-                                if (strcmp(next_path, "/") != 0) {
+                                if (strcmp(next_path, ".") != 0) {
                                     strncat(next_path, "/", VFS_MAX_PATH - strlen(next_path) - 1);
                                 }
                                 strncat(next_path, name, VFS_MAX_PATH - strlen(next_path) - 1);
@@ -608,7 +608,7 @@ void vfs_stats(void) {
     }
     if (vfs_core_is_disk_mode()) {
         u32 dirs = 0, files = 0, total_data_size = 0;
-        vfs_stats_disk_recursive("/", &dirs, &files, &total_data_size);
+        vfs_stats_disk_recursive(".", &dirs, &files, &total_data_size);
         kprintf("[VFS] Filesystem Statistics (disk mode):\n");
         kprintf("    Total entries:    %u\n", dirs + files);
         kprintf("    Directories:      %u\n", dirs);
@@ -843,16 +843,16 @@ static u32 vfs_mount_root_entry(const char *mountpoint, u32 device) {
     path_normalize(mountpoint, normalized, sizeof(normalized));
     if (!vfs_core_create_dir(normalized, 1)) return 0;
     if (device == VFS_DEVFS) {
-        if (strcmp(normalized, "/") == 0) return 1;
+        if (strcmp(normalized, ".") == 0) return 1;
         char dev_path[VFS_MAX_PATH];
         strncpy(dev_path, normalized, VFS_MAX_PATH - 1);
         dev_path[VFS_MAX_PATH - 1] = 0;
-        if (strcmp(dev_path, "/") != 0 && dev_path[strlen(dev_path)-1] != '/') {
+        if (strcmp(normalized, ".") != 0 && dev_path[strlen(dev_path)-1] != '/') {
             strncat(dev_path, "/", VFS_MAX_PATH - strlen(dev_path) - 1);
         }
         strncat(dev_path, "null", VFS_MAX_PATH - strlen(dev_path) - 1);
         vfs_core_create_device(dev_path, 0644, 1);
-        if (strcmp(normalized, "/") != 0) {
+        if (strcmp(normalized, ".") != 0) {
             strncpy(dev_path, normalized, VFS_MAX_PATH - 1);
             dev_path[VFS_MAX_PATH - 1] = 0;
             strncat(dev_path, "/zero", VFS_MAX_PATH - strlen(dev_path) - 1);
@@ -895,7 +895,7 @@ static u8 vfs_disk_entry_is_dot(const ext2_dirent_t *dent) {
 }
 
 static void vfs_build_disk_child_path(const char *parent, const ext2_dirent_t *dent, char *out_path) {
-    if (strcmp(parent, "/") == 0) {
+    if (strcmp(parent, ".") == 0) {
         strncpy(out_path, "/", VFS_MAX_PATH - 1);
         out_path[VFS_MAX_PATH - 1] = 0;
         strncat(out_path, dent->name, dent->name_len);
@@ -914,7 +914,7 @@ static void vfs_build_disk_child_path(const char *parent, const ext2_dirent_t *d
 
 static u32 vfs_remove_recursive_disk(const char *path) {
     if (!vfs_core_is_disk_mode()) return 0;
-    if (!path || strcmp(path, "/") == 0) return 0;
+    if (!path || strcmp(path, ".") == 0) return 0;
 
     u32 inode_num = ext2_find_inode(path);
     if (inode_num == 0) return 0;
@@ -1035,7 +1035,7 @@ u32 vfs_remove_dir_contents(const char *path) {
         return 0;
     }
     if (vfs_core_is_disk_mode()) {
-        if (!path || strcmp(path, "/") == 0) {
+        if (!path || strcmp(path, ".") == 0) {
             kprintf("[VFS] ERROR: Cannot clear root directory contents directly\n");
             return 0;
         }

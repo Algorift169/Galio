@@ -4,12 +4,16 @@
 #include "path.h"
 #include "string.h"
 #include <stddef.h>
+#include <string.h>
+
+/* memmove may not be declared by the local string.h wrapper on this build path */
+extern void *memmove(void *dest, const void *src, size_t n);
 
 #define PATH_MAX_COMPONENTS 64
 #define PATH_COMPONENT_LEN 256
 
 u8 path_is_absolute(const char *path) {
-    return path && path[0] == '/';
+    return path && (path[0] == '/' || (path[0] == '.' && (path[1] == '/' || path[1] == '\0')));
 }
 
 static char *normalize_components(const char *path, u8 absolute, char *out, u32 out_size) {
@@ -91,7 +95,7 @@ char *path_normalize(const char *path, char *out, u32 out_size) {
 
     if (!path || path[0] == '\0') {
         if (out_size > 1) {
-            out[0] = '/';
+            out[0] = '.';
             out[1] = 0;
         } else {
             out[0] = 0;
@@ -99,8 +103,33 @@ char *path_normalize(const char *path, char *out, u32 out_size) {
         return out;
     }
 
-    if (path[0] == '/') {
-        return normalize_components(path, 1, out, out_size);
+    if (path[0] == '/' || (path[0] == '.' && (path[1] == '/' || path[1] == '\0'))) {
+        if (path[0] == '.' && path[1] != '\0') {
+            char local[PATH_COMPONENT_LEN * 4];
+            u32 local_len = strlen(path + 1);
+            if (local_len + 1 >= sizeof(local)) local_len = sizeof(local) - 2;
+            local[0] = '/';
+            memcpy(local + 1, path + 2, local_len);
+            local[1 + local_len] = 0;
+            normalize_components(local, 1, out, out_size);
+        } else {
+            normalize_components(path, 1, out, out_size);
+        }
+        if (out[0] == '/') {
+            if (out[1] == '\0') {
+                out[0] = '.';
+            } else {
+                u32 len = strlen(out);
+                if (len + 1 < out_size) {
+                    memmove(out + 2, out + 1, len);
+                    out[0] = '.';
+                    out[1] = '/';
+                } else {
+                    out[0] = '.';
+                }
+            }
+        }
+        return out;
     }
 
     return normalize_components(path, 0, out, out_size);
@@ -114,7 +143,7 @@ char *path_resolve(const char *cwd, const char *path, char *out, u32 out_size) {
             return path_normalize(cwd, out, out_size);
         }
         if (out_size > 1) {
-            out[0] = '/';
+            out[0] = '.';
             out[1] = 0;
         } else {
             out[0] = 0;
@@ -186,7 +215,7 @@ char *path_parent(const char *path, char *out, u32 out_size) {
 
     if (pos <= 0) {
         if (out_size > 1) {
-            out[0] = '/';
+            out[0] = '.';
             out[1] = 0;
         } else {
             out[0] = 0;

@@ -2,9 +2,10 @@
 #include "kprintf.h"
 #include "string.h"
 #include <string.h>
+#include "path.h"
 #include "vfs.h"
 
-#define RECYCLE_BIN_DIR "/home/desktop/recycle"
+#define RECYCLE_BIN_DIR "./usr/home/desktop/recycle"
 
 static const char *skip_spaces(const char *str) {
     while (*str == ' ') str++;
@@ -18,19 +19,7 @@ static void build_fullpath(const char *args, const char *current_dir, char *out_
         return;
     }
 
-    if (*src == '/') {
-        strncpy(out_path, src, VFS_MAX_PATH - 1);
-        out_path[VFS_MAX_PATH - 1] = 0;
-        return;
-    }
-
-    strncpy(out_path, current_dir, VFS_MAX_PATH - 1);
-    out_path[VFS_MAX_PATH - 1] = 0;
-    int len = strlen(out_path);
-    if (len > 0 && out_path[len - 1] != '/') {
-        strncat(out_path, "/", VFS_MAX_PATH - len - 1);
-    }
-    strncat(out_path, src, VFS_MAX_PATH - strlen(out_path) - 1);
+    path_resolve(current_dir, src, out_path, VFS_MAX_PATH);
 }
 
 u8 shell_clean_command(const char *args, const char *current_dir) {
