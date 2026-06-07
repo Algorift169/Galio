@@ -380,15 +380,6 @@ void kmain(void *multiboot_ptr) {
 
     auth_bootstrap();
 
-    vga_clear();
-    if (kernel_auth.registered) {
-        kprintf("Welcome \"%s\" to Galio !\n", kernel_auth.username);
-    } else {
-        kprintf("Welcome to Galio !\n");
-    }
-    kprintf("Press 1 to enter GSH (Shell)\n");
-    kprintf("Press 2 to enter Cursor Movement Mode\n\n");
-
     /* Create init process early so the embedded ELF gets scheduled */
     u32 init_pid = process_create(init_main, 1);
     if (!init_pid) {
@@ -396,66 +387,29 @@ void kmain(void *multiboot_ptr) {
         for(;;);
     }
 
-    /* Keep interrupts enabled for keyboard input */
+    /* Keep interrupts enabled */
     __asm__ volatile("sti");
     
     /* Unmask keyboard IRQ */
     irq_unmask(1);
 
-    int selected_mode = 0;
-    kprintf("Waiting for input...\n");
+    /* Enter cursor movement mode with mouse support */
+    display_enter_userland_mode();
+    
+    int last_x = -1, last_y = -1;
+    
+    for (;;) {
+        cursor_poll();
+        int cursor_x = 0, cursor_y = 0;
+        cursor_get_position(&cursor_x, &cursor_y);
 
-    while (selected_mode == 0) {
-        u8 scancode = 0;
-        u8 is_pressed = 0;
-        u8 extended = 0;
-
-        if (keyboard_read_event(&scancode, &is_pressed, &extended) && is_pressed && !extended) {
-            u8 raw = scancode & 0x7F;
-            if (raw == 0x02) {  /* '1' key */
-                selected_mode = 1;
-                //kprintf("\nSelected: GSH Shell\n\n");
-            } else if (raw == 0x03) {  /* '2' key */
-                selected_mode = 2;
-                //kprintf("\nSelected: Cursor Movement Mode\n\n");
-            }
+        if (cursor_x != last_x || cursor_y != last_y) {
+            last_x = cursor_x;
+            last_y = cursor_y;
         }
-        
-        /* Small delay to prevent CPU spinning */
-        for (volatile int i = 0; i < 1000; i++);
-    }
 
-    extern void shell_run(void);
-
-    if (selected_mode == 1) {
-        /* Enter shell mode */
-        display_enter_shell_mode();
-        shell_run();
-        for (;;) {
-            __asm__ volatile("hlt");
-        }
-    } else if (selected_mode == 2) {
-        /* Enter cursor movement mode with mouse support */
-        display_enter_userland_mode();
-        
-        int last_x = -1, last_y = -1;
-        
-        for (;;) {
-            cursor_poll();
-            int cursor_x = 0, cursor_y = 0;
-            cursor_get_position(&cursor_x, &cursor_y);
-
-            if (cursor_x != last_x || cursor_y != last_y) {
-                last_x = cursor_x;
-                last_y = cursor_y;
-            }
-
-            for (volatile int i = 0; i < 100; i++);
-            __asm__ volatile("hlt");
-        }
-        
-        vga_clear();
-        for (;;) __asm__ volatile("hlt");
+        for (volatile int i = 0; i < 100; i++);
+        __asm__ volatile("hlt");
     }
 
     /* Should never reach here */
