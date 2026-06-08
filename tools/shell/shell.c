@@ -12,6 +12,7 @@
 #include "auth.h"
 #include "path.h"
 #include "display/display.h"
+#include "mouse/mouse.h"
 #include "new.h"
 #include "file.h"
 #include "write.h"
@@ -168,6 +169,35 @@ static void shell_clear_line(void) {
         vga_putch('\b');
     }
     shell_cursor_draw();
+}
+
+static void shell_print_buffer(void);
+
+static void shell_print_history_entry(void) {
+    shell_clear_line();
+    strncpy(input.buffer, history.history[history.index], SHELL_BUFFER_SIZE - 1);
+    input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
+    input.len = strlen(input.buffer);
+    if (input.len >= SHELL_BUFFER_SIZE) input.len = SHELL_BUFFER_SIZE - 1;
+    shell_print_buffer();
+}
+
+static void shell_history_prev(void) {
+    if (history.index > 0) {
+        history.index--;
+        shell_print_history_entry();
+    }
+}
+
+static void shell_history_next(void) {
+    if (history.index < history.count - 1) {
+        history.index++;
+        shell_print_history_entry();
+    } else if (history.index == history.count - 1) {
+        history.index = history.count;
+        shell_clear_line();
+        input.len = 0;
+    }
 }
 
 static void shell_print_buffer(void) {
@@ -1115,9 +1145,15 @@ static void shell_poll_keyboard(void) {
     if (status & 0x01) {
         /* Check if this is mouse data (bit 5 of status port indicates auxiliary device buffer) */
         if (status & 0x20) {
-            /* Mouse data - discard it without processing */
-            inb(0x60);
-            return;
+                /* Mouse data - parse packets for scroll wheel support */
+                mouse_poll_position();
+                s8 scroll = mouse_get_scroll_delta();
+                if (scroll > 0) {
+                    vga_scrollback_up();
+                } else if (scroll < 0) {
+                    vga_scrollback_down();
+                }
+                return;
         }
 
         u8 scancode = inb(0x60);
@@ -1143,30 +1179,10 @@ static void shell_poll_keyboard(void) {
         if (extended_key) {
             extended_key = 0;
             if (raw_scancode == 0x48) {
-                if (history.index > 0) {
-                    history.index--;
-                    shell_clear_line();
-                    strncpy(input.buffer, history.history[history.index], SHELL_BUFFER_SIZE - 1);
-                    input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
-                    input.len = strlen(input.buffer);
-                    if (input.len >= SHELL_BUFFER_SIZE) input.len = SHELL_BUFFER_SIZE - 1;
-                    shell_print_buffer();
-                }
+                shell_history_prev();
                 return;
             } else if (raw_scancode == 0x50) {
-                if (history.index < history.count - 1) {
-                    history.index++;
-                    shell_clear_line();
-                    strncpy(input.buffer, history.history[history.index], SHELL_BUFFER_SIZE - 1);
-                    input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
-                    input.len = strlen(input.buffer);
-                    if (input.len >= SHELL_BUFFER_SIZE) input.len = SHELL_BUFFER_SIZE - 1;
-                    shell_print_buffer();
-                } else if (history.index == history.count - 1) {
-                    history.index = history.count;
-                    shell_clear_line();
-                    input.len = 0;
-                }
+                shell_history_next();
                 return;
             } else if (raw_scancode == 0x49) {
                 vga_scrollback_up();
@@ -1175,6 +1191,20 @@ static void shell_poll_keyboard(void) {
                 vga_scrollback_down();
                 return;
             }
+            return;
+        }
+
+        if (raw_scancode == 0x48) {
+            shell_history_prev();
+            return;
+        } else if (raw_scancode == 0x50) {
+            shell_history_next();
+            return;
+        } else if (raw_scancode == 0x49) {
+            vga_scrollback_up();
+            return;
+        } else if (raw_scancode == 0x51) {
+            vga_scrollback_down();
             return;
         }
 
