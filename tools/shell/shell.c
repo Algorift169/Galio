@@ -105,11 +105,40 @@ static u8 extended_key = 0;
 static char current_dir[256] = HOME_DIR;
 static const char shell_hostname[] = "galio";
 static u8 shell_should_exit = 0;
+static int shell_cursor_x = 0;
+static int shell_cursor_y = 0;
+static unsigned short shell_cursor_saved_cell = 0;
+static u8 shell_cursor_drawn = 0;
 
 static const char *shell_display_dir(const char *path, char *out, u32 out_size);
 static u8 shell_is_direct_root_child(const char *path);
 
+static void shell_cursor_restore(void) {
+    if (!shell_cursor_drawn) return;
+    char saved_char = (char)(shell_cursor_saved_cell & 0xFF);
+    unsigned char saved_color = (unsigned char)(shell_cursor_saved_cell >> 8);
+    vga_write_cell(shell_cursor_x, shell_cursor_y, saved_char, saved_color);
+    shell_cursor_drawn = 0;
+}
+
+static void shell_cursor_draw(void) {
+    if (shell_cursor_drawn) return;
+    vga_get_hardware_cursor(&shell_cursor_x, &shell_cursor_y);
+    shell_cursor_saved_cell = vga_read_cell(shell_cursor_x, shell_cursor_y);
+    char saved_char = (char)(shell_cursor_saved_cell & 0xFF);
+    unsigned char saved_color = (unsigned char)(shell_cursor_saved_cell >> 8);
+    unsigned char block_color = (saved_color & 0x0F) << 4 | 0x0F;
+    vga_write_cell(shell_cursor_x, shell_cursor_y, saved_char, block_color);
+    shell_cursor_drawn = 1;
+}
+
+static void shell_cursor_reset(void) {
+    shell_cursor_restore();
+    shell_cursor_draw();
+}
+
 static void shell_print_prompt(void) {
+    shell_cursor_restore();
     const char *host = shell_hostname;
     char display_dir[DIR_PATH_SIZE];
     const char *dir = shell_display_dir(current_dir, display_dir, sizeof(display_dir));
@@ -119,6 +148,7 @@ static void shell_print_prompt(void) {
     SHELL_COLOR_CMD();
     kprintf( "{ %s @ galio }-< %s > ", host, dir);
     SHELL_COLOR_RESET();
+    shell_cursor_draw();
 }
 
 static void shell_add_history(const char *cmd) {
@@ -131,17 +161,26 @@ static void shell_add_history(const char *cmd) {
 }
 
 static void shell_clear_line(void) {
+    shell_cursor_restore();
     for (u32 i = 0; i < input.len; i++) {
         vga_putch('\b');
         vga_putch(' ');
         vga_putch('\b');
     }
+    shell_cursor_draw();
 }
 
 static void shell_print_buffer(void) {
+    shell_cursor_restore();
     for (u32 i = 0; i < input.len; i++) {
         vga_putch(input.buffer[i]);
     }
+    shell_cursor_draw();
+}
+
+static void shell_print_cursor(void) {
+    shell_cursor_restore();
+    shell_cursor_draw();
 }
 
 static const char *shell_basename(const char *path) {
@@ -1152,23 +1191,28 @@ static void shell_poll_keyboard(void) {
 
         if (c == '\b') {
             if (input.len > 0) {
+                shell_cursor_restore();
                 input.len--;
                 input.buffer[input.len] = 0;
                 vga_putch('\b');
                 vga_putch(' ');
                 vga_putch('\b');
+                shell_cursor_draw();
             }
         } else if (c == '\n') {
+            shell_cursor_restore();
             vga_putch('\n');
             shell_execute_command();
         } else if (c == '\t') {
             return;
         } else if (c >= 32 && c < 127) {
             if (input.len < SHELL_BUFFER_SIZE - 1) {
+                shell_cursor_restore();
                 input.buffer[input.len] = c;
                 input.len++;
                 input.buffer[input.len] = 0;
                 vga_putch(c);
+                shell_cursor_draw();
             }
         }
     }
@@ -1178,6 +1222,8 @@ void shell_run(void) {
     input.len = 0;
     input.buffer[0] = 0;
     shell_should_exit = 0;
+    extended_key = 0;
+    shift_pressed = 0;
 
     vga_clear();
 
@@ -1196,6 +1242,7 @@ void shell_run(void) {
     SHELL_COLOR_RESET();
 
     shell_print_prompt();
+    shell_cursor_reset();
 
     while (!shell_should_exit) {
         shell_poll_keyboard();
