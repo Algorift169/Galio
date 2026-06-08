@@ -3,6 +3,7 @@
 #include "vga.h"
 #include "kprintf.h"
 #include "string.h"
+#include "keyboard.h"
 #include <string.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -81,7 +82,6 @@ static const u8 ascii_table_shift[] = {
     'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~', 0, '|', 'Z', 'X', 'C', 'V',
     'B', 'N', 'M', '<', '>', '?', 0, '*', 0, ' ', 0, 0, 0, 0, 0, 0,
 };
-static u8 shift_pressed = 0;
 
 typedef struct {
     char buffer[SHELL_BUFFER_SIZE];
@@ -91,6 +91,7 @@ typedef struct {
 typedef struct {
     char history[HISTORY_SIZE][HISTORY_BUFFER_SIZE];
     u32 count;
+    u32 head;
     u32 index;
 } shell_history_t;
 
@@ -102,7 +103,6 @@ typedef struct {
 static shell_input_t input;
 static shell_history_t history = {0};
 static dir_history_t dir_history = {0};
-static u8 extended_key = 0;
 static char current_dir[256] = HOME_DIR;
 static const char shell_hostname[] = "galio";
 static u8 shell_should_exit = 0;
@@ -152,11 +152,18 @@ static void shell_print_prompt(void) {
     shell_cursor_draw();
 }
 
+static u32 shell_history_array_index(u32 logical_index) {
+    if (logical_index >= history.count) return 0;
+    u32 start = (history.head + HISTORY_SIZE - history.count) % HISTORY_SIZE;
+    return (start + logical_index) % HISTORY_SIZE;
+}
+
 static void shell_add_history(const char *cmd) {
     if (input.len == 0) return;
-    u32 idx = history.count % HISTORY_SIZE;
+    u32 idx = history.head;
     strncpy(history.history[idx], cmd, HISTORY_BUFFER_SIZE - 1);
     history.history[idx][HISTORY_BUFFER_SIZE - 1] = 0;
+    history.head = (history.head + 1) % HISTORY_SIZE;
     if (history.count < HISTORY_SIZE) history.count++;
     history.index = history.count;
 }
@@ -174,8 +181,16 @@ static void shell_clear_line(void) {
 static void shell_print_buffer(void);
 
 static void shell_print_history_entry(void) {
+    if (history.index >= history.count) {
+        shell_clear_line();
+        input.len = 0;
+        input.buffer[0] = 0;
+        return;
+    }
+
     shell_clear_line();
-    strncpy(input.buffer, history.history[history.index], SHELL_BUFFER_SIZE - 1);
+    u32 idx = shell_history_array_index(history.index);
+    strncpy(input.buffer, history.history[idx], SHELL_BUFFER_SIZE - 1);
     input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
     input.len = strlen(input.buffer);
     if (input.len >= SHELL_BUFFER_SIZE) input.len = SHELL_BUFFER_SIZE - 1;
@@ -197,6 +212,7 @@ static void shell_history_next(void) {
         history.index = history.count;
         shell_clear_line();
         input.len = 0;
+        input.buffer[0] = 0;
     }
 }
 
@@ -949,6 +965,7 @@ static void shell_execute_command(void) {
         kprintf("Usage: net <stat|scan|list|devices>\n");
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "clear", 5) == 0) {
+        shell_cursor_restore();
         vga_clear();
         SHELL_COLOR_OUT();
         kprintf("                                GSH                                  \n");
@@ -1011,6 +1028,7 @@ static void shell_execute_command(void) {
         kprintf("\n");
         SHELL_COLOR_RESET();
     } else if (strcmp(input.buffer, "exit") == 0) {
+        shell_cursor_restore();
         shell_should_exit = 1;
         return;
     } else if (strncmp(input.buffer, "ls", 2) == 0) {
@@ -1140,84 +1158,36 @@ static void shell_execute_command(void) {
 
 /* Poll keyboard for input (no IRQs) */
 static void shell_poll_keyboard(void) {
-    u8 status = inb(0x64);
+    u8 scancode;
+    u8 is_pressed;
+    u8 extended;
 
-    if (status & 0x01) {
-        /* Check if this is mouse data (bit 5 of status port indicates auxiliary device buffer) */
-        if (status & 0x20) {
-                /* Mouse data - parse packets for scroll wheel support */
-                mouse_poll_position();
-                s8 scroll = mouse_get_scroll_delta();
-                if (scroll > 0) {
-                    vga_scrollback_up();
-                } else if (scroll < 0) {
-                    vga_scrollback_down();
-                }
-                return;
-        }
-
-        u8 scancode = inb(0x60);
-
-        if (scancode == 0xE0) {
-            extended_key = 1;
-            return;
-        }
-
-        u8 is_pressed = !(scancode & 0x80);
-        u8 raw_scancode = scancode & 0x7F;
-
-        if (raw_scancode == 0x2A || raw_scancode == 0x36) {
-            shift_pressed = is_pressed;
-            return;
-        }
-
+    if (keyboard_read_event(&scancode, &is_pressed, &extended)) {
         if (!is_pressed) {
-            if (extended_key) extended_key = 0;
             return;
         }
 
-        if (extended_key) {
-            extended_key = 0;
-            if (raw_scancode == 0x48) {
+        if (extended || scancode == 0x48 || scancode == 0x50 || scancode == 0x49 || scancode == 0x51) {
+            if (scancode == 0x48) {
                 shell_history_prev();
                 return;
-            } else if (raw_scancode == 0x50) {
+            } else if (scancode == 0x50) {
                 shell_history_next();
                 return;
-            } else if (raw_scancode == 0x49) {
+            } else if (scancode == 0x49) {
                 vga_scrollback_up();
                 return;
-            } else if (raw_scancode == 0x51) {
+            } else if (scancode == 0x51) {
                 vga_scrollback_down();
                 return;
             }
             return;
         }
 
-        if (raw_scancode == 0x48) {
-            shell_history_prev();
-            return;
-        } else if (raw_scancode == 0x50) {
-            shell_history_next();
-            return;
-        } else if (raw_scancode == 0x49) {
-            vga_scrollback_up();
-            return;
-        } else if (raw_scancode == 0x51) {
-            vga_scrollback_down();
+        u8 c = scancode_to_ascii(scancode);
+        if (c == 0) {
             return;
         }
-
-        if (raw_scancode >= sizeof(ascii_table)) {
-            return;
-        }
-
-        if (raw_scancode >= sizeof(ascii_table_shift)) {
-            return;
-        }
-
-        u8 c = shift_pressed ? ascii_table_shift[raw_scancode] : ascii_table[raw_scancode];
-        if (c == 0) return;
 
         if (c == '\b') {
             if (input.len > 0) {
@@ -1245,6 +1215,19 @@ static void shell_poll_keyboard(void) {
                 shell_cursor_draw();
             }
         }
+        return;
+    }
+
+    u8 status = inb(0x64);
+    if ((status & 0x01) && (status & 0x20)) {
+        /* Mouse data - parse packets for scroll wheel support */
+        mouse_poll_position();
+        s8 scroll = mouse_get_scroll_delta();
+        if (scroll > 0) {
+            vga_scrollback_up();
+        } else if (scroll < 0) {
+            vga_scrollback_down();
+        }
     }
 }
 
@@ -1252,8 +1235,6 @@ void shell_run(void) {
     input.len = 0;
     input.buffer[0] = 0;
     shell_should_exit = 0;
-    extended_key = 0;
-    shift_pressed = 0;
 
     vga_clear();
 
@@ -1279,6 +1260,7 @@ void shell_run(void) {
         for (volatile int i = 0; i < 100; i++);
     }
 
+    shell_cursor_restore();
     /* Safe cleanup after shell exit - just clear and return, don't reinitialize */
     vga_clear();
 }

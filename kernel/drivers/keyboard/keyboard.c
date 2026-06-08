@@ -116,10 +116,13 @@ static void keyboard_handler(registers_t *regs) {
 
     if (raw_scancode == LSHIFT_PRESSED || raw_scancode == RSHIFT_PRESSED) {
         shift_pressed = is_pressed;
+        return;
     } else if (raw_scancode == LCTRL_PRESSED) {
         ctrl_pressed = is_pressed;
+        return;
     } else if (raw_scancode == LALT_PRESSED) {
         alt_pressed = is_pressed;
+        return;
     }
 
     keyboard_enqueue(raw_scancode, is_pressed, extended);
@@ -150,6 +153,11 @@ static u8 keyboard_poll_port_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
         return 0;
     }
 
+    /* Ignore auxiliary/mouse bytes when polling keyboard input directly. */
+    if (status & 0x20) {
+        return 0;
+    }
+
     u8 data = inb(KEYBOARD_DATA);
 
     u8 pressed = !(data & 0x80);
@@ -161,6 +169,17 @@ static u8 keyboard_poll_port_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
     u8 raw_scancode = data & 0x7F;
     u8 ext = poll_pending_extended;
     poll_pending_extended = 0;
+
+    if (raw_scancode == LSHIFT_PRESSED || raw_scancode == RSHIFT_PRESSED) {
+        shift_pressed = pressed;
+        return 0;
+    } else if (raw_scancode == LCTRL_PRESSED) {
+        ctrl_pressed = pressed;
+        return 0;
+    } else if (raw_scancode == LALT_PRESSED) {
+        alt_pressed = pressed;
+        return 0;
+    }
 
     if (scancode) *scancode = raw_scancode;
     if (is_pressed) *is_pressed = pressed;

@@ -136,53 +136,35 @@ static void editor_handle_key(editor_buffer_t *buf, u8 scancode, u8 is_pressed,
 }
 
 static void editor_poll_keyboard(editor_buffer_t *buf, u8 *save_flag, u8 *exit_flag, u8 *buffer_changed) {
-    u8 status = inb(0x64);
-    if (!(status & 0x01)) {
+    u8 scancode;
+    u8 is_pressed;
+    u8 extended;
+
+    if (!keyboard_read_event(&scancode, &is_pressed, &extended)) {
         return;
     }
 
-    /* Check if this is mouse data (bit 5 of status port indicates auxiliary device buffer) */
-    if (status & 0x20) {
-        /* Mouse data - discard it without processing */
-        inb(0x60);
+    if (!is_pressed) {
         return;
     }
 
-    u8 scancode = inb(0x60);
-    u8 is_pressed = !(scancode & 0x80);
-
-    if (scancode == 0xE0) {
-        extended_key = 1;
+    if (extended) {
         return;
     }
 
     u8 raw = scancode & 0x7F;
 
-    /* Track shift keys */
+    /* Track modifier keys */
     if (raw == 0x2A || raw == 0x36) {
         shift_pressed = is_pressed;
         return;
     }
-    
-    /* Track left Ctrl */
+
     if (raw == 0x1D) {
         ctrl_pressed = is_pressed;
         return;
     }
-    
-    /* Release handling */
-    if (!is_pressed) {
-        if (extended_key) extended_key = 0;
-        return;
-    }
-    
-    /* Extended keys (arrows, etc.) - ignore for now */
-    if (extended_key) {
-        extended_key = 0;
-        return;
-    }
-    
-    /* Normal key handling */
+
     editor_handle_key(buf, scancode, is_pressed, save_flag, exit_flag, buffer_changed);
 }
 

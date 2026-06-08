@@ -8,6 +8,7 @@
 #include "string.h"
 #include "cpu.h"
 #include "process/process.h"
+#include "keyboard.h"
 #include <stddef.h>
 
 user_session_t kernel_auth = {0};
@@ -132,51 +133,30 @@ static i32 auth_load_from_disk(void) {
 }
 
 static u8 read_char(void) {
+    u8 scancode;
+    u8 is_pressed;
+    u8 extended;
+
     while (1) {
-        u8 status = inb(0x64);
-        if (status & 0x01) {
-            /* Check if this is mouse data (bit 5 of status port indicates auxiliary device buffer) */
-            if (status & 0x20) {
-                /* Mouse data - discard it without processing */
-                inb(0x60);
-                continue;
-            }
-
-            u8 scancode = inb(0x60);
-            u8 is_pressed = !(scancode & 0x80);
-            u8 raw_scancode = scancode & 0x7F;
-
-            static const u8 ascii_table[] = {
-                0,  27,  '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b', '\t',
-                'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n', 0, 'a', 's',
-                'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`', 0, '\\', 'z', 'x', 'c', 'v',
-                'b', 'n', 'm', ',', '.', '/', 0, '*', 0, ' ', 0, 0, 0, 0, 0, 0,
-            };
-            static const u8 ascii_table_shift[] = {
-                0,  27,  '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '\b', '\t',
-                'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', '\n', 0, 'A', 'S',
-                'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~', 0, '|', 'Z', 'X', 'C', 'V',
-                'B', 'N', 'M', '<', '>', '?', 0, '*', 0, ' ', 0, 0, 0, 0, 0, 0,
-            };
-            static u8 shift_pressed = 0;
-
-            if (raw_scancode == 0x2A || raw_scancode == 0x36) {
-                shift_pressed = is_pressed;
-                continue;
-            }
-
-            if (!is_pressed) {
-                continue;
-            }
-
-            if (raw_scancode < sizeof(ascii_table)) {
-                u8 c = shift_pressed ? ascii_table_shift[raw_scancode] : ascii_table[raw_scancode];
-                if (c != 0 && c != '\t') {
-                    return c;
-                }
-            }
+        if (!keyboard_read_event(&scancode, &is_pressed, &extended)) {
+            for (volatile int i = 0; i < 100; i++);
+            continue;
         }
-        for (volatile int i = 0; i < 100; i++);
+
+        if (!is_pressed) {
+            continue;
+        }
+
+        if (extended) {
+            continue;
+        }
+
+        u8 c = scancode_to_ascii(scancode);
+        if (c == 0 || c == '\t') {
+            continue;
+        }
+
+        return c;
     }
 }
 

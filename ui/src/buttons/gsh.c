@@ -44,8 +44,10 @@ void gsh_button_click(void) {
     mouse_flush_port();
     keyboard_flush_queue();
     shell_run();
+    mouse_flush_port();
+    keyboard_flush_queue();
     panel_set_enabled(1);
-    display_init();
+    display_enter_userland_mode();
 }
 
 u8 gsh_button_contains(int x, int y) {
