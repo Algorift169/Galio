@@ -13,10 +13,6 @@ typedef struct {
     u32 size;
 } editor_buffer_t;
 
-static u8 shift_pressed = 0;
-static u8 ctrl_pressed = 0;
-static u8 extended_key = 0;
-
 /* ASCII tables */
 static const u8 ascii_table[] = {
     0, 27, '1','2','3','4','5','6','7','8','9','0','-','=', '\b','\t',
@@ -91,27 +87,25 @@ static void editor_handle_key(editor_buffer_t *buf, u8 scancode, u8 is_pressed,
     u8 raw = scancode & 0x7F;
     
     /* Ctrl+S (scancode 0x1F = 's') */
-    if (ctrl_pressed && raw == 0x1F) {
+    if (keyboard_ctrl_pressed() && raw == 0x1F) {
         *save_flag = 1;
         return;
     }
     
     /* Ctrl+X (scancode 0x2D = 'x') */
-    if (ctrl_pressed && raw == 0x2D) {
+    if (keyboard_ctrl_pressed() && raw == 0x2D) {
         *exit_flag = 1;
         return;
     }
     
-    /* If Ctrl was active but this was not a save/exit combo, discard the key.
-       This prevents stale Ctrl state from turning normal keys into shortcuts. */
-    if (ctrl_pressed) {
-        ctrl_pressed = 0;
+    /* If Ctrl was active but this was not a save/exit combo, discard the key. */
+    if (keyboard_ctrl_pressed()) {
         return;
     }
     
     if (raw >= sizeof(ascii_table)) return;
     
-    u8 c = shift_pressed ? ascii_table_shift[raw] : ascii_table[raw];
+    u8 c = keyboard_shift_pressed() ? ascii_table_shift[raw] : ascii_table[raw];
     if (c == 0) return;
     
     if (c == '\b') {
@@ -152,19 +146,6 @@ static void editor_poll_keyboard(editor_buffer_t *buf, u8 *save_flag, u8 *exit_f
         return;
     }
 
-    u8 raw = scancode & 0x7F;
-
-    /* Track modifier keys */
-    if (raw == 0x2A || raw == 0x36) {
-        shift_pressed = is_pressed;
-        return;
-    }
-
-    if (raw == 0x1D) {
-        ctrl_pressed = is_pressed;
-        return;
-    }
-
     editor_handle_key(buf, scancode, is_pressed, save_flag, exit_flag, buffer_changed);
 }
 
@@ -173,11 +154,6 @@ u8 shell_editor(const char *filepath) {
         kprintf("[EDITOR] No file specified\n");
         return 0;
     }
-    
-    /* Reset modifier state when entering the editor. */
-    shift_pressed = 0;
-    ctrl_pressed = 0;
-    extended_key = 0;
 
     editor_buffer_t buf = {0};
     u8 save_flag = 0, exit_flag = 0;

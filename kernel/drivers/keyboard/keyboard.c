@@ -213,3 +213,14 @@ u8 scancode_to_ascii(u8 scancode) {
     }
     return 0;
 }
+u8 keyboard_shift_pressed(void) {
+    return shift_pressed;
+}
+
+u8 keyboard_ctrl_pressed(void) {
+    return ctrl_pressed;
+}
+
+u8 keyboard_alt_pressed(void) {
+    return alt_pressed;
+}

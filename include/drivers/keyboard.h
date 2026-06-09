@@ -14,4 +14,9 @@ void keyboard_flush_queue(void);
 u8 keyboard_read_event(u8 *scancode, u8 *is_pressed, u8 *extended);
 u8 scancode_to_ascii(u8 scancode);
 
+/* Query current modifier state */
+u8 keyboard_shift_pressed(void);
+u8 keyboard_ctrl_pressed(void);
+u8 keyboard_alt_pressed(void);
+
 #endif /* KEYBOARD_H */
