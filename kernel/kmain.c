@@ -18,8 +18,8 @@
 #include "ata.h"
 #include "ext2.h"
 #include "init.h"
-#include "cpu.h"
-#include "scheduler.h"
+#include "cpu/cpu.h"
+#include "cpu/scheduler.h"
 #include "auth.h"
 #include "string.h"
 #include <string.h>
@@ -251,8 +251,11 @@ void kmain(void *multiboot_ptr) {
     kernel_time_initialize();
     panel_draw_header();
 
+    kprintf("Initializing CPU subsystem...\n");
+    cpu_init();
+
     kprintf("Initializing scheduler...\n");
-    scheduler_init();
+    cpu_scheduler_init();
 
     kprintf("Initializing keyboard...\n");
     keyboard_init();

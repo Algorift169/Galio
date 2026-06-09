@@ -61,7 +61,8 @@ SRCS = kernel/kmain.c \
        kernel/mm/memory.c \
        kernel/mm/dma.c \
        kernel/process/process.c \
-       kernel/process/scheduler.c \
+       kernel/cpu/cpu.c \
+       kernel/cpu/scheduler.c \
        kernel/process/elf.c \
        kernel/syscall/syscall.c \
        kernel/syscall/syscall_extra.c \
@@ -94,6 +95,7 @@ SRCS = kernel/kmain.c \
        kernel/drivers/net/rtl8188eu.c \
        kernel/tests/run_tests.c \
        kernel/tests/scheduler_test.c \
+       kernel/tests/cpu_scheduler_test.c \
        kernel/tests/paging_test.c \
        kernel/tests/vfs_test.c \
        kernel/tests/signal_test.c \

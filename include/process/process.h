@@ -66,6 +66,8 @@ typedef struct {
     u32 stack_size;
     void *pagedir;
     u32 priority;
+    u32 burst_time;
+    u32 arrival_order;
     u32 ticks;
     u32 time_slice;
     u32 fd_table[PROCESS_MAX_FDS];

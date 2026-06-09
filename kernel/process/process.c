@@ -24,6 +24,7 @@ static void save_current_registers(registers_t *regs);
 
 static process_t processes[MAX_PROCESSES];
 static u32 next_pid = 1;
+static u32 next_arrival_order = 1;
 static process_t *current_process = NULL;
 static u32 process_count = 0;
 static spinlock_t process_table_lock;
@@ -130,6 +131,8 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->parent_pid = current_process ? current_process->pid : 0;
     proc->state = PROCESS_READY;
     proc->priority = priority;
+    proc->burst_time = priority == 0 ? 1 : priority;
+    proc->arrival_order = next_arrival_order++;
     proc->ticks = 0;
     proc->pagedir = paging_create_user_directory();
     if (!proc->pagedir) {
@@ -359,7 +362,17 @@ void process_yield(void) {
     }
 
     if (!next) {
-        next = current_process;  /* Run same process */
+        /* If current process is WAITING, look for idle process (PID 1) */
+        if (current_process && current_process->state == PROCESS_WAITING) {
+            process_t *idle = process_get(1);
+            if (idle && idle->state == PROCESS_READY) {
+                next = idle;
+            }
+        }
+        
+        if (!next) {
+            next = current_process;  /* Run same process */
+        }
     }
 
     if (next != current_process) {
@@ -388,9 +401,14 @@ static process_t *find_next_ready_process(void) {
     u32 start = (current_process - processes + 1) % MAX_PROCESSES;
     for (u32 i = 0; i < MAX_PROCESSES; i++) {
         u32 idx = (start + i) % MAX_PROCESSES;
-        if (processes[idx].pid != 0 && processes[idx].state == PROCESS_READY) {
-            next = &processes[idx];
-            break;
+        process_t *candidate = &processes[idx];
+        if (candidate->pid == 0 || candidate->state != PROCESS_READY) {
+            continue;
+        }
+
+        if (!next || candidate->burst_time < next->burst_time ||
+            (candidate->burst_time == next->burst_time && candidate->arrival_order < next->arrival_order)) {
+            next = candidate;
         }
     }
     return next;
