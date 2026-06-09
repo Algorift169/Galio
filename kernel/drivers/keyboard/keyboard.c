@@ -208,7 +208,7 @@ u8 keyboard_read_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
 }
 
 u8 scancode_to_ascii(u8 scancode) {
-    if (scancode < 60) {
+    if (scancode < 128) {
         return shift_pressed ? scancode_table_shift[scancode] : scancode_table[scancode];
     }
     return 0;
