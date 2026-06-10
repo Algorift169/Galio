@@ -6,7 +6,9 @@
 #include "vfs.h"
 
 static void safe_strcat(char *dest, const char *src, u32 max_len) {
+    if (!dest || !src || max_len == 0) return;
     u32 dest_len = strlen(dest);
+    if (dest_len >= max_len - 1) return;
     u32 copy_len = max_len - dest_len - 1;
     if (copy_len > 0) {
         strncat(dest, src, copy_len);
@@ -38,14 +40,15 @@ static void build_filepath(const char *args, const char *current_dir, char *out_
     /* Remove leading/trailing spaces */
     char *p = filename;
     while (*p == ' ') p++;
-    char *end = p + strlen(p) - 1;
-    while (end > p && *end == ' ') end--;
-    *(end + 1) = 0;
     
     if (*p == 0) {
         out_path[0] = 0;
         return;
     }
+
+    char *end = p + strlen(p) - 1;
+    while (end > p && *end == ' ') end--;
+    *(end + 1) = 0;
     
     /* Split into filename and optional path token by space */
     char *space = p;
@@ -70,7 +73,8 @@ static void build_filepath(const char *args, const char *current_dir, char *out_
     char combined[256];
     strncpy(combined, target_dir, sizeof(combined) - 1);
     combined[sizeof(combined) - 1] = 0;
-    if (combined[strlen(combined) - 1] != '/') {
+    u32 combined_len = strlen(combined);
+    if (combined_len > 0 && combined[combined_len - 1] != '/') {
         safe_strcat(combined, "/", sizeof(combined));
     }
     safe_strcat(combined, p, sizeof(combined));
@@ -86,6 +90,10 @@ u8 shell_write_command(const char *args, const char *current_dir, u8 privileged)
 
     char fullpath[256];
     build_filepath(args, current_dir, fullpath);
+    if (fullpath[0] == 0) {
+        kprintf("[WRITE] Usage: write <filename> [path]\n");
+        return 0;
+    }
     
     if (!privileged && is_root_child_path(fullpath)) {
         kprintf("[WRITE] Permission denied: use 'rex write %s' to write root-level files\n", fullpath);

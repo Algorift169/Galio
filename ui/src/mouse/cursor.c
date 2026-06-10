@@ -52,6 +52,8 @@ static void set_cursor_pos(int x, int y) {
 }
 
 void cursor_init(void) {
+    cursor_active = 0;
+    last_mouse_buttons = 0;
     mouse_init();
     int mx = 40, my = 12;
     mouse_get_position(&mx, &my);

@@ -703,13 +703,18 @@ static i32 ext2_parent_and_name(const char *path, char *parent, char *name) {
     for (const char *p = absolute; *p; p++) if (*p == '/') last_slash = p;
     if (!last_slash) return -1;
     if (last_slash == absolute) {
+        if (strlen(absolute + 1) == 0 || strlen(absolute + 1) >= 256) return -1;
         strcpy(parent, "/");
-        strcpy(name, absolute + 1);
+        strncpy(name, absolute + 1, 255);
+        name[255] = 0;
     } else {
         u32 parent_len = last_slash - absolute;
+        if (parent_len == 0 || parent_len >= 256) return -1;
+        if (strlen(last_slash + 1) == 0 || strlen(last_slash + 1) >= 256) return -1;
         memcpy(parent, absolute, parent_len);
         parent[parent_len] = 0;
-        strcpy(name, last_slash + 1);
+        strncpy(name, last_slash + 1, 255);
+        name[255] = 0;
     }
     return 0;
 }
@@ -890,13 +895,18 @@ i32 ext2_create_file(const char *path, u32 mode) {
     const char *last_slash = absolute;
     for (const char *p = absolute; *p; p++) if (*p == '/') last_slash = p;
     if (last_slash == absolute) {
+        if (strlen(absolute + 1) == 0 || strlen(absolute + 1) >= sizeof(filename)) return -1;
         parent_path[0] = '/'; parent_path[1] = 0;
-        strcpy(filename, absolute + 1);
+        strncpy(filename, absolute + 1, sizeof(filename) - 1);
+        filename[sizeof(filename) - 1] = 0;
     } else {
         u32 parent_len = last_slash - absolute;
+        if (parent_len == 0 || parent_len >= sizeof(parent_path)) return -1;
+        if (strlen(last_slash + 1) == 0 || strlen(last_slash + 1) >= sizeof(filename)) return -1;
         memcpy(parent_path, absolute, parent_len);
         parent_path[parent_len] = 0;
-        strcpy(filename, last_slash + 1);
+        strncpy(filename, last_slash + 1, sizeof(filename) - 1);
+        filename[sizeof(filename) - 1] = 0;
     }
     u32 parent_inode_num = ext2_find_inode(parent_path);
     if (parent_inode_num == 0) return -1;
@@ -923,13 +933,18 @@ i32 ext2_create_directory(const char *path, u32 mode) {
     const char *last_slash = absolute;
     for (const char *p = absolute; *p; p++) if (*p == '/') last_slash = p;
     if (last_slash == absolute) {
+        if (strlen(absolute + 1) == 0 || strlen(absolute + 1) >= sizeof(dirname)) return -1;
         parent_path[0] = '/'; parent_path[1] = 0;
-        strcpy(dirname, absolute + 1);
+        strncpy(dirname, absolute + 1, sizeof(dirname) - 1);
+        dirname[sizeof(dirname) - 1] = 0;
     } else {
         u32 parent_len = last_slash - absolute;
+        if (parent_len == 0 || parent_len >= sizeof(parent_path)) return -1;
+        if (strlen(last_slash + 1) == 0 || strlen(last_slash + 1) >= sizeof(dirname)) return -1;
         memcpy(parent_path, absolute, parent_len);
         parent_path[parent_len] = 0;
-        strcpy(dirname, last_slash + 1);
+        strncpy(dirname, last_slash + 1, sizeof(dirname) - 1);
+        dirname[sizeof(dirname) - 1] = 0;
     }
     u32 parent_inode_num = ext2_find_inode(parent_path);
     if (parent_inode_num == 0) return -1;

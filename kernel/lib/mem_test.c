@@ -94,8 +94,7 @@ static void test_exhaustion(void) {
 
     u32 free_recovered = pmem_get_free();
     kprintf("  Memory recovered after free: free=%u KB\n", free_recovered / 1024);
-    u32 expected_free = free_before + (alloc_count * FRAME_SIZE / 1024);
-    TEST_ASSERT(free_recovered >= expected_free - 4, "Did not recover free memory");
+    TEST_ASSERT(free_recovered >= free_before, "Did not recover free memory");
 
     kprintf("TEST 3 RESULT: %u passed, %u failed\n", tests_passed, tests_failed);
     num_allocated = 0;

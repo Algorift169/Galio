@@ -10,7 +10,9 @@ static const char *skip_spaces(const char *str) {
 }
 
 static void safe_strcat(char *dest, const char *src, u32 max_len) {
+    if (!dest || !src || max_len == 0) return;
     u32 dest_len = strlen(dest);
+    if (dest_len >= max_len - 1) return;
     u32 copy_len = max_len - dest_len - 1;
     if (copy_len > 0) {
         strncat(dest, src, copy_len);
@@ -61,7 +63,8 @@ static void build_target_path(const char *dir, const char *filename, char *out_p
         out_path[VFS_MAX_PATH - 1] = 0;
     }
 
-    if (out_path[strlen(out_path) - 1] != '/') {
+    u32 out_len = strlen(out_path);
+    if (out_len > 0 && out_path[out_len - 1] != '/') {
         safe_strcat(out_path, "/", VFS_MAX_PATH);
     }
     safe_strcat(out_path, filename, VFS_MAX_PATH);

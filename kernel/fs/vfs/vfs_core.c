@@ -246,19 +246,22 @@ static void vfs_split_parent(const char *path, char *parent, char *name) {
 
     if (!slash) {
         strcpy(parent, ".");
-        strcpy(name, normalized);
+        strncpy(name, normalized, VFS_MAX_FILENAME - 1);
+        name[VFS_MAX_FILENAME - 1] = 0;
         return;
     }
 
     if (slash == normalized) {
         strcpy(parent, ".");
-        strcpy(name, normalized + 1);
+        strncpy(name, normalized + 1, VFS_MAX_FILENAME - 1);
+        name[VFS_MAX_FILENAME - 1] = 0;
         return;
     }
 
     if (slash == normalized + 1 && normalized[0] == '.' && normalized[1] == '/') {
         strcpy(parent, ".");
-        strcpy(name, normalized + 2);
+        strncpy(name, normalized + 2, VFS_MAX_FILENAME - 1);
+        name[VFS_MAX_FILENAME - 1] = 0;
         return;
     }
 
@@ -266,7 +269,8 @@ static void vfs_split_parent(const char *path, char *parent, char *name) {
     if (parent_len >= VFS_MAX_PATH) parent_len = VFS_MAX_PATH - 1;
     memcpy(parent, normalized, parent_len);
     parent[parent_len] = 0;
-    strcpy(name, slash + 1);
+    strncpy(name, slash + 1, VFS_MAX_FILENAME - 1);
+    name[VFS_MAX_FILENAME - 1] = 0;
 }
 static vfs_dentry_t *vfs_lookup_internal(const char *path) {
     char normalized[VFS_MAX_PATH];
@@ -397,6 +401,8 @@ static vfs_dentry_t *vfs_make_directory_internal(const char *path, u8 force) {
         return child;
     }
 }
+
+// Core function to create a file or symlink, with optional data and disk mode support
 static vfs_dentry_t *vfs_make_node_internal(const char *path, u32 mode, const u8 *data, u32 size, u32 dev_id, u8 force) {
     if (!path) return NULL;
     char normalized[VFS_MAX_PATH];
@@ -491,6 +497,8 @@ static vfs_dentry_t *vfs_make_node_internal(const char *path, u32 mode, const u8
         return child;
     }
 }
+
+// Convenience wrappers for common node types
 static vfs_dentry_t *vfs_make_file_internal(const char *path, u8 force, const u8 *data, u32 size) {
     return vfs_make_node_internal(path, VFS_TYPE_FILE | VFS_PERM_FILE_DEFAULT, data, size, 0, force);
 }
@@ -506,6 +514,8 @@ static void vfs_init_root(void) {
     vfs_dirent_add(vfs_root_inode, ".", vfs_root_inode->number);
     vfs_dirent_add(vfs_root_inode, "..", vfs_root_inode->number);
 }
+
+// Build the in-memory VFS structure from the initrd header
 static void vfs_build_from_initrd(vfs_header_t *header) {
     if (!header) return;
     u32 total_data = 0;
@@ -527,6 +537,8 @@ static void vfs_build_from_initrd(vfs_header_t *header) {
         vfs_make_file_internal(entry->path, 1, source, size);
     }
 }
+
+// Public API implementations 
 void vfs_core_init(void *initrd_addr) {
     if (!initrd_addr) { kprintf("[VFS] ERROR: No initrd address supplied\n"); return; }
     vfs_header_t *header = (vfs_header_t *)initrd_addr;

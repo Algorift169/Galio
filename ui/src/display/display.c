@@ -1,6 +1,7 @@
 #include "display/display.h"
 #include "panel/panel.h"
 #include "mouse/cursor.h"
+#include "mouse/mouse.h"
 #include "vga.h"
 #include "common.h"
 
@@ -23,6 +24,7 @@ void display_enter_userland_mode(void) {
 
 void display_enter_shell_mode(void) {
     panel_set_enabled(0);
+    mouse_disable();
     vga_clear();
     vga_disable_hardware_cursor();
 }

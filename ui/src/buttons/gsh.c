@@ -15,6 +15,7 @@
 static int gsh_button_x = 9;
 static int gsh_button_y = 0;
 static int gsh_is_hovered = 0;
+static u8 gsh_shell_active = 0;
 
 void gsh_button_init(void) {
     /* Initialize GSH button */
@@ -39,15 +40,22 @@ void gsh_button_draw(int x, int y) {
 }
 
 void gsh_button_click(void) {
+    if (gsh_shell_active) {
+        return;
+    }
+
+    gsh_shell_active = 1;
+
     /* Launch shell when GSH button is clicked */
     display_enter_shell_mode();
     mouse_flush_port();
-    keyboard_flush_queue();
+    keyboard_reset_state();
     shell_run();
     mouse_flush_port();
-    keyboard_flush_queue();
+    keyboard_reset_state();
     panel_set_enabled(1);
     display_enter_userland_mode();
+    gsh_shell_active = 0;
 }
 
 u8 gsh_button_contains(int x, int y) {

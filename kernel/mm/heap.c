@@ -100,6 +100,9 @@ void kfree(void *ptr) {
 }
 
 void *kcalloc(size_t nmemb, size_t size) {
+    if (nmemb != 0 && size > ((size_t)-1) / nmemb) {
+        return NULL;
+    }
     size_t total = nmemb * size;
     void *ptr = kmalloc(total);
     if (ptr) __builtin_memset(ptr, 0, total);

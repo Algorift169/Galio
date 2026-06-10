@@ -132,6 +132,7 @@ static int e1000_hw_init(e1000_priv_t *p) {
     p->tx_ring_phys = (u32)dma_alloc(sizeof(struct e1000_tx_desc) * E1000_TX_DESC);
     if (!p->tx_ring_phys) return -1;
     p->tx_ring = (struct e1000_tx_desc *)map_physical_region(p->tx_ring_phys, sizeof(struct e1000_tx_desc) * E1000_TX_DESC);
+    if (!p->tx_ring) return -1;
     memset(p->tx_ring, 0, sizeof(struct e1000_tx_desc) * E1000_TX_DESC);
 
     for (int i = 0; i < E1000_TX_DESC; i++) {
@@ -139,6 +140,7 @@ static int e1000_hw_init(e1000_priv_t *p) {
         p->tx_buf_phys[i] = (u32)dma_alloc(E1000_BUF_SIZE);
         if (!p->tx_buf_phys[i]) return -1;
         p->tx_buf_virt[i] = map_physical_region(p->tx_buf_phys[i], E1000_BUF_SIZE);
+        if (!p->tx_buf_virt[i]) return -1;
     }
 
     mmio_write32(mmio, REG_TDBAL, (u32)(p->tx_ring_phys & 0xFFFFFFFF));
@@ -155,12 +157,14 @@ static int e1000_hw_init(e1000_priv_t *p) {
     p->rx_ring_phys = (u32)dma_alloc(sizeof(struct e1000_rx_desc) * E1000_RX_DESC);
     if (!p->rx_ring_phys) return -1;
     p->rx_ring = (struct e1000_rx_desc *)map_physical_region(p->rx_ring_phys, sizeof(struct e1000_rx_desc) * E1000_RX_DESC);
+    if (!p->rx_ring) return -1;
     memset(p->rx_ring, 0, sizeof(struct e1000_rx_desc) * E1000_RX_DESC);
 
     for (int i = 0; i < E1000_RX_DESC; i++) {
         p->rx_buf_phys[i] = (u32)dma_alloc(E1000_BUF_SIZE);
         if (!p->rx_buf_phys[i]) return -1;
         p->rx_buf_virt[i] = map_physical_region(p->rx_buf_phys[i], E1000_BUF_SIZE);
+        if (!p->rx_buf_virt[i]) return -1;
         p->rx_ring[i].addr = p->rx_buf_phys[i];
     }
 
@@ -182,8 +186,7 @@ static int e1000_poll_rx(net_device_t *dev) {
     e1000_priv_t *p = (e1000_priv_t *)dev->priv;
     void *mmio = p->mmio;
     u32 rdh = mmio_read32(mmio, REG_RDH);
-    u32 rdt = mmio_read32(mmio, REG_RDT);
-    /* Process descriptors between (rdh..rdt] */
+    /* Process receive descriptors starting at the hardware head. */
     u32 idx = (rdh) % E1000_RX_DESC;
     while (1) {
         struct e1000_rx_desc *d = &p->rx_ring[idx];

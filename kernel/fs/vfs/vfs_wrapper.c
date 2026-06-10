@@ -102,6 +102,10 @@ static u32 path_depth(const char *path) {
 
 const char *vfs_basename(const char *path) {
     static char buf[VFS_MAX_FILENAME];
+    if (!path || *path == 0) {
+        buf[0] = 0;
+        return buf;
+    }
     int i = __builtin_strlen(path) - 1;
 
     while (i > 0 && path[i] != '/') i--;
@@ -847,7 +851,8 @@ static u32 vfs_mount_root_entry(const char *mountpoint, u32 device) {
         char dev_path[VFS_MAX_PATH];
         strncpy(dev_path, normalized, VFS_MAX_PATH - 1);
         dev_path[VFS_MAX_PATH - 1] = 0;
-        if (strcmp(normalized, ".") != 0 && dev_path[strlen(dev_path)-1] != '/') {
+        u32 dev_len = strlen(dev_path);
+        if (strcmp(normalized, ".") != 0 && dev_len > 0 && dev_path[dev_len - 1] != '/') {
             strncat(dev_path, "/", VFS_MAX_PATH - strlen(dev_path) - 1);
         }
         strncat(dev_path, "null", VFS_MAX_PATH - strlen(dev_path) - 1);
@@ -905,7 +910,8 @@ static void vfs_build_disk_child_path(const char *parent, const ext2_dirent_t *d
 
     strncpy(out_path, parent, VFS_MAX_PATH - 1);
     out_path[VFS_MAX_PATH - 1] = 0;
-    if (out_path[strlen(out_path) - 1] != '/') {
+    u32 out_len = strlen(out_path);
+    if (out_len > 0 && out_path[out_len - 1] != '/') {
         strncat(out_path, "/", VFS_MAX_PATH - strlen(out_path) - 1);
     }
     strncat(out_path, dent->name, dent->name_len);

@@ -75,6 +75,10 @@ static u32 path_depth(const char *path) {
 // Returns a pointer to a static buffer containing the normalized path. Caller should not modify or free this buffer.
 const char *vfs_basename(const char *path) {
     static char buf[VFS_MAX_FILENAME];
+    if (!path || *path == 0) {
+        buf[0] = 0;
+        return buf;
+    }
     int i = __builtin_strlen(path) - 1;
 
     while (i > 0 && path[i] != '/') i--;

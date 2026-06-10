@@ -4,6 +4,10 @@
 #include "lib/string.h"
 
 net_buf_t *net_buf_alloc(u32 size, u32 headroom) {
+    if (headroom > 0xFFFFFFFFu - size) {
+        return NULL;
+    }
+
     net_buf_t *nb = kmalloc(sizeof(net_buf_t));
     if (!nb) return NULL;
     nb->headroom = headroom;

@@ -18,18 +18,22 @@ static u32 kernel_frames = 0;
 extern void process_oom_kill(void);
 
 static void set_frame(u32 frame) {
+    if (frame >= BITMAP_SIZE * 8) return;
     frame_bitmap[FRAME_MASK(frame)] |= BIT_MASK(frame);
 }
 
 static void unset_frame(u32 frame) {
+    if (frame >= BITMAP_SIZE * 8) return;
     frame_bitmap[FRAME_MASK(frame)] &= ~BIT_MASK(frame);
 }
 
 static u8 get_frame(u32 frame) {
+    if (frame >= BITMAP_SIZE * 8) return 1;
     return frame_bitmap[FRAME_MASK(frame)] & BIT_MASK(frame);
 }
 
 static void ref_frame(u32 frame) {
+    if (frame >= BITMAP_SIZE * 8) return;
     if (frame_refcount[frame] == 0) {
         set_frame(frame);
         used_frames++;
@@ -38,6 +42,7 @@ static void ref_frame(u32 frame) {
 }
 
 static void deref_frame(u32 frame) {
+    if (frame >= BITMAP_SIZE * 8) return;
     if (frame_refcount[frame] == 0) return;
     frame_refcount[frame]--;
     if (frame_refcount[frame] == 0) {
@@ -143,7 +148,12 @@ u32 pmem_alloc(size_t num_frames) {
         process_oom_kill();
     }
 
-    for (u32 frame = 0; frame < BITMAP_SIZE * 8; frame++) {
+    u32 max_frames = BITMAP_SIZE * 8;
+    if (num_frames > max_frames) {
+        return 0;
+    }
+
+    for (u32 frame = 0; frame + num_frames <= max_frames; frame++) {
         if (!get_frame(frame)) {
             /* Check if we have enough contiguous frames */
             u8 found = 1;
