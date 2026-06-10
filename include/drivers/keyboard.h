@@ -10,6 +10,7 @@ void keyboard_init(void);
 void keyboard_install_callback(key_callback_t callback);
 u8 keyboard_has_event(void);
 void keyboard_flush_queue(void);
+void keyboard_reset_state(void);
 /* Returns 1 and fills scancode/is_pressed/extended if an event is available. */
 u8 keyboard_read_event(u8 *scancode, u8 *is_pressed, u8 *extended);
 u8 scancode_to_ascii(u8 scancode);

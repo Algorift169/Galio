@@ -97,6 +97,12 @@ static void editor_handle_key(editor_buffer_t *buf, u8 scancode, u8 is_pressed,
         *exit_flag = 1;
         return;
     }
+
+    /* Esc is a fallback exit in case a Ctrl release event was missed. */
+    if (raw == 0x01) {
+        *exit_flag = 1;
+        return;
+    }
     
     /* If Ctrl was active but this was not a save/exit combo, discard the key. */
     if (keyboard_ctrl_pressed()) {
@@ -169,6 +175,7 @@ u8 shell_editor(const char *filepath) {
     
     kprintf("[EDITOR] Opening %s\n", filepath);
     kprintf("[EDITOR] Press Ctrl+S to save, Ctrl+X to exit\n");
+    keyboard_reset_state();
     
     /* Small delay to show message */
     for (volatile int i = 0; i < 200000; i++);
@@ -217,6 +224,7 @@ u8 shell_editor(const char *filepath) {
         for (volatile int i = 0; i < 100; i++);
     }
     
+    keyboard_reset_state();
     vga_clear();
     kprintf("[EDITOR] Exited\n");
     return 1;

@@ -20,8 +20,8 @@ typedef struct {
 } keyboard_event_t;
 
 static keyboard_event_t event_queue[KEYBOARD_QUEUE_SIZE];
-static volatile u8 queue_head = 0;
-static volatile u8 queue_tail = 0;
+static volatile u16 queue_head = 0;
+static volatile u16 queue_tail = 0;
 static u8 shift_pressed = 0;
 static u8 ctrl_pressed = 0;
 static u8 alt_pressed = 0;
@@ -33,7 +33,7 @@ static inline u8 keyboard_queue_empty(void) {
 }
 
 static inline u8 keyboard_queue_full(void) {
-    u8 next = queue_head + 1;
+    u16 next = queue_head + 1;
     if (next == KEYBOARD_QUEUE_SIZE) next = 0;
     return next == queue_tail;
 }
@@ -192,6 +192,22 @@ void keyboard_flush_queue(void) {
     queue_head = 0;
     queue_tail = 0;
     __asm__ volatile("sti");
+}
+
+void keyboard_reset_state(void) {
+    __asm__ volatile("cli");
+    queue_head = 0;
+    queue_tail = 0;
+    shift_pressed = 0;
+    ctrl_pressed = 0;
+    alt_pressed = 0;
+    poll_pending_extended = 0;
+    __asm__ volatile("sti");
+
+    /* Drain any bytes that arrived while switching input modes. */
+    while (inb(KEYBOARD_CTRL) & 0x01) {
+        (void)inb(KEYBOARD_DATA);
+    }
 }
 
 u8 keyboard_read_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
