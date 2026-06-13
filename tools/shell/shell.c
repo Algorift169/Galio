@@ -966,7 +966,7 @@ static void shell_execute_command(void) {
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "clear", 5) == 0) {
         shell_cursor_restore();
-        vga_clear();
+        vga_clear_no_update();
         SHELL_COLOR_OUT();
         kprintf("                                GSH                                  \n");
     } else if (strcmp(input.buffer, "tree") == 0) {
@@ -1236,7 +1236,7 @@ void shell_run(void) {
     input.buffer[0] = 0;
     shell_should_exit = 0;
 
-    vga_clear();
+    vga_clear_no_update();
 
     strncpy(current_dir, HOME_DIR, sizeof(current_dir) - 1);
     current_dir[sizeof(current_dir) - 1] = 0;
@@ -1262,5 +1262,5 @@ void shell_run(void) {
 
     shell_cursor_restore();
     /* Safe cleanup after shell exit - just clear and return, don't reinitialize */
-    vga_clear();
+    vga_clear_no_update();
 }
