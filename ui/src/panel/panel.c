@@ -1,6 +1,7 @@
 #include "panel/panel.h"
 #include "panel/clock.h"
 #include "panel/date.h"
+#include "panel/sysinfo.h"
 #include "buttons/galio.h"
 #include "buttons/gsh.h"
 #include "vga.h"
@@ -11,6 +12,7 @@
 #include "drivers/pit.h"
 
 #define VGA_WIDTH 80
+#define VGA_HEIGHT 25
 
 static u8 panel_enabled = 1;
 
@@ -18,11 +20,32 @@ void panel_set_enabled(u8 enabled) {
     panel_enabled = enabled;
 }
 
+static void uint_to_str(u32 num, char *buf, int buf_size) {
+    if (buf_size < 2) return;
+    char temp[16];
+    int i = 0;
+    if (num == 0) {
+        buf[0] = '0';
+        buf[1] = '\0';
+        return;
+    }
+    while (num > 0 && i < 15) {
+        temp[i++] = '0' + (num % 10);
+        num /= 10;
+    }
+    int j = 0;
+    for (int k = i - 1; k >= 0; k--) {
+        if (j < buf_size - 1) buf[j++] = temp[k];
+    }
+    buf[j] = '\0';
+}
+
 void panel_draw_header(void) {
     if (!panel_enabled) {
         return;
     }
-    /* Use wall-clock DateTime for the header display */
+    
+    sysinfo_t sysinfo = sysinfo_get();
     DateTime now = kernel_time_get_datetime();
     u32 wall_seconds = now.hour * 3600u + now.minute * 60u + now.second;
 
@@ -31,20 +54,16 @@ void panel_draw_header(void) {
     panel_format_time(wall_seconds, time_str);
     panel_format_date(&now, date_str);
     
-    /* Draw buttons at top row with blue highlighting */
+    /* ROW 0: Header with buttons and date/time */
     galio_button_draw(0, 0);
     gsh_button_draw(9, 0);
     
-    /* Draw time/date at the right side using vga_write_cell to avoid cursor interference */
     vga_set_color(PANEL_COLOR_BLUE);
-    
     int time_len = strlen(time_str);
     int date_len = strlen(date_str);
-    int display_start = VGA_WIDTH - time_len - date_len - 5;  /* "[DD] [HH:MM:SS]" format */
+    int display_start = VGA_WIDTH - time_len - date_len - 5;
+    if (display_start < 15) display_start = 15;
     
-    if (display_start < 15) display_start = 15;  /* Don't overwrite buttons area */
-    
-    /* Draw date and time using vga_write_cell */
     int pos = display_start;
     vga_write_cell(pos++, 0, '[', PANEL_COLOR_BLUE);
     for (int i = 0; i < date_len && pos < VGA_WIDTH; i++) {
@@ -58,26 +77,113 @@ void panel_draw_header(void) {
     }
     if (pos < VGA_WIDTH) vga_write_cell(pos++, 0, ']', PANEL_COLOR_BLUE);
     
-    /* Draw separator line on row 1 */
+    /* ROW 1: Separator */
     vga_set_color(PANEL_COLOR_RED);
     for (int x = 0; x < VGA_WIDTH; x++) {
         vga_write_cell(x, 1, '-', PANEL_COLOR_RED);
     }
     
-    /* Reset color and position cursor to row 2 for shell output */
+    /* ROW 2: Top border */
+    for (int x = 0; x < 17; x++) {
+        if (x < 16) vga_write_cell(x, 2, ' ', 0x0F);
+        else vga_write_cell(x, 2, '|', PANEL_COLOR_RED);
+    }
+    
+    /* ROW 3: CPU label - simplified */
     vga_set_color(PANEL_COLOR_WHITE);
+    const char *cpu_label = "[cpu]";
+    for (int i = 0; cpu_label[i] && i < 16; i++) vga_write_cell(i, 3, cpu_label[i], PANEL_COLOR_WHITE);
+    
+    /* ROW 4: CPU value */
+    char cpu_str[5];
+    uint_to_str(sysinfo.cpu_percent, cpu_str, sizeof(cpu_str));
+    vga_set_color(PANEL_COLOR_RED);
+    int x = 0;
+    for (int i = 0; cpu_str[i] && x < 14; i++, x++) vga_write_cell(x, 4, cpu_str[i], PANEL_COLOR_RED);
+    if (x < 15) vga_write_cell(x, 4, '%', PANEL_COLOR_RED);
+    
+    /* ROW 5: Separator */
+    vga_set_color(PANEL_COLOR_RED);
+    for (int i = 0; i < 16; i++) vga_write_cell(i, 5, '-', PANEL_COLOR_RED);
+    vga_write_cell(16, 5, '|', PANEL_COLOR_RED);
+    
+    /* ROW 6: Memory label - simplified */
+    vga_set_color(PANEL_COLOR_WHITE);
+    const char *mem_label = "[memory]";
+    for (int i = 0; mem_label[i] && i < 16; i++) vga_write_cell(i, 6, mem_label[i], PANEL_COLOR_WHITE);
+    
+    /* ROW 7: Memory percentage value */
+    u32 mem_percent = (sysinfo.memory_used * 100) / sysinfo.memory_total;
+    char mem_str[5];
+    uint_to_str(mem_percent, mem_str, sizeof(mem_str));
+    vga_set_color(PANEL_COLOR_RED);
+    x = 0;
+    for (int i = 0; mem_str[i] && x < 14; i++, x++) vga_write_cell(x, 7, mem_str[i], PANEL_COLOR_RED);
+    if (x < 15) vga_write_cell(x, 7, '%', PANEL_COLOR_RED);
+    
+    /* ROW 8: Separator */
+    vga_set_color(PANEL_COLOR_RED);
+    for (int i = 0; i < 16; i++) vga_write_cell(i, 8, '-', PANEL_COLOR_RED);
+    vga_write_cell(16, 8, '|', PANEL_COLOR_RED);
+    
+    /* ROW 9: Battery label */
+    vga_set_color(PANEL_COLOR_WHITE);
+    const char *bat_label = "[battery]";
+    for (int i = 0; bat_label[i] && i < 16; i++) vga_write_cell(i, 9, bat_label[i], PANEL_COLOR_WHITE);
+    
+    /* ROW 10: Battery value */
+    char bat_str[8];
+    uint_to_str(sysinfo.battery_percent, bat_str, sizeof(bat_str));
+    vga_set_color(PANEL_COLOR_RED);
+    x = 0;
+    for (int i = 0; bat_str[i] && x < 14; i++, x++) vga_write_cell(x, 10, bat_str[i], PANEL_COLOR_RED);
+    if (x < 15) vga_write_cell(x++, 10, '%', PANEL_COLOR_RED);
+    if (sysinfo.battery_charging && x < 15) {
+        vga_write_cell(x++, 10, ' ', PANEL_COLOR_RED);
+        if (x < 15) vga_write_cell(x, 10, '+', PANEL_COLOR_RED);
+    }
+    
+    /* ROW 11: Separator */
+    vga_set_color(PANEL_COLOR_RED);
+    for (int i = 0; i < 16; i++) vga_write_cell(i, 11, '-', PANEL_COLOR_RED);
+    vga_write_cell(16, 11, '+', PANEL_COLOR_RED);
+    
+    /* ROWS 12-19: Directory tree label */
+    vga_set_color(PANEL_COLOR_WHITE);
+    const char *dir_l1 = "[current";
+    const char *dir_l2 = "dir";
+    const char *dir_l3 = "tree";
+    const char *dir_l4 = "view]";
+    for (int i = 0; dir_l1[i] && i < 16; i++) vga_write_cell(i, 12, dir_l1[i], PANEL_COLOR_WHITE);
+    for (int i = 0; dir_l2[i] && i < 16; i++) vga_write_cell(i, 13, dir_l2[i], PANEL_COLOR_WHITE);
+    for (int i = 0; dir_l3[i] && i < 16; i++) vga_write_cell(i, 14, dir_l3[i], PANEL_COLOR_WHITE);
+    for (int i = 0; dir_l4[i] && i < 16; i++) vga_write_cell(i, 15, dir_l4[i], PANEL_COLOR_WHITE);
+    
+    /* ROW 16: Bottom separator */
+    vga_set_color(PANEL_COLOR_RED);
+    for (int i = 0; i < 16; i++) vga_write_cell(i, 16, '-', PANEL_COLOR_RED);
+    vga_write_cell(16, 16, '+', PANEL_COLOR_RED);
+    
+    /* Vertical separator line */
+    vga_set_color(PANEL_COLOR_RED);
+    for (int y = 2; y <= 16; y++) vga_write_cell(16, y, '|', PANEL_COLOR_RED);
+    for (int y = 17; y < VGA_HEIGHT; y++) vga_write_cell(16, y, '|', PANEL_COLOR_RED);
+    
+    /* ROW 17: Bottom horizontal separator */
+    vga_set_color(PANEL_COLOR_RED);
+    for (int x = 17; x < VGA_WIDTH; x++) vga_write_cell(x, 17, '-', PANEL_COLOR_RED);
+    
+    /* ROWS 2-16, 18-24, COLS 17-79: Shell/main content area (leave for shell output) */
+    /* Shell will write directly to this area */
 }
 
 void panel_update(void) {
-    /* Called periodically to refresh the panel */
     if (!panel_enabled) {
         return;
     }
     panel_draw_header();
 }
 
-/* Timer callback: redraw header on PIT ticks (once per second is sufficient,
-   but PIT runs at 100Hz; we keep a counter to only redraw every 100 ticks). */
 static void panel_tick(registers_t *regs) {
     if (!panel_enabled) {
         return;
@@ -93,10 +199,8 @@ static void panel_tick(registers_t *regs) {
 }
 
 void panel_init(void) {
-    /* Initialize buttons */
     galio_button_init();
     gsh_button_init();
-    
-    /* Initialize panel and register periodic redraw */
+    sysinfo_init();
     pit_install_callback(panel_tick);
 }
