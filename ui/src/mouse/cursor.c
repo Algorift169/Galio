@@ -106,3 +106,10 @@ void cursor_get_position(int *x, int *y) {
     if (x) *x = cursor_x;
     if (y) *y = cursor_y;
 }
+
+void cursor_deactivate(void) {
+    if (cursor_active) {
+        restore_previous_cell();
+        cursor_active = 0;
+    }
+}
