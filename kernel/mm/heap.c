@@ -171,3 +171,24 @@ void slab_free(slab_cache_t *cache, void *ptr) {
     *(void **)ptr = cache->free_list;
     cache->free_list = ptr;
 }
+
+/* Memory statistics - walk the free list to calculate used memory */
+u32 heap_get_used_memory(void) {
+    if (!free_list) return 0;
+    
+    u32 used = 0;
+    block_t *curr = free_list;
+    
+    while (curr) {
+        if (curr->used) {
+            used += curr->size;
+        }
+        curr = curr->next;
+    }
+    
+    return used;
+}
+
+u32 heap_get_total_memory(void) {
+    return HEAP_MAX_SIZE;
+}

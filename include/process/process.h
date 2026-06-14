@@ -110,4 +110,9 @@ void process_oom_kill(void);
 void process_preempt(registers_t *regs);
 char *process_resolve_path(const char *cwd, const char *path, char *output, u32 output_size);
 
+/* CPU statistics functions */
+u32 process_get_total_ticks(void);
+u32 process_get_idle_ticks(void);
+u8 process_get_cpu_usage(void);
+
 #endif /* PROCESS_H */

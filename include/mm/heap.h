@@ -24,4 +24,8 @@ void slab_cache_init(slab_cache_t *cache, size_t object_size, u32 object_count);
 void *slab_alloc(slab_cache_t *cache);
 void slab_free(slab_cache_t *cache, void *ptr);
 
+/* Memory statistics functions */
+u32 heap_get_used_memory(void);
+u32 heap_get_total_memory(void);
+
 #endif /* HEAP_H */

@@ -61,6 +61,7 @@ SRCS = kernel/kmain.c \
        kernel/mm/memory.c \
        kernel/mm/dma.c \
        kernel/process/process.c \
+       kernel/process/scheduler.c \
        kernel/cpu/cpu.c \
        kernel/cpu/scheduler.c \
        kernel/process/elf.c \
