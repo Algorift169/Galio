@@ -54,6 +54,7 @@ void gsh_button_click(void) {
     mouse_flush_port();
     keyboard_reset_state();
     panel_set_enabled(1);
+    panel_draw_header();
     display_enter_userland_mode();
     gsh_shell_active = 0;
 }

@@ -89,6 +89,8 @@ SRCS = kernel/kmain.c \
        ui/src/panel/sysinfo.c \
        ui/src/panel/clock.c \
        ui/src/panel/date.c \
+       ui/src/panel/fs_browser.c \
+       ui/src/panel/launch_region.c \
        ui/src/buttons/galio.c \
        ui/src/buttons/gsh.c \
        kernel/pci/pci.c \

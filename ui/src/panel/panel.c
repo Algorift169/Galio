@@ -2,6 +2,8 @@
 #include "panel/clock.h"
 #include "panel/date.h"
 #include "panel/sysinfo.h"
+#include "panel/fs_browser.h"
+#include "panel/launch_region.h"
 #include "buttons/galio.h"
 #include "buttons/gsh.h"
 #include "vga.h"
@@ -147,23 +149,14 @@ void panel_draw_header(void) {
     vga_set_color(PANEL_COLOR_RED);
     for (int i = 0; i < 16; i++) vga_write_cell(i, 11, '-', PANEL_COLOR_RED);
     vga_write_cell(16, 11, '+', PANEL_COLOR_RED);
+
+    /* ROWS 12-16: Filesystem browser (dynamic list) */
+    fs_browser_draw(0, 12, 16, 5);
     
-    /* ROWS 12-19: Directory tree label */
-    vga_set_color(PANEL_COLOR_WHITE);
-    const char *dir_l1 = "[current";
-    const char *dir_l2 = "dir";
-    const char *dir_l3 = "tree";
-    const char *dir_l4 = "view]";
-    for (int i = 0; dir_l1[i] && i < 16; i++) vga_write_cell(i, 12, dir_l1[i], PANEL_COLOR_WHITE);
-    for (int i = 0; dir_l2[i] && i < 16; i++) vga_write_cell(i, 13, dir_l2[i], PANEL_COLOR_WHITE);
-    for (int i = 0; dir_l3[i] && i < 16; i++) vga_write_cell(i, 14, dir_l3[i], PANEL_COLOR_WHITE);
-    for (int i = 0; dir_l4[i] && i < 16; i++) vga_write_cell(i, 15, dir_l4[i], PANEL_COLOR_WHITE);
-    
-    /* ROW 16: Bottom separator */
     vga_set_color(PANEL_COLOR_RED);
-    for (int i = 0; i < 16; i++) vga_write_cell(i, 16, '-', PANEL_COLOR_RED);
+    vga_set_color(PANEL_COLOR_RED);
     vga_write_cell(16, 16, '+', PANEL_COLOR_RED);
-    
+
     /* Vertical separator line */
     vga_set_color(PANEL_COLOR_RED);
     for (int y = 2; y <= 16; y++) vga_write_cell(16, y, '|', PANEL_COLOR_RED);
@@ -173,8 +166,8 @@ void panel_draw_header(void) {
     vga_set_color(PANEL_COLOR_RED);
     for (int x = 17; x < VGA_WIDTH; x++) vga_write_cell(x, 17, '-', PANEL_COLOR_RED);
     
-    /* ROWS 2-16, 18-24, COLS 17-79: Shell/main content area (leave for shell output) */
-    /* Shell will write directly to this area */
+    /* ROWS 2-24, COLS 18-79: Launch region for tools/applications (empty, just border) */
+    launch_region_draw();
 }
 
 void panel_update(void) {
@@ -202,5 +195,18 @@ void panel_init(void) {
     galio_button_init();
     gsh_button_init();
     sysinfo_init();
+    fs_browser_init();
+    
+    /* Initialize launch region - middle section for tools (cols 18-79, rows 2-16) */
+    launch_region_init(18, 2, 62, 16);
+    
+    /* Add some default tools */
+    launch_region_add_tool("Galio", 'G', 0x0A);      /* Green */
+    launch_region_add_tool("Shell", 'S', 0x0B);      /* Cyan */
+    launch_region_add_tool("Editor", 'E', 0x0D);     /* Magenta */
+    launch_region_add_tool("Files", 'F', 0x0E);      /* Yellow */
+    launch_region_add_tool("System", 'Y', 0x09);     /* Light blue */
+    launch_region_add_tool("Network", 'N', 0x0C);    /* Light red */
+    
     pit_install_callback(panel_tick);
 }
