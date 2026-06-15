@@ -974,7 +974,6 @@ static void shell_execute_command(void) {
         shell_cursor_restore();
         vga_clear();
         SHELL_COLOR_OUT();
-        kprintf("                                GSH                                  \n");
     } else if (strcmp(input.buffer, "tree") == 0) {
         SHELL_COLOR_OUT();
         shell_tree_command(current_dir);
@@ -985,7 +984,7 @@ static void shell_execute_command(void) {
     } else if (strncmp(input.buffer, "help", 4) == 0) {
         SHELL_COLOR_OUT();
         kprintf("\n____________________________________________________________________\n");
-        kprintf(" |                     GSH  - Available Commands:                   |\n");
+        kprintf(" |                  Available Commands:                             |\n");
         kprintf(" |__________________________________________________________________|\n");
         kprintf(" |  ls       - List directory contents                              |\n");
         kprintf(" |__________________________________________________________________|\n");
@@ -1250,7 +1249,6 @@ void shell_run(void) {
     vfs_cleanup_old_recycle_bin("./usr/home/desktop/recycle", 259200000);
 
     SHELL_COLOR_OUT();
-    //kprintf("GSH");
     SHELL_COLOR_RESET();
 
     shell_print_prompt();
@@ -1263,5 +1261,6 @@ void shell_run(void) {
 
     shell_cursor_restore();
     shell_cursor_drawn = 0;
+    vga_disable_hardware_cursor();  /* Disable hardware cursor; UI manages its own */
     vga_clear();
 }
