@@ -27,4 +27,11 @@ void vga_draw_button_text(int x, int y, const char *text, unsigned char color);
 void vga_draw_button_box(int x, int y, int width, int height, unsigned char color);
 void vga_draw_button(int x, int y, int width, int height, const char *text, unsigned char text_color, unsigned char bg_color);
 
+/* Bounded output region for shell */
+void vga_set_bounds(int x, int y, int width, int height);
+void vga_clear_bounds(void);
+
+/* Load a built-in 8x8 font into VGA font memory and restore it later. */
+void vga_use_font8(void);
+void vga_restore_font(void);
 #endif /* VGA_H */

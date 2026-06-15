@@ -12,6 +12,13 @@ static u32 cursor_x = 0;
 static u32 cursor_y = 0;
 static u8 vga_current_color = VGA_COLOR_WHITE;
 
+/* Bounded region for constrained output */
+static int bounds_x = 0;
+static int bounds_y = 0;
+static int bounds_width = VGA_WIDTH;
+static int bounds_height = VGA_HEIGHT;
+static u8 bounds_enabled = 0;
+
 void vga_update_cursor(void) {
     u16 pos = cursor_y * VGA_WIDTH + cursor_x;
     outb(0x3D4, 0x0F);
@@ -25,30 +32,55 @@ void vga_update_cursor(void) {
 }
 
 static void scroll(void) {
-    /* Shift all rows up by one (row 1 -> row 0, row 2 -> row 1, etc.) */
-    volatile u32 y, x;
-    for (y = 1; y < VGA_HEIGHT; y++) {
-        u32 src = y * VGA_WIDTH;
-        u32 dst = (y - 1) * VGA_WIDTH;
-        for (x = 0; x < VGA_WIDTH; x++) {
-            vga_buf[dst + x] = vga_buf[src + x];
+    if (bounds_enabled) {
+        /* Scroll only within bounded region */
+        for (int y = bounds_y; y < bounds_y + bounds_height - 1; y++) {
+            for (int x = bounds_x; x < bounds_x + bounds_width; x++) {
+                vga_write_cell(x, y, vga_read_cell(x, y + 1) & 0xFF, (vga_read_cell(x, y + 1) >> 8) & 0xFF);
+            }
         }
-    }
-    /* Clear the last line */
-    u32 last = (VGA_HEIGHT - 1) * VGA_WIDTH;
-    for (x = 0; x < VGA_WIDTH; x++) {
-        vga_buf[last + x] = (u16)(' ' | (vga_current_color << 8));
+        /* Clear last line in bounded region */
+        for (int x = bounds_x; x < bounds_x + bounds_width; x++) {
+            vga_write_cell(x, bounds_y + bounds_height - 1, ' ', VGA_COLOR_WHITE);
+        }
+    } else {
+        /* Scroll full screen */
+        volatile u32 y, x;
+        for (y = 1; y < VGA_HEIGHT; y++) {
+            u32 src = y * VGA_WIDTH;
+            u32 dst = (y - 1) * VGA_WIDTH;
+            for (x = 0; x < VGA_WIDTH; x++) {
+                vga_buf[dst + x] = vga_buf[src + x];
+            }
+        }
+        /* Clear the last line */
+        u32 last = (VGA_HEIGHT - 1) * VGA_WIDTH;
+        for (x = 0; x < VGA_WIDTH; x++) {
+            vga_buf[last + x] = (u16)(' ' | (vga_current_color << 8));
+        }
     }
 }
 
 void vga_clear(void) {
-    for (u32 i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
-        vga_buf[i] = (u16)(' ' | (VGA_COLOR_WHITE << 8));
+    if (bounds_enabled) {
+        /* Clear only the bounded region */
+        for (int y = bounds_y; y < bounds_y + bounds_height; y++) {
+            for (int x = bounds_x; x < bounds_x + bounds_width; x++) {
+                vga_write_cell(x, y, ' ', VGA_COLOR_WHITE);
+            }
+        }
+        cursor_x = bounds_x;
+        cursor_y = bounds_y;
+    } else {
+        /* Clear full screen */
+        for (u32 i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
+            vga_buf[i] = (u16)(' ' | (VGA_COLOR_WHITE << 8));
+        }
+        cursor_x = 0;
+        cursor_y = 0;
+        vga_current_color = VGA_COLOR_WHITE;
+        vga_update_cursor();
     }
-    cursor_x = 0;
-    cursor_y = 0;
-    vga_current_color = VGA_COLOR_WHITE;
-    vga_update_cursor();
 }
 
 /* Clear the VGA text buffer without updating the hardware cursor (avoids port I/O).
@@ -97,13 +129,22 @@ void vga_backspace(void) {
 }
 
 void vga_newline(void) {
-    cursor_x = 0;
-    cursor_y++;
-    if (cursor_y >= VGA_HEIGHT) {
-        scroll();
-        cursor_y = VGA_HEIGHT - 1;
+    if (bounds_enabled) {
+        cursor_x = bounds_x;
+        cursor_y++;
+        if (cursor_y >= bounds_y + bounds_height) {
+            scroll();
+            cursor_y = bounds_y + bounds_height - 1;
+        }
+    } else {
+        cursor_x = 0;
+        cursor_y++;
+        if (cursor_y >= VGA_HEIGHT) {
+            scroll();
+            cursor_y = VGA_HEIGHT - 1;
+        }
+        vga_update_cursor();
     }
-    vga_update_cursor();
 }
 
 void vga_init(void) {
@@ -118,18 +159,19 @@ void vga_putch(char c) {
     } else if (c == '\b') {
         vga_backspace();
     } else if (c == '\r') {
-        cursor_x = 0;
-        vga_update_cursor();
+        cursor_x = bounds_enabled ? bounds_x : 0;
+        if (!bounds_enabled) vga_update_cursor();
     } else if (c >= 32 && c < 127) {
-        if (cursor_x >= VGA_WIDTH) {
+        int max_x = bounds_enabled ? bounds_x + bounds_width : VGA_WIDTH;
+        if (cursor_x >= max_x) {
             vga_newline();
         }
         vga_putch_at(c, cursor_x, cursor_y);
         cursor_x++;
-        if (cursor_x >= VGA_WIDTH) {
+        if (cursor_x >= max_x) {
             vga_newline();
         }
-        vga_update_cursor();
+        if (!bounds_enabled) vga_update_cursor();
     }
 }
 
@@ -164,9 +206,18 @@ void vga_scrollback_down(void) {
 void vga_show_live_screen(void) {}
 
 void vga_write_cell(int x, int y, char c, unsigned char color) {
-    if (x >= 0 && x < VGA_WIDTH && y >= 0 && y < VGA_HEIGHT) {
-        vga_buf[y * VGA_WIDTH + x] = (u16)(c | (color << 8));
+    /* Respect bounds if enabled */
+    if (bounds_enabled) {
+        if (x < bounds_x || x >= bounds_x + bounds_width || 
+            y < bounds_y || y >= bounds_y + bounds_height) {
+            return;
+        }
+    } else {
+        if (x < 0 || x >= VGA_WIDTH || y < 0 || y >= VGA_HEIGHT) {
+            return;
+        }
     }
+    vga_buf[y * VGA_WIDTH + x] = (u16)(c | (color << 8));
 }
 
 unsigned short vga_read_cell(int x, int y) {
@@ -220,4 +271,20 @@ void vga_draw_button(int x, int y, int width, int height, const char *text,
                      unsigned char text_color, unsigned char bg_color) {
     vga_draw_button_box(x, y, width, height, bg_color);
     vga_draw_button_text(x, y, text, text_color);
+}
+/* Bounded region support for shell output */
+void vga_set_bounds(int x, int y, int width, int height) {
+    bounds_x = x;
+    bounds_y = y;
+    bounds_width = width;
+    bounds_height = height;
+    bounds_enabled = 1;
+    cursor_x = bounds_x;
+    cursor_y = bounds_y;
+}
+
+void vga_clear_bounds(void) {
+    bounds_enabled = 0;
+    cursor_x = 0;
+    cursor_y = 0;
 }

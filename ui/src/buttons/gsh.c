@@ -4,6 +4,7 @@
 #include "display/display.h"
 #include "mouse/mouse.h"
 #include "panel/panel.h"
+#include "panel/launch_region.h"
 #include "keyboard.h"
 
 /* GSH button properties */
@@ -46,16 +47,31 @@ void gsh_button_click(void) {
 
     gsh_shell_active = 1;
 
-    /* Launch shell when GSH button is clicked */
-    display_enter_shell_mode();
+    /* Get launch region coordinates */
+    launch_region_t *region = launch_region_get();
+    
+    /* Position cursor inside launch region (below top border) */
+    int shell_x = region->x + 2;  /* Left padding inside border */
+    int shell_y = region->y + 2;  /* Top padding inside border */
+    
+    /* Move cursor to launch region start position */
+    vga_set_bounds(shell_x, shell_y, region->width - 4, region->height - 4);
+    
+    /* Disable panel updates while shell runs */
+    panel_set_enabled(0);
+    
+    /* Flush input and run shell */
     mouse_flush_port();
     keyboard_reset_state();
     shell_run();
     mouse_flush_port();
     keyboard_reset_state();
+    
+    /* Exit bounds mode and redraw UI */
+    vga_clear_bounds();
     panel_set_enabled(1);
     panel_draw_header();
-    display_enter_userland_mode();
+    
     gsh_shell_active = 0;
 }
 

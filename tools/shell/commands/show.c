@@ -5,7 +5,7 @@
 #include "vfs.h"
 
 #define SHOW_BUFFER_SIZE 4096
-#define BOX_WIDTH 70
+#define BOX_WIDTH 50
 
 static void safe_strcat(char *dest, const char *src, u32 max_len) {
     u32 dest_len = strlen(dest);
@@ -38,7 +38,7 @@ static void print_box_top(const char *filename) {
     u32 name_len = strlen(filename);
     u32 padding;
     
-    kprintf("\n+----------------------------------------------------------------------+\n");
+    kprintf("\n+--------------------------------------------------+\n");
     kprintf("|");
     
     /* Center the filename */
@@ -52,11 +52,11 @@ static void print_box_top(const char *filename) {
     }
     
     kprintf("|\n");
-    kprintf("+----------------------------------------------------------------------+\n");
+    kprintf("+--------------------------------------------------+\n");
 }
 
 static void print_box_bottom(void) {
-    kprintf("+----------------------------------------------------------------------+\n");
+    kprintf("+--------------------------------------------------+\n");
 }
 
 u8 shell_show_command(const char *args, const char *current_dir) {
@@ -88,7 +88,7 @@ u8 shell_show_command(const char *args, const char *current_dir) {
     if (entry->size == 0) {
         print_box_top(fullpath);
         kprintf("|                                                                      |\n");
-        kprintf("|                         [EMPTY FILE]                            |\n");
+        kprintf("|                    [EMPTY FILE]               |\n");
         kprintf("|                                                                      |\n");
         print_box_bottom();
         return 1;

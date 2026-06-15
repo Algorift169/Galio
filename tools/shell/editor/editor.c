@@ -29,10 +29,11 @@ static const u8 ascii_table_shift[] = {
 };
 
 static void editor_display(editor_buffer_t *buf, const char *filepath, u8 save_status) {
+    /* Don't clear full screen when bounds are active - just clear bounded region */
     vga_clear();
-    kprintf("^X Exit | ^S Save | Galio Text Editor\n");
+    kprintf("^X Exit | ^S Save\n");
     kprintf("File: %s\n", filepath);
-    kprintf("-------------------------------------------\n");
+    kprintf("=====================\n");
     
     if (save_status == 1) kprintf(">>> SAVING... <<<\n");
     else if (save_status == 2) kprintf(">>> SAVED! <<<\n");
@@ -50,8 +51,7 @@ static void editor_display(editor_buffer_t *buf, const char *filepath, u8 save_s
         }
     }
     
-    kprintf("\n\n-------------------------------------------\n");
-    kprintf("Cursor position: %u chars\n", buf->size);
+    kprintf("\n=====================\n");
 }
 
 static u8 vfs_write_file(const char *path, const u8 *data, u32 size) {
@@ -182,18 +182,18 @@ u8 shell_editor(const char *filepath) {
     
     /* Display header and initial content */
     vga_clear();
-    kprintf("_____________________________________________________________\n");
+    kprintf("__________________________________________________________\n");
     kprintf("                                                             \n");
     kprintf("                     Galio Text Editor                       \n");
     kprintf("                                                             \n");
     kprintf("                   [File: %s]                                \n", filepath);
-    kprintf("_____________________________________________________________\n");
+    kprintf("__________________________________________________________\n");
     kprintf("cntrl +X Exit | ^S Save | (Make sure to save before exiting!)\n");
-    kprintf("-------------------------------------------------------------\n");
+    kprintf("----------------------------------------------------------\n");
     
     if (buf.size == 0) {
         kprintf("[Empty file - start typing]\n");
-        kprintf("_____________________________________________________________\n");
+        kprintf("__________________________________________________________\n");
     } else {
         for (u32 i = 0; i < buf.size; i++) {
             if (buf.content[i] == '\n') kprintf("\n");

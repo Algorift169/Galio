@@ -147,10 +147,11 @@ static void shell_print_prompt(void) {
         host = session_current()->username;
     }
     SHELL_COLOR_CMD();
-    kprintf( "{ %s @ galio }-< %s > ", host, dir);
+    kprintf("%s @ galio # %s: ", host, dir);
     SHELL_COLOR_RESET();
     shell_cursor_draw();
 }
+
 
 static u32 shell_history_array_index(u32 logical_index) {
     if (logical_index >= history.count) return 0;
@@ -966,7 +967,7 @@ static void shell_execute_command(void) {
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "clear", 5) == 0) {
         shell_cursor_restore();
-        vga_clear_no_update();
+        vga_clear();
         SHELL_COLOR_OUT();
         kprintf("                                GSH                                  \n");
     } else if (strcmp(input.buffer, "tree") == 0) {
@@ -1236,7 +1237,7 @@ void shell_run(void) {
     input.buffer[0] = 0;
     shell_should_exit = 0;
 
-    vga_clear_no_update();
+    vga_clear();
 
     strncpy(current_dir, HOME_DIR, sizeof(current_dir) - 1);
     current_dir[sizeof(current_dir) - 1] = 0;
@@ -1244,12 +1245,7 @@ void shell_run(void) {
     vfs_cleanup_old_recycle_bin("./usr/home/desktop/recycle", 259200000);
 
     SHELL_COLOR_OUT();
-    kprintf("                          Welcome to GSh                 ");
-    kprintf("                                                             ");
-    kprintf("                                                             ");
-    kprintf("                                                             ");
-    //kprintf("                                                             ");
-    
+    //kprintf("GSH");
     SHELL_COLOR_RESET();
 
     shell_print_prompt();
@@ -1261,6 +1257,6 @@ void shell_run(void) {
     }
 
     shell_cursor_restore();
-    /* Safe cleanup after shell exit - just clear and return, don't reinitialize */
-    vga_clear_no_update();
+    shell_cursor_drawn = 0;
+    vga_clear();
 }
