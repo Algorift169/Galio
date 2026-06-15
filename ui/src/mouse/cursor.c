@@ -8,7 +8,7 @@
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
 #define CURSOR_ICON '^'
-#define CURSOR_ATTR 0x0C /* bright red on black */
+#define CURSOR_ATTR 0x0F /* white on black */
 
 static int cursor_x = 0;
 static int cursor_y = 3;

@@ -162,28 +162,43 @@ static u8 read_char(void) {
 
 static void read_line(char *buffer, u32 max_len, u8 echo) {
     u32 len = 0;
-    while (len < max_len - 1) {
+    for (;;) {
         u8 c = read_char();
 
+        /* Enter: finish line */
         if (c == '\n') {
             buffer[len] = 0;
             kprintf("\n");
             break;
-        } else if (c == '\b') {
+        }
+
+        /* Backspace: remove previous character if any */
+        if (c == '\b') {
             if (len > 0) {
                 len--;
                 kprintf("\b \b");
             }
-        } else if (c >= 32 && c < 127) {
-            buffer[len++] = c;
-            if (echo) {
-                vga_putch(c);
+            continue;
+        }
+
+        /* Printable characters */
+        if (c >= 32 && c < 127) {
+            if (len < max_len - 1) {
+                buffer[len++] = c;
+                if (echo) {
+                    vga_putch(c);
+                } else {
+                    vga_putch('*');  /* Mask password */
+                }
             } else {
-                vga_putch('*');  /* Mask password */
+                /* Buffer full: ignore additional printable characters but allow backspace/enter */
+                /* Optional: give user feedback (beep) by writing a space then backspace */
+                vga_putch('\a' /* BEL */);
             }
         }
     }
-    buffer[max_len - 1] = 0;
+    /* Ensure NUL termination */
+    if (max_len > 0) buffer[(max_len - 1) < len ? (max_len - 1) : len] = 0;
 }
 
 /* Simple password verification - using boot-time registration or hardcoded defaults */

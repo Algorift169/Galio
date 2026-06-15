@@ -118,7 +118,9 @@ static void shell_cursor_restore(void) {
     if (!shell_cursor_drawn) return;
     char saved_char = (char)(shell_cursor_saved_cell & 0xFF);
     unsigned char saved_color = (unsigned char)(shell_cursor_saved_cell >> 8);
+    /* Restore the original cell and re-enable hardware cursor */
     vga_write_cell(shell_cursor_x, shell_cursor_y, saved_char, saved_color);
+    vga_enable_hardware_cursor();
     shell_cursor_drawn = 0;
 }
 
@@ -128,7 +130,10 @@ static void shell_cursor_draw(void) {
     shell_cursor_saved_cell = vga_read_cell(shell_cursor_x, shell_cursor_y);
     char saved_char = (char)(shell_cursor_saved_cell & 0xFF);
     unsigned char saved_color = (unsigned char)(shell_cursor_saved_cell >> 8);
-    unsigned char block_color = (saved_color & 0x0F) << 4 | 0x0F;
+    /* Draw a visible white cursor: preserve background, force white foreground */
+    unsigned char block_color = (saved_color & 0xF0) | 0x0F;
+    /* Hide hardware cursor while we draw the block cursor */
+    vga_disable_hardware_cursor();
     vga_write_cell(shell_cursor_x, shell_cursor_y, saved_char, block_color);
     shell_cursor_drawn = 1;
 }

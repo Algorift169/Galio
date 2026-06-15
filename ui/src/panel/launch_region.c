@@ -1,4 +1,5 @@
 #include "panel/launch_region.h"
+#include "panel/panel.h"
 #include "vga.h"
 #include "heap.h"
 #include "kprintf.h"
@@ -62,25 +63,25 @@ void launch_region_draw(void) {
     }
     
     /* Just draw the border - no tools, no title, keep it empty for future tool launching */
-    vga_set_color(0x0C);  /* Red/Light red for border */
+    vga_set_color(PANEL_COLOR_GREEN);  /* Use panel border color (green) */
     
     /* Top and bottom borders */
     for (int x = launch_region.x; x < launch_region.x + launch_region.width; x++) {
-        vga_write_cell(x, launch_region.y, '-', 0x0C);
-        vga_write_cell(x, launch_region.y + launch_region.height - 1, '-', 0x0C);
+        vga_write_cell(x, launch_region.y, '-', PANEL_COLOR_GREEN);
+        vga_write_cell(x, launch_region.y + launch_region.height - 1, '-', PANEL_COLOR_GREEN);
     }
     
     /* Left and right borders */
     for (int y = launch_region.y; y < launch_region.y + launch_region.height; y++) {
-        vga_write_cell(launch_region.x, y, '|', 0x0C);
-        vga_write_cell(launch_region.x + launch_region.width - 1, y, '|', 0x0C);
+        vga_write_cell(launch_region.x, y, '|', PANEL_COLOR_GREEN);
+        vga_write_cell(launch_region.x + launch_region.width - 1, y, '|', PANEL_COLOR_GREEN);
     }
     
     /* Corners */
-    vga_write_cell(launch_region.x, launch_region.y, '+', 0x0C);
-    vga_write_cell(launch_region.x + launch_region.width - 1, launch_region.y, '+', 0x0C);
-    vga_write_cell(launch_region.x, launch_region.y + launch_region.height - 1, '+', 0x0C);
-    vga_write_cell(launch_region.x + launch_region.width - 1, launch_region.y + launch_region.height - 1, '+', 0x0C);
+    vga_write_cell(launch_region.x, launch_region.y, '+', PANEL_COLOR_GREEN);
+    vga_write_cell(launch_region.x + launch_region.width - 1, launch_region.y, '+', PANEL_COLOR_GREEN);
+    vga_write_cell(launch_region.x, launch_region.y + launch_region.height - 1, '+', PANEL_COLOR_GREEN);
+    vga_write_cell(launch_region.x + launch_region.width - 1, launch_region.y + launch_region.height - 1, '+', PANEL_COLOR_GREEN);
     
     /* Inner area stays empty - ready for tool launching display */
 }
