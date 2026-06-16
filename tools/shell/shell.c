@@ -152,12 +152,12 @@ static void shell_print_prompt(void) {
         host = session_current()->username;
     }
     SHELL_COLOR_CMD();
-    kprintf("%s @ galio # %s: ", host, dir);
+    kprintf("%s @ galio: %s -# ", host, dir);
     SHELL_COLOR_RESET();
     shell_cursor_draw();
 }
 
-
+// Returns the index in the circular history buffer for a given logical index (0 = oldest, count-1 = newest)
 static u32 shell_history_array_index(u32 logical_index) {
     if (logical_index >= history.count) return 0;
     u32 start = (history.head + HISTORY_SIZE - history.count) % HISTORY_SIZE;

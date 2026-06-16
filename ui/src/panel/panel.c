@@ -82,7 +82,7 @@ void panel_draw_header(void) {
     /* ROW 1: Separator */
     vga_set_color(PANEL_COLOR_RED);
     for (int x = 0; x < VGA_WIDTH; x++) {
-        vga_write_cell(x, 1, '-', PANEL_COLOR_RED);
+        vga_write_cell(x, 1, '_', PANEL_COLOR_RED);
     }
     
     /* ROW 2: Top border */
