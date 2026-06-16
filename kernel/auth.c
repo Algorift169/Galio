@@ -161,6 +161,12 @@ static u8 read_char(void) {
 }
 
 static void read_line(char *buffer, u32 max_len, u8 echo) {
+    if (!buffer || max_len == 0) {
+        return;
+    }
+
+    keyboard_clear_pending_input();
+
     u32 len = 0;
     for (;;) {
         u8 c = read_char();

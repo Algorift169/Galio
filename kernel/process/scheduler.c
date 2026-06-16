@@ -32,11 +32,10 @@ void scheduler_init(void) {
 /* CPU statistics - calculate from all processes via process_t accessors */
 u32 process_get_total_ticks(void) {
     u32 total = 0;
-    u32 count = process_count_active();
     
-    for (u32 i = 1; i < count; i++) {
-        process_t *proc = process_get(i);
-        if (proc && proc->pid != 0) {
+    for (u32 pid = 1; pid <= MAX_PROCESSES; pid++) {
+        process_t *proc = process_get(pid);
+        if (proc) {
             total += proc->ticks;
         }
     }
@@ -52,11 +51,21 @@ u32 process_get_idle_ticks(void) {
 }
 
 u8 process_get_cpu_usage(void) {
+    static u32 last_total = 0;
+    static u32 last_idle = 0;
+
     u32 total = process_get_total_ticks();
     if (total == 0) return 0;
     
     u32 idle = process_get_idle_ticks();
-    u32 used = total - idle;
-    
-    return (u8)((used * 100) / total);
+    u32 delta_total = total - last_total;
+    u32 delta_idle = idle - last_idle;
+
+    last_total = total;
+    last_idle = idle;
+
+    if (delta_total == 0) return 0;
+    if (delta_idle > delta_total) delta_idle = delta_total;
+
+    return (u8)(((delta_total - delta_idle) * 100) / delta_total);
 }

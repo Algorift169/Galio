@@ -6,6 +6,7 @@
 #include "panel/launch_region.h"
 #include "buttons/galio.h"
 #include "buttons/gsh.h"
+#include "mouse/cursor.h"
 #include "vga.h"
 #include "kernel_time.h"
 #include "lib/string.h"
@@ -46,6 +47,8 @@ void panel_draw_header(void) {
     if (!panel_enabled) {
         return;
     }
+
+    cursor_hide();
     
     sysinfo_t sysinfo = sysinfo_get();
     DateTime now = kernel_time_get_datetime();
@@ -115,7 +118,7 @@ void panel_draw_header(void) {
     for (int i = 0; mem_label[i] && i < 16; i++) vga_write_cell(i, 6, mem_label[i], PANEL_COLOR_WHITE);
     
     /* ROW 7: Memory percentage value */
-    u32 mem_percent = (sysinfo.memory_used * 100) / sysinfo.memory_total;
+    u32 mem_percent = sysinfo.memory_total ? (sysinfo.memory_used * 100) / sysinfo.memory_total : 0;
     char mem_str[5];
     uint_to_str(mem_percent, mem_str, sizeof(mem_str));
     vga_set_color(PANEL_COLOR_RED);
@@ -134,13 +137,18 @@ void panel_draw_header(void) {
     for (int i = 0; bat_label[i] && i < 16; i++) vga_write_cell(i, 9, bat_label[i], PANEL_COLOR_WHITE);
     
     /* ROW 10: Battery value */
-    char bat_str[8];
-    uint_to_str(sysinfo.battery_percent, bat_str, sizeof(bat_str));
     vga_set_color(PANEL_COLOR_RED);
     x = 0;
-    for (int i = 0; bat_str[i] && x < 14; i++, x++) vga_write_cell(x, 10, bat_str[i], PANEL_COLOR_RED);
-    if (x < 15) vga_write_cell(x++, 10, '%', PANEL_COLOR_RED);
-    if (sysinfo.battery_charging && x < 15) {
+    if (sysinfo.battery_percent == 0xFF) {
+        const char *bat_na = "N/A";
+        for (int i = 0; bat_na[i] && x < 14; i++, x++) vga_write_cell(x, 10, bat_na[i], PANEL_COLOR_RED);
+    } else {
+        char bat_str[8];
+        uint_to_str(sysinfo.battery_percent, bat_str, sizeof(bat_str));
+        for (int i = 0; bat_str[i] && x < 14; i++, x++) vga_write_cell(x, 10, bat_str[i], PANEL_COLOR_RED);
+        if (x < 15) vga_write_cell(x++, 10, '%', PANEL_COLOR_RED);
+    }
+    if (sysinfo.battery_percent != 0xFF && sysinfo.battery_charging && x < 15) {
         vga_write_cell(x++, 10, ' ', PANEL_COLOR_RED);
         if (x < 15) vga_write_cell(x, 10, '+', PANEL_COLOR_RED);
     }
@@ -168,6 +176,7 @@ void panel_draw_header(void) {
     
     /* ROWS 2-24, COLS 18-79: Launch region for tools/applications (empty, just border) */
     launch_region_draw();
+    cursor_show();
 }
 
 void panel_update(void) {

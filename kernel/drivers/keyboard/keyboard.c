@@ -28,6 +28,18 @@ static u8 alt_pressed = 0;
 static u8 poll_pending_extended = 0;
 static key_callback_t user_callback = NULL;
 
+static inline u32 irq_save(void) {
+    u32 flags;
+    __asm__ volatile("pushf; pop %0; cli" : "=r"(flags) :: "memory");
+    return flags;
+}
+
+static inline void irq_restore(u32 flags) {
+    if (flags & (1u << 9)) {
+        __asm__ volatile("sti" ::: "memory");
+    }
+}
+
 static inline u8 keyboard_queue_empty(void) {
     return queue_head == queue_tail;
 }
@@ -153,8 +165,9 @@ static u8 keyboard_poll_port_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
         return 0;
     }
 
-    /* Ignore auxiliary/mouse bytes when polling keyboard input directly. */
+    /* Discard auxiliary/mouse bytes so they cannot block keyboard polling. */
     if (status & 0x20) {
+        (void)inb(KEYBOARD_DATA);
         return 0;
     }
 
@@ -188,21 +201,21 @@ static u8 keyboard_poll_port_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
 }
 
 void keyboard_flush_queue(void) {
-    __asm__ volatile("cli");
+    u32 flags = irq_save();
     queue_head = 0;
     queue_tail = 0;
-    __asm__ volatile("sti");
+    irq_restore(flags);
 }
 
 void keyboard_reset_state(void) {
-    __asm__ volatile("cli");
+    u32 flags = irq_save();
     queue_head = 0;
     queue_tail = 0;
     shift_pressed = 0;
     ctrl_pressed = 0;
     alt_pressed = 0;
     poll_pending_extended = 0;
-    __asm__ volatile("sti");
+    irq_restore(flags);
 
     /* Drain any bytes that arrived while switching input modes. */
     while (inb(KEYBOARD_CTRL) & 0x01) {
@@ -210,11 +223,20 @@ void keyboard_reset_state(void) {
     }
 }
 
+void keyboard_clear_pending_input(void) {
+    keyboard_flush_queue();
+    poll_pending_extended = 0;
+
+    for (u32 i = 0; i < KEYBOARD_QUEUE_SIZE && (inb(KEYBOARD_CTRL) & 0x01); i++) {
+        (void)inb(KEYBOARD_DATA);
+    }
+}
+
 u8 keyboard_read_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
     u8 result;
-    __asm__ volatile("cli");
+    u32 flags = irq_save();
     result = keyboard_dequeue(scancode, is_pressed, extended);
-    __asm__ volatile("sti");
+    irq_restore(flags);
     if (result) {
         return 1;
     }

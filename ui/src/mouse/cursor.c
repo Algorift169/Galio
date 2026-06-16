@@ -14,6 +14,8 @@ static int cursor_x = 0;
 static int cursor_y = 3;
 static u16 saved_cell = 0;
 static int cursor_active = 0;
+static int cursor_visible = 1;
+static int cursor_initialized = 0;
 static u8 last_mouse_buttons = 0;
 
 static void restore_previous_cell(void) {
@@ -27,6 +29,9 @@ static void restore_previous_cell(void) {
 }
 
 static void draw_cursor_icon(void) {
+    if (!cursor_visible) {
+        return;
+    }
     if (cursor_x < 0 || cursor_x >= VGA_WIDTH || cursor_y < 0 || cursor_y >= VGA_HEIGHT) {
         return;
     }
@@ -42,8 +47,13 @@ static void set_cursor_pos(int x, int y) {
     if (y < 0) y = 0;
     if (y >= VGA_HEIGHT) y = VGA_HEIGHT - 1;
 
+    if (cursor_active && x == cursor_x && y == cursor_y) {
+        return;
+    }
+
     if (cursor_active && (x != cursor_x || y != cursor_y)) {
         restore_previous_cell();
+        cursor_active = 0;
     }
 
     cursor_x = x;
@@ -53,6 +63,8 @@ static void set_cursor_pos(int x, int y) {
 
 void cursor_init(void) {
     cursor_active = 0;
+    cursor_visible = 1;
+    cursor_initialized = 1;
     last_mouse_buttons = 0;
     mouse_init();
     int mx = 40, my = 12;
@@ -85,11 +97,7 @@ void cursor_poll(void) {
 
     /* Handle scroll wheel */
     s8 scroll = mouse_get_scroll_delta();
-    if (scroll > 0) {
-        vga_scrollback_up();
-    } else if (scroll < 0) {
-        vga_scrollback_down();
-    }
+    (void)scroll;
 
     last_mouse_buttons = buttons;
 }
@@ -112,4 +120,20 @@ void cursor_deactivate(void) {
         restore_previous_cell();
         cursor_active = 0;
     }
+}
+
+void cursor_hide(void) {
+    if (!cursor_initialized) {
+        return;
+    }
+    cursor_visible = 0;
+    cursor_deactivate();
+}
+
+void cursor_show(void) {
+    if (!cursor_initialized) {
+        return;
+    }
+    cursor_visible = 1;
+    draw_cursor_icon();
 }
