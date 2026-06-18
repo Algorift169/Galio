@@ -76,7 +76,6 @@ SRCS = kernel/kmain.c \
        kernel/drivers/ata/ata.c \
        kernel/drivers/keyboard/keyboard.c \
        kernel/drivers/serial/serial.c \
-       kernel/drivers/timer/pit.c \
        kernel/drivers/rtc/rtc.c \
 	kernel/time.c \
        kernel/drivers/video/vga.c \
@@ -95,7 +94,6 @@ SRCS = kernel/kmain.c \
        ui/src/buttons/gsh.c \
        kernel/pci/pci.c \
        kernel/drivers/net/e1000.c \
-       kernel/drivers/net/wifi.c \
        kernel/drivers/net/rtl8188eu.c \
        kernel/tests/run_tests.c \
        kernel/tests/scheduler_test.c \
@@ -122,12 +120,15 @@ SRCS = kernel/kmain.c \
 
 # Object files
 C_OBJS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRCS))
+GAS_SRCS = kernel/drivers/timer/pit.s \
+           kernel/drivers/net/wifi.s
+GAS_OBJS = $(patsubst %.s,$(OBJ_DIR)/%.o,$(GAS_SRCS))
 ASM_OBJS = $(OBJ_DIR)/kernel/arch/x86/cpu/asm.o \
            $(OBJ_DIR)/kernel/arch/x86/cpu/isr_asm.o \
            $(OBJ_DIR)/kernel/arch/x86/boot/boot.o
 EMBEDDED_OBJS = $(OBJ_DIR)/src/embedded_test.o \
                 $(OBJ_DIR)/src/embedded_initrd.o
-OBJS = $(C_OBJS) $(ASM_OBJS) $(EMBEDDED_OBJS)
+OBJS = $(C_OBJS) $(GAS_OBJS) $(ASM_OBJS) $(EMBEDDED_OBJS)
 
 # Binary targets
 TEST_ELF = $(BUILD_DIR)/test_elf.bin
@@ -191,6 +192,14 @@ $(OBJ_DIR)/kernel/arch/x86/cpu/isr_asm.o: kernel/arch/x86/cpu/isr_asm.s
 	$(AS) $(ASFLAGS) $< -o $@
 
 $(OBJ_DIR)/kernel/arch/x86/boot/boot.o: kernel/arch/x86/boot/boot.S
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ_DIR)/kernel/drivers/timer/%.o: kernel/drivers/timer/%.s
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ_DIR)/kernel/drivers/net/%.o: kernel/drivers/net/%.s
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 

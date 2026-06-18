@@ -119,10 +119,10 @@ isr_common_stub:
     add esp, 4
 
     popa
-    pop gs
-    pop fs
-    pop es
     pop ds
+    pop es
+    pop fs
+    pop gs
     add esp, 8          ; remove error code and interrupt number
     iret
 
@@ -154,9 +154,9 @@ irq_common_stub:
     add esp, 4
 
     popa
-    pop gs
-    pop fs
-    pop es
     pop ds
+    pop es
+    pop fs
+    pop gs
     add esp, 8
     iret
