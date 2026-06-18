@@ -171,6 +171,20 @@ void paging_init(void) {
     }
 
     paging_enable(kernel_pd);
+
+    /* Transition stack pointer to the higher-half virtual address space */
+    __asm__ volatile (
+        "add %0, %%esp\n\t"
+        "add %0, %%ebp\n\t"
+        :
+        : "r"(KERNEL_BASE)
+        : "memory"
+    );
+
+    /* Update VGA buffer to higher-half address space */
+    extern void vga_enable_paging(void);
+    vga_enable_paging();
+
     kprintf("paging: kernel paging enabled, higher-half base=0x%08X\n", KERNEL_BASE);
 }
 
@@ -203,6 +217,17 @@ page_directory_t *paging_create_user_directory(void) {
      * fault in user mode even if the kernel itself still needs virtual page 0.
      */
     for (u32 i = KERNEL_PDE_START; i < PAGE_ENTRIES; i++) {
+        if (kernel_pd->directory[i] & PAGE_PRESENT) {
+            pd->directory[i] = kernel_pd->directory[i] & ~PAGE_USER;
+            pd->tables[i] = kernel_pd->tables[i];
+        }
+    }
+
+    /* Since the kernel is linked in low memory (0x100000), we must also map the
+     * low identity-mapped kernel region (first 16MB) in all user directories,
+     * but mark it as supervisor-only (~PAGE_USER).
+     */
+    for (u32 i = 0; i < (KERNEL_IDENTITY_MAP_SIZE >> 22); i++) {
         if (kernel_pd->directory[i] & PAGE_PRESENT) {
             pd->directory[i] = kernel_pd->directory[i] & ~PAGE_USER;
             pd->tables[i] = kernel_pd->tables[i];
@@ -387,6 +412,17 @@ paging_fault_result_t paging_handle_page_fault(registers_t *regs) {
 
 void paging_load_directory(page_directory_t *pd) {
     if (!pd) return;
+    if (pd != kernel_pd && kernel_pd) {
+        for (u32 i = KERNEL_PDE_START; i < PAGE_ENTRIES; i++) {
+            if (kernel_pd->directory[i] & PAGE_PRESENT) {
+                pd->directory[i] = kernel_pd->directory[i] & ~PAGE_USER;
+                pd->tables[i] = kernel_pd->tables[i];
+            } else {
+                pd->directory[i] = 0;
+                pd->tables[i] = NULL;
+            }
+        }
+    }
     u32 pd_phys = (u32)pd->directory;
     __asm__ volatile("mov %0, %%cr3" : : "r"(pd_phys));
     current_page_directory = pd;

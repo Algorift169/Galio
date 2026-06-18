@@ -187,16 +187,40 @@ void panel_update(void) {
 }
 
 static void panel_tick(registers_t *regs) {
-    if (!panel_enabled) {
-        return;
-    }
-
     static u32 tick_count = 0;
     (void)regs;
     tick_count++;
     if (tick_count >= 100) {
         tick_count = 0;
-        panel_draw_header();
+        if (!panel_enabled) {
+            sysinfo_t sysinfo = sysinfo_get();
+            cursor_hide();
+
+            /* ROW 4: CPU value */
+            char cpu_str[5];
+            uint_to_str(sysinfo.cpu_percent, cpu_str, sizeof(cpu_str));
+            int x = 0;
+            for (int i = 0; cpu_str[i] && x < 14; i++, x++) {
+                vga_write_cell(x, 4, cpu_str[i], PANEL_COLOR_RED);
+            }
+            if (x < 15) vga_write_cell(x++, 4, '%', PANEL_COLOR_RED);
+            while (x < 16) vga_write_cell(x++, 4, ' ', PANEL_COLOR_RED);
+            
+            /* ROW 7: Memory percentage value */
+            u32 mem_percent = sysinfo.memory_total ? (sysinfo.memory_used * 100) / sysinfo.memory_total : 0;
+            char mem_str[5];
+            uint_to_str(mem_percent, mem_str, sizeof(mem_str));
+            x = 0;
+            for (int i = 0; mem_str[i] && x < 14; i++, x++) {
+                vga_write_cell(x, 7, mem_str[i], PANEL_COLOR_RED);
+            }
+            if (x < 15) vga_write_cell(x++, 7, '%', PANEL_COLOR_RED);
+            while (x < 16) vga_write_cell(x++, 7, ' ', PANEL_COLOR_RED);
+
+            cursor_show();
+        } else {
+            panel_draw_header();
+        }
     }
 }
 

@@ -51,21 +51,30 @@ u32 process_get_idle_ticks(void) {
 }
 
 u8 process_get_cpu_usage(void) {
+    extern u32 pit_get_ticks(void);
+    static u32 last_update_ticks = 0;
+    static u8 cached_usage = 0;
     static u32 last_total = 0;
     static u32 last_idle = 0;
 
-    u32 total = process_get_total_ticks();
-    if (total == 0) return 0;
-    
-    u32 idle = process_get_idle_ticks();
-    u32 delta_total = total - last_total;
-    u32 delta_idle = idle - last_idle;
-
-    last_total = total;
-    last_idle = idle;
-
-    if (delta_total == 0) return 0;
-    if (delta_idle > delta_total) delta_idle = delta_total;
-
-    return (u8)(((delta_total - delta_idle) * 100) / delta_total);
+    u32 now = pit_get_ticks();
+    if (last_update_ticks == 0 || (now - last_update_ticks) >= 100) {
+        u32 total = process_get_total_ticks();
+        u32 idle = process_get_idle_ticks();
+        
+        if (total > 0) {
+            u32 delta_total = total - last_total;
+            u32 delta_idle = idle - last_idle;
+            
+            last_total = total;
+            last_idle = idle;
+            last_update_ticks = now;
+            
+            if (delta_total > 0) {
+                if (delta_idle > delta_total) delta_idle = delta_total;
+                cached_usage = (u8)(((delta_total - delta_idle) * 100) / delta_total);
+            }
+        }
+    }
+    return cached_usage;
 }

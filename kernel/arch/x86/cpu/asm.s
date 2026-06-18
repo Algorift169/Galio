@@ -42,34 +42,55 @@ extern process_switch_new_eip
 ; process_switch_asm: arg1 = old_regs, arg2 = new_regs
 GLOBAL process_switch_asm
 process_switch_asm:
-    ; Save register pointers
-    mov edi, [esp + 4]      ; old_regs
-    mov ebx, [esp + 8]      ; new_regs
-
-    ; Save current registers into old_regs
-    ; After pushad, stack contains: [esp+0]=eax, [esp+4]=ecx, [esp+8]=edx, [esp+12]=ebx,
-    ; [esp+16]=orig_esp, [esp+20]=ebp, [esp+24]=esi, [esp+28]=edi
+    ; After pushad, stack contains: 
+    ; [esp+0]=edi, [esp+4]=esi, [esp+8]=ebp, [esp+12]=orig_esp,
+    ; [esp+16]=ebx, [esp+20]=edx, [esp+24]=ecx, [esp+28]=eax
     pushad
     mov eax, esp
-    mov ecx, [eax + 16]
-    mov [edi + 0], ecx          ; esp (original ESP is at offset 16)
-    mov ecx, [eax + 20]
-    mov [edi + 4], ecx          ; ebp (EBP is at offset 20)
-    mov ecx, [eax + 24]
-    mov [edi + 8], ecx          ; esi (ESI is at offset 24)
-    mov ecx, [eax + 28]
-    mov [edi + 12], ecx         ; edi (EDI is at offset 28)
-    mov ecx, [eax + 12]
-    mov [edi + 16], ecx         ; ebx (EBX is at offset 12)
+    mov edi, [eax + 36]     ; old_regs (esp + 32 + 4)
+    mov ebx, [eax + 40]     ; new_regs (esp + 32 + 8)
+
+    ; regs.esp = eax + 36 (caller's ESP, after popping the return address)
+    lea ecx, [eax + 36]
+    mov [edi + 0], ecx
+
+    ; regs.ebp = [eax + 8] (EBP)
     mov ecx, [eax + 8]
-    mov [edi + 20], ecx         ; edx (EDX is at offset 8)
+    mov [edi + 4], ecx
+
+    ; regs.esi = [eax + 4] (ESI)
     mov ecx, [eax + 4]
-    mov [edi + 24], ecx         ; ecx (ECX is at offset 4)
+    mov [edi + 8], ecx
+
+    ; regs.edi = [eax + 0] (EDI)
     mov ecx, [eax + 0]
-    mov [edi + 28], ecx         ; eax (EAX is at offset 0)
+    mov [edi + 12], ecx
+
+    ; regs.ebx = [eax + 16] (EBX)
+    mov ecx, [eax + 16]
+    mov [edi + 16], ecx
+
+    ; regs.edx = [eax + 20] (EDX)
+    mov ecx, [eax + 20]
+    mov [edi + 20], ecx
+
+    ; regs.ecx = [eax + 24] (ECX)
+    mov ecx, [eax + 24]
+    mov [edi + 24], ecx
+
+    ; regs.eax = [eax + 28] (EAX)
+    mov ecx, [eax + 28]
+    mov [edi + 28], ecx
+
+    ; Save EFLAGS
     add esp, 32
     pushfd
     pop dword [edi + 32]        ; eflags
+
+    ; Save EIP (return address)
+    ; The return address is at [eax + 32]
+    mov ecx, [eax + 32]
+    mov [edi + 36], ecx         ; eip
 
     ; Save new_regs eflags/eip temporarily before overriding ebx
     mov edx, [ebx + 32]
@@ -107,9 +128,11 @@ process_switch_asm:
     mov ax, word [esi + 40]     ; Reload CS selector to ax (was lost)
     push word ax                ; pushw user CS
     push dword [process_switch_new_eip]
+    mov esi, [esi + 8]          ; Restore ESI for user process
     iret
 
 .kernel_mode_switch:
     ; Kernel-mode: return normally (CS unchanged)
+    mov esi, [esi + 8]          ; Restore ESI for kernel process
     push dword [process_switch_new_eip]
     ret

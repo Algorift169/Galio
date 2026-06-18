@@ -15,7 +15,7 @@ void run_kernel_tests(void) {
     kprintf("========================================\n");
 
     scheduler_test();
-    // cpu_scheduler_test();  // SKIP FOR NOW - crashes for unknown reason
+    cpu_scheduler_test();
     paging_test();
     vfs_test();
     signal_test();

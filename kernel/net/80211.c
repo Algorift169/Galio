@@ -89,23 +89,28 @@ struct ieee80211_ie *wifi_get_ie(const uint8_t *frame, uint32_t len, uint32_t fr
 int wifi_parse_beacon(const uint8_t *frame, uint32_t len, char *ssid_out, int8_t *rssi_out, uint8_t *channel_out) {
     if (!frame || len < sizeof(struct ieee80211_hdr) + sizeof(struct ieee80211_beacon)) return -1;
 
-    // struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)frame;
-    // struct ieee80211_beacon *beacon = (struct ieee80211_beacon *)(frame + sizeof(struct ieee80211_hdr));
+    uint32_t rt_len = 0;
+    if (len >= sizeof(struct radiotap_hdr)) {
+        struct radiotap_hdr *rh = (struct radiotap_hdr *)frame;
+        if (rh->it_version == 0 && rh->it_len > 0 && rh->it_len < len) {
+            rt_len = rh->it_len;
+        }
+    }
 
-    uint32_t frame_header_len = sizeof(struct ieee80211_hdr) + sizeof(struct ieee80211_beacon);
+    uint32_t frame_header_len = rt_len + sizeof(struct ieee80211_hdr) + sizeof(struct ieee80211_beacon);
     struct ieee80211_ie *ssid_ie = wifi_get_ie(frame, len, frame_header_len, IEEE80211_IE_SSID);
 
     if (!ssid_ie || ssid_ie->length == 0) {
         if (ssid_out) ssid_out[0] = '\0';
     } else if (ssid_out) {
         uint32_t copy_len = ssid_ie->length < 32 ? ssid_ie->length : 32;
-        memcpy(ssid_out, ssid_ie + 1, copy_len);
+        memcpy(ssid_out, (const uint8_t *)ssid_ie + 2, copy_len); /* offset by 2 bytes for element ID and length fields */
         ssid_out[copy_len] = '\0';
     }
 
     struct ieee80211_ie *ds_ie = wifi_get_ie(frame, len, frame_header_len, IEEE80211_IE_DS_PARAMS);
     if (ds_ie && ds_ie->length >= 1 && channel_out) {
-        *channel_out = *((uint8_t *)(ds_ie + 1));
+        *channel_out = *((const uint8_t *)ds_ie + 2); /* offset by 2 bytes */
     } else if (channel_out) {
         *channel_out = 1;
     }

@@ -23,9 +23,11 @@
 #include "delete.h"
 #include "tree.h"
 #include "net.h"
+#include "pkg.h"
 #include "editor.h"
 
 u8 shell_net_command(const char *args, const char *current_dir);
+u8 shell_pkg_command(const char *args, const char *current_dir);
 
 static char *shell_strchr(const char *s, int c) {
     while (*s) {
@@ -972,6 +974,14 @@ static void shell_execute_command(void) {
     } else if (strcmp(input.buffer, "net") == 0) {
         SHELL_COLOR_CMD();
         kprintf("Usage: net <stat|scan|list|devices>\n");
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "pkg ", 4) == 0) {
+        SHELL_COLOR_OUT();
+        shell_pkg_command(input.buffer + 4, current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "pkg") == 0) {
+        SHELL_COLOR_CMD();
+        kprintf("Usage: pkg <list|install|remove> [package_name]\n");
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "clear", 5) == 0) {
         shell_cursor_restore();

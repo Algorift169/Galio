@@ -43,7 +43,13 @@ static pci_driver_t wifi_pci_driver = {
 static void wifi_register_device(void) {
     if (wifi_device) return;
     
-    net_device_t *ndev = kmalloc(sizeof(net_device_t));
+    net_device_t *ndev = netdev_get_by_name("wlan0");
+    if (ndev) {
+        wifi_device = ndev;
+        return;
+    }
+    
+    ndev = kmalloc(sizeof(net_device_t));
     if (!ndev) return;
     memset(ndev, 0, sizeof(*ndev));
     

@@ -117,6 +117,7 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/clean.c \
        tools/shell/commands/delete.c \
        tools/shell/commands/net.c \
+       tools/shell/commands/pkg.c \
        tools/shell/editor/editor.c
 
 # Object files

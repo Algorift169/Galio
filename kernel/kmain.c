@@ -28,6 +28,7 @@
 #include "net/net.h"
 #include "net/wifi.h"
 #include "drivers/net/e1000.h"
+#include "drivers/net/rtl8188eu.h"
 
 // Disk entry - line: 193
 
@@ -183,8 +184,6 @@ void kmain(void *multiboot_ptr) {
 
     kprintf("Initializing VGA...\n");
     vga_init();
-    /* Initialize display and panel (draw header and register update callback) */
-    display_init();
 
     kprintf("Initializing GDT...\n");
     gdt_init();
@@ -229,9 +228,13 @@ void kmain(void *multiboot_ptr) {
     kprintf("Initializing heap...\n");
     heap_init();
 
+    /* Initialize display and panel (draw header and register update callback) */
+    display_init();
+
     kprintf("Initializing networking subsystem...\n");
     net_init();
     wifi_init();
+    rtl8188eu_register_driver();
     e1000_register_driver();
     pci_init();
     net_print_devices();

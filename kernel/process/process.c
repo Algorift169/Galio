@@ -18,6 +18,9 @@ extern void process_switch_asm(register_state_t *old_regs, register_state_t *new
 
 u32 process_switch_new_eflags = 0;
 u32 process_switch_new_eip = 0;
+u32 process_switch_new_cs = 0;
+u32 process_switch_new_user_esp = 0;
+u32 process_switch_new_user_ss = 0;
 
 static process_t *find_next_ready_process(void);
 static void save_current_registers(registers_t *regs);
@@ -477,8 +480,8 @@ void process_preempt(registers_t *regs) {
 }
 
 void process_switch(process_t *from, process_t *to) {
-    /* Save current EIP on stack for return */
-    from->regs.eip = (u32)&&return_point;
+    kprintf("[KTEST] process_switch: from PID %u to PID %u (esp=%x, eip=%x, ebx=%x, ebp=%x)\n",
+            from->pid, to->pid, to->regs.esp, to->regs.eip, to->regs.ebx, to->regs.ebp);
 
     if (to->pagedir) {
         paging_load_directory(to->pagedir);
@@ -488,10 +491,10 @@ void process_switch(process_t *from, process_t *to) {
     /* Perform context switch */
     process_switch_asm(&from->regs, &to->regs);
 
-return_point:
+    kprintf("[KTEST] process_switch returned to PID %u\n", current_process ? current_process->pid : 0);
     /* Use current_process instead of local vars (they don't exist here) */
     process_t *restored = current_process;
-    if (restored->pagedir) {
+    if (restored && restored->pagedir) {
         paging_load_directory(restored->pagedir);
     }
 }

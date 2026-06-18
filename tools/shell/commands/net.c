@@ -157,17 +157,26 @@ u8 shell_net_command(const char *args, const char *current_dir) {
     }
 
     if (strncmp(args, "list", 4) == 0 && (args[4] == ' ' || args[4] == '\0')) {
-        net_device_t *dev = netdev_first();
-        if (!dev) {
-            kprintf("No network devices available\n");
+        net_device_t *wlan = netdev_get_by_name("wlan0");
+        if (!wlan) {
+            kprintf("No wireless devices available\n");
             return 0;
         }
-        kprintf("Network devices:\n");
-        while (dev) {
-            kprintf("  %s\t%s\tMTU:%u\n", dev->name,
-                   (dev->flags & NETIF_UP) ? "UP" : "DOWN",
-                   dev->mtu);
-            dev = dev->next;
+        wifi_scan_start();
+        u32 count = 0;
+        const wifi_scan_result_t *results = wifi_scan_results(&count);
+        if (!results || count == 0) {
+            if (wifi_has_hardware()) {
+                kprintf("Wireless hardware detected, but scan backend not implemented\n");
+            } else {
+                kprintf("No wireless networks found\n");
+            }
+            return 1;
+        }
+        kprintf("Wireless networks (%u):\n", count);
+        for (u32 i = 0; i < count; i++) {
+            kprintf("  %s  signal=%ddBm  channel=%u\n",
+                   results[i].ssid, results[i].signal_dbm, results[i].channel);
         }
         return 1;
     }

@@ -538,6 +538,27 @@ static void vfs_build_from_initrd(vfs_header_t *header) {
     }
 }
 
+static int simple_itoa(u32 num, char *buf, int max_len) {
+    if (max_len < 2) return 0;
+    char temp[16];
+    int i = 0;
+    if (num == 0) {
+        buf[0] = '0';
+        buf[1] = '\0';
+        return 1;
+    }
+    while (num > 0 && i < 15) {
+        temp[i++] = '0' + (num % 10);
+        num /= 10;
+    }
+    int j = 0;
+    for (int k = i - 1; k >= 0; k--) {
+        if (j < max_len - 1) buf[j++] = temp[k];
+    }
+    buf[j] = '\0';
+    return j;
+}
+
 // Public API implementations 
 void vfs_core_init(void *initrd_addr) {
     if (!initrd_addr) { kprintf("[VFS] ERROR: No initrd address supplied\n"); return; }
@@ -547,12 +568,18 @@ void vfs_core_init(void *initrd_addr) {
     vfs_init_root();
     if (!vfs_root_dentry) { kprintf("[VFS] ERROR: Root directory initialization failed\n"); return; }
     vfs_build_from_initrd(header);
+    
+    /* Always create system info virtual nodes under /proc */
+    vfs_core_create_dir("./proc", 1);
+    vfs_core_create_device("./proc/cpu", 0444, 10);
+    vfs_core_create_device("./proc/mem", 0444, 11);
+    vfs_core_create_device("./proc/battery", 0444, 12);
+
     if (!vfs_disk_mode) {
         vfs_core_create_dir("./dev", 1);
         vfs_core_create_device("./dev/null", 0644, 1);
         vfs_core_create_device("./dev/zero", 0644, 2);
         vfs_core_create_device("./dev/random", 0644, 3);
-        vfs_core_create_dir("./proc", 1);
         vfs_core_create_dir("./sys", 1);
         vfs_core_create_dir("./tmp", 1);
     }
@@ -644,6 +671,60 @@ u32 vfs_core_write(u32 fd, const void *buffer, u32 size) {
 }
 u32 vfs_core_read_path(const char *path, void *buffer, u32 size) {
     if (!path || !buffer) return 0;
+    
+    /* Pre-check for our virtual proc nodes to work in both disk/non-disk modes */
+    vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
+    if (dentry && dentry->inode && (dentry->inode->mode & VFS_TYPE_MASK) == VFS_TYPE_CHARDEV) {
+        u32 dev_id = dentry->inode->blocks[0];
+        if (dev_id >= 10 && dev_id <= 12) {
+            if (dev_id == 10) {
+                /* /proc/cpu */
+                extern u8 process_get_cpu_usage(void);
+                u8 usage = process_get_cpu_usage();
+                char temp[16];
+                int len = simple_itoa(usage, temp, sizeof(temp));
+                if (len < 14) {
+                    temp[len++] = '%';
+                    temp[len++] = '\n';
+                    temp[len] = '\0';
+                }
+                if (size > (u32)len) size = len;
+                memcpy(buffer, temp, size);
+                return size;
+            } else if (dev_id == 11) {
+                /* /proc/mem */
+                extern u32 heap_get_used_memory(void);
+                extern u32 heap_get_total_memory(void);
+                u32 used = heap_get_used_memory();
+                u32 total = heap_get_total_memory();
+                if (total == 0) total = 1;
+                u32 usage = (used * 100) / total;
+                char temp[16];
+                int len = simple_itoa(usage, temp, sizeof(temp));
+                if (len < 14) {
+                    temp[len++] = '%';
+                    temp[len++] = '\n';
+                    temp[len] = '\0';
+                }
+                if (size > (u32)len) size = len;
+                memcpy(buffer, temp, size);
+                return size;
+            } else if (dev_id == 12) {
+                /* /proc/battery */
+                char temp[16];
+                int len = simple_itoa(85, temp, sizeof(temp));
+                if (len < 14) {
+                    temp[len++] = '%';
+                    temp[len++] = '\n';
+                    temp[len] = '\0';
+                }
+                if (size > (u32)len) size = len;
+                memcpy(buffer, temp, size);
+                return size;
+            }
+        }
+    }
+
     if (vfs_disk_mode) {
         vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
         if (!dentry || !dentry->inode) return 0;
@@ -656,7 +737,7 @@ u32 vfs_core_read_path(const char *path, void *buffer, u32 size) {
         i32 result = ext2_read_data(dentry->inode->number, buffer, size, 0);
         return result > 0 ? (u32)result : 0;
     }
-    vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
+    dentry = vfs_core_lookup(path, 0);
     if (!dentry || !dentry->inode) return 0;
     u32 type = dentry->inode->mode & VFS_TYPE_MASK;
     if (type == VFS_TYPE_SYMLINK) {

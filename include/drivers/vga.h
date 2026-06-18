@@ -34,4 +34,5 @@ void vga_clear_bounds(void);
 /* Load a built-in 8x8 font into VGA font memory and restore it later. */
 void vga_use_font8(void);
 void vga_restore_font(void);
+void vga_enable_paging(void);
 #endif /* VGA_H */

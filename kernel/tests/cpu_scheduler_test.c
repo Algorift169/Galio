@@ -7,6 +7,7 @@ static u32 cpu_scheduler_sequence[CPU_SCHED_TEST_JOBS];
 static u32 cpu_scheduler_index = 0;
 
 static void cpu_scheduler_job_1(void) {
+    kprintf("[KTEST] cpu_scheduler_job_1 running\n");
     cpu_scheduler_sequence[cpu_scheduler_index++] = 1;
     process_exit(0);
 }

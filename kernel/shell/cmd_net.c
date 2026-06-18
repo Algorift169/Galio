@@ -75,17 +75,26 @@ static int cmd_net_scan(int argc, char **argv) {
 static int cmd_net_list(int argc, char **argv) {
     (void)argc;
     (void)argv;
-    net_device_t *it = netdev_first();
-    if (!it) {
-        kprintf("No network devices\n");
+    net_device_t *wlan = netdev_get_by_name("wlan0");
+    if (!wlan) {
+        kprintf("No wireless devices available\n");
         return 0;
     }
-    kprintf("Network devices:\n");
-    while (it) {
-        kprintf("%s\t%s\tMTU:%u\n", it->name,
-               (it->flags & NETIF_UP) ? "UP" : "DOWN",
-               it->mtu);
-        it = it->next;
+    wifi_scan_start();
+    u32 count = 0;
+    const wifi_scan_result_t *results = wifi_scan_results(&count);
+    if (!results || count == 0) {
+        if (wifi_has_hardware()) {
+            kprintf("Wireless hardware detected, but scan backend not implemented\n");
+        } else {
+            kprintf("No wireless networks found\n");
+        }
+        return 0;
+    }
+    kprintf("Wireless networks (%u):\n", count);
+    for (u32 i = 0; i < count; i++) {
+        kprintf("  %s  signal=%ddBm  channel=%u\n",
+               results[i].ssid, results[i].signal_dbm, results[i].channel);
     }
     return 0;
 }

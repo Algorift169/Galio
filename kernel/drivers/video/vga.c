@@ -288,3 +288,7 @@ void vga_clear_bounds(void) {
     cursor_x = 0;
     cursor_y = 0;
 }
+
+void vga_enable_paging(void) {
+    vga_buf = (volatile u16 *)0xC00B8000;
+}
