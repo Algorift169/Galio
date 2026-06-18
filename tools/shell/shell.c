@@ -1235,18 +1235,6 @@ static void shell_poll_keyboard(void) {
         }
         return;
     }
-
-    u8 status = inb(0x64);
-    if ((status & 0x01) && (status & 0x20)) {
-        /* Mouse data - parse packets for scroll wheel support */
-        mouse_poll_position();
-        s8 scroll = mouse_get_scroll_delta();
-        if (scroll > 0) {
-            vga_scrollback_up();
-        } else if (scroll < 0) {
-            vga_scrollback_down();
-        }
-    }
 }
 
 void shell_run(void) {
