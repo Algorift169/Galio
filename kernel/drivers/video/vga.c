@@ -99,13 +99,17 @@ void vga_clear(void) {
         cursor_x = bounds_x;
         cursor_y = bounds_y;
     } else {
-        /* Clear full screen */
+        /* Clear full screen and reset scrollback history */
         for (u32 i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
             vga_buf[i] = (u16)(' ' | (VGA_COLOR_BOOT_GREEN << 8));
         }
         cursor_x = 0;
         cursor_y = 0;
         vga_current_color = VGA_COLOR_BOOT_GREEN;
+        scrollback_head = 0;
+        scrollback_count = 0;
+        scroll_offset = 0;
+        live_snapshot_valid = 0;
         vga_update_cursor();
     }
 }
