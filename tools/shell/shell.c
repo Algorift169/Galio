@@ -24,6 +24,7 @@
 #include "tree.h"
 #include "net.h"
 #include "pkg.h"
+#include "where.h"
 #include "editor.h"
 
 u8 shell_net_command(const char *args, const char *current_dir);
@@ -994,6 +995,14 @@ static void shell_execute_command(void) {
         SHELL_COLOR_CMD();
         kprintf("Usage: pkg <list|install|remove> [package_name]\n");
         SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "where ", 6) == 0) {
+        SHELL_COLOR_OUT();
+        shell_where_command(input.buffer + 6, current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "where") == 0) {
+        SHELL_COLOR_CMD();
+        shell_where_command("", current_dir);
+        SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "clear", 5) == 0) {
         shell_cursor_restore();
         vga_clear();
@@ -1027,6 +1036,8 @@ static void shell_execute_command(void) {
         kprintf(" |  write    - Write/edit file (usage: write <name> [path]) |\n");
         kprintf(" |__________________________________________________________|\n");
         kprintf(" |  show     - Display file contents (usage: show <filepath>)       |\n");
+        kprintf(" |__________________________________________________________________|\n");
+        kprintf(" |  where    - Find a file or directory path (where <name>)       |\n");
         kprintf(" |__________________________________________________________________|\n");
         kprintf(" | recycle  - Move to recycle bin (usage: recycle <path1> [path2])  |\n");
         kprintf(" |__________________________________________________________________|\n");
