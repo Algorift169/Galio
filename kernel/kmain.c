@@ -181,10 +181,11 @@ void kmain(void *multiboot_ptr) {
     (void)multiboot_ptr;
 
     serial_init();
+    vga_init();
+    vga_set_color(0x0A);
     kprintf("=== Galio Kernel Boot ===\n\n");
 
     kprintf("Initializing VGA...\n");
-    vga_init();
 
     kprintf("Initializing GDT...\n");
     gdt_init();

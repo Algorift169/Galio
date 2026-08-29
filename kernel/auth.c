@@ -227,12 +227,14 @@ u8 auth_verify_password(const char *username, const char *password) {
 }
 
 void auth_show_login_prompt(void) {
+    vga_set_color(0x0A);
     kprintf("\n");
     kprintf("╔══════════════════════════════════════════════════════════════╗\n");
     kprintf("║           Galio Kernel Registration                          ║\n");
     kprintf("║          Create a kernel account for galio                   ║\n");
     kprintf("╚══════════════════════════════════════════════════════════════╝\n");
     kprintf("\n");
+    vga_set_color(0x0A);
 }
 
 void auth_bootstrap(void) {
@@ -244,7 +246,9 @@ void auth_bootstrap(void) {
     char confirm[INPUT_BUFFER_SIZE];
 
     if (!vfs_core_is_disk_mode()) {
+        vga_set_color(0x0C);
         kprintf("[AUTH] Disk-backed filesystem unavailable, saved credentials cannot be loaded.\n");
+        vga_set_color(0x0A);
     }
 
     i32 loaded = auth_load_from_disk();
@@ -260,11 +264,14 @@ void auth_bootstrap(void) {
             if (auth_verify_password(kernel_auth.username, password)) {
                 auth_set_session_uid();
                 session_login(kernel_auth.username, kernel_auth.uid);
+                vga_set_color(0x0A);
                 kprintf("\n[AUTH] Authentication successful.\n\n");
                 return;
             }
 
+            vga_set_color(0x0C);
             kprintf("\n[AUTH] Invalid password. Try again.\n\n");
+            vga_set_color(0x0A);
         }
     }
 
@@ -281,11 +288,15 @@ void auth_bootstrap(void) {
         read_line(confirm, INPUT_BUFFER_SIZE, 0);
 
         if (username[0] == 0 || password[0] == 0) {
+            vga_set_color(0x0C);
             kprintf("[AUTH] Username and password cannot be empty. Try again.\n\n");
+            vga_set_color(0x0A);
             continue;
         }
         if (strcmp(password, confirm) != 0) {
+            vga_set_color(0x0C);
             kprintf("[AUTH] Passwords do not match. Try again.\n\n");
+            vga_set_color(0x0A);
             continue;
         }
 
@@ -298,9 +309,12 @@ void auth_bootstrap(void) {
         session_login(kernel_auth.username, kernel_auth.uid);
 
         if (auth_save_to_disk() == 0) {
+            vga_set_color(0x0A);
             kprintf("[AUTH] Credentials saved to disk.\n");
         } else {
+            vga_set_color(0x0C);
             kprintf("[AUTH] Warning: could not persist credentials to disk.\n");
+            vga_set_color(0x0A);
         }
 
         kprintf("\n[AUTH] Kernel account registered for user '%s'.\n", kernel_auth.username);

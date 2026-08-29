@@ -6,11 +6,13 @@
 #define VGA_WIDTH  80
 #define VGA_HEIGHT 25
 #define VGA_COLOR_WHITE 0x0F
+#define VGA_COLOR_BOOT_GREEN 0x0A
+#define VGA_COLOR_BOOT_RED 0x0C
 
 static volatile u16 *vga_buf = (u16*)0xB8000;
 static u32 cursor_x = 0;
 static u32 cursor_y = 0;
-static u8 vga_current_color = VGA_COLOR_WHITE;
+static u8 vga_current_color = VGA_COLOR_BOOT_GREEN;
 
 /* Bounded region for constrained output */
 static int bounds_x = 0;
@@ -74,11 +76,11 @@ void vga_clear(void) {
     } else {
         /* Clear full screen */
         for (u32 i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
-            vga_buf[i] = (u16)(' ' | (VGA_COLOR_WHITE << 8));
+            vga_buf[i] = (u16)(' ' | (VGA_COLOR_BOOT_GREEN << 8));
         }
         cursor_x = 0;
         cursor_y = 0;
-        vga_current_color = VGA_COLOR_WHITE;
+        vga_current_color = VGA_COLOR_BOOT_GREEN;
         vga_update_cursor();
     }
 }
@@ -87,11 +89,11 @@ void vga_clear(void) {
  * Use this from contexts where VGA port access may not be safe. */
 void vga_clear_no_update(void) {
     for (u32 i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
-        vga_buf[i] = (u16)(' ' | (VGA_COLOR_WHITE << 8));
+        vga_buf[i] = (u16)(' ' | (VGA_COLOR_BOOT_GREEN << 8));
     }
     cursor_x = 0;
     cursor_y = 0;
-    vga_current_color = VGA_COLOR_WHITE;
+    vga_current_color = VGA_COLOR_BOOT_GREEN;
 }
 
 void vga_set_color(unsigned char color) {
@@ -149,6 +151,7 @@ void vga_newline(void) {
 
 void vga_init(void) {
     vga_clear();
+    vga_set_color(VGA_COLOR_BOOT_GREEN);
 }
 
 void vga_putch(char c) {
