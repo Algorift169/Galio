@@ -25,8 +25,11 @@ void display_enter_userland_mode(void) {
 
 void display_enter_shell_mode(void) {
     panel_set_enabled(0);
-    mouse_disable();
     cursor_deactivate();
+    /* Re-enable PS/2 mouse data reporting so the shell can poll for scroll wheel
+       events. Only the visual mouse cursor is deactivated; the hardware device
+       keeps streaming packets. */
+    mouse_enable();
     keyboard_reset_state();
     vga_clear();
     vga_disable_hardware_cursor();

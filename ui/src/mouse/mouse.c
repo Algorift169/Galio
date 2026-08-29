@@ -19,6 +19,7 @@
 
 #define PS2_STATUS_OUTPUT_BUFFER 0x01
 #define PS2_STATUS_INPUT_BUFFER  0x02
+#define PS2_STATUS_AUX_OUTPUT    0x20
 
 static int mouse_x = 40;
 static int mouse_y = 12;
@@ -28,6 +29,7 @@ static u8 packet[4];
 static u8 packet_index = 0;
 static u8 packet_length = 3;
 static u8 mouse_buttons = 0;
+static s8 mouse_scroll_delta = 0;
 
 static void ps2_wait_input(void) {
     while (inb(PS2_STATUS_PORT) & PS2_STATUS_INPUT_BUFFER) {
@@ -79,6 +81,7 @@ static u8 mouse_get_device_id(void) {
 }
 
 static void update_mouse_state(s8 dx, s8 dy, u8 buttons) {
+    (void)buttons;
     mouse_residual_x += dx;
     mouse_residual_y += dy;
 
@@ -130,16 +133,14 @@ void mouse_init(void) {
     /* Set stream mode */
     mouse_write(PS2_MOUSE_SET_STREAM);
     mouse_read();
-    
-    /* Try to enable scroll wheel (4-byte packets) */
-    if (mouse_set_sample_rate(200) == 0xFA &&
-        mouse_set_sample_rate(100) == 0xFA &&
-        mouse_set_sample_rate(80) == 0xFA) {
-        u8 id = mouse_get_device_id();
-        if (id == 3) {
-            packet_length = 4;
-        }
-    }
+
+    /* Always enable the 4-byte packet format that carries wheel delta. This is a kernel-level
+       guarantee for scroll support across all apps, regardless of the specific device ID. */
+    packet_length = 4;
+    (void)mouse_set_sample_rate(200);
+    (void)mouse_set_sample_rate(100);
+    (void)mouse_set_sample_rate(80);
+    (void)mouse_get_device_id();
     
     mouse_x = 40;
     mouse_y = 12;
@@ -148,12 +149,12 @@ void mouse_init(void) {
 
 void mouse_poll_position(void) {
     u8 status = inb(PS2_STATUS_PORT);
-    
-    /* Check if data is available */
-    if (!(status & PS2_STATUS_OUTPUT_BUFFER)) {
+
+    /* Only read from the aux/mouse output buffer. Keyboard data must not be drained here. */
+    if (!(status & PS2_STATUS_AUX_OUTPUT)) {
         return;
     }
-    
+
     u8 data = inb(PS2_DATA_PORT);
     
     /* Start of new packet: bit 3 must be set */
@@ -180,6 +181,15 @@ void mouse_poll_position(void) {
     s8 dx = (s8)packet[1];
     s8 dy = (s8)packet[2];
     u8 buttons = packet[0] & 0x07;
+
+    if (packet_length == 4) {
+        /* Wheel packets are always 4 bytes in the kernel mouse layer. Decode the signed
+           4th-byte delta and expose it via the generic scroll API for all consumers. */
+        s8 wheel = (s8)packet[3];
+        if (wheel != 0) {
+            mouse_scroll_delta = wheel;
+        }
+    }
     
     mouse_buttons = buttons;
     update_mouse_state(dx, dy, buttons);
@@ -217,20 +227,52 @@ void mouse_disable(void) {
     mouse_flush_port();
 }
 
+void mouse_enable(void) {
+    /* Re-enable the auxiliary PS/2 port */
+    outb(PS2_COMMAND_PORT, PS2_CMD_ENABLE_AUX);
+    for (volatile int i = 0; i < 1000; i++);
+
+    /* Read current command byte */
+    ps2_wait_input();
+    outb(PS2_COMMAND_PORT, PS2_CMD_READ_BYTE);
+    ps2_wait_output();
+    u8 command_byte = inb(PS2_DATA_PORT);
+
+    /* Enable mouse IRQ (bit 1) while keeping keyboard IRQ (bit 0) */
+    command_byte |= 0x02;
+
+    /* Write back command byte */
+    ps2_wait_input();
+    outb(PS2_COMMAND_PORT, PS2_CMD_WRITE_BYTE);
+    ps2_wait_input();
+    outb(PS2_DATA_PORT, command_byte);
+
+    /* Re-enable data reporting */
+    mouse_write(PS2_MOUSE_ENABLE_DATA);
+    mouse_read();
+
+    /* Re-enable scroll wheel (4-byte packet mode) via the magic sample rate sequence */
+    packet_length = 4;
+    (void)mouse_set_sample_rate(200);
+    (void)mouse_set_sample_rate(100);
+    (void)mouse_set_sample_rate(80);
+    (void)mouse_get_device_id();
+
+    /* Reset packet state */
+    packet_index = 0;
+    mouse_scroll_delta = 0;
+
+    /* Flush any stale bytes */
+    mouse_flush_port();
+}
+
 void mouse_get_position(int *x, int *y) {
     if (x) *x = mouse_x;
     if (y) *y = mouse_y;
 }
 
 s8 mouse_get_scroll_delta(void) {
-    static s8 last_scroll = 0;
-    s8 delta = 0;
-    
-    /* Only read scroll data if in 4-byte mode */
-    if (packet_length == 4) {
-        s8 current = (s8)packet[3];
-        delta = current - last_scroll;
-        last_scroll = current;
-    }
+    s8 delta = mouse_scroll_delta;
+    mouse_scroll_delta = 0;
     return delta;
 }

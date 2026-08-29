@@ -161,13 +161,9 @@ u8 keyboard_has_event(void) {
 
 static u8 keyboard_poll_port_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
     u8 status = inb(KEYBOARD_CTRL);
-    if (!(status & 0x01)) {
-        return 0;
-    }
 
-    /* Discard auxiliary/mouse bytes so they cannot block keyboard polling. */
-    if (status & 0x20) {
-        (void)inb(KEYBOARD_DATA);
+    /* Keyboard polling must only consume keyboard bytes; mouse bytes are handled separately. */
+    if (!(status & 0x01) || (status & 0x20)) {
         return 0;
     }
 

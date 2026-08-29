@@ -240,6 +240,17 @@ static void shell_print_cursor(void) {
     shell_cursor_draw();
 }
 
+static void shell_poll_mouse(void) {
+    mouse_poll_position();
+
+    s8 scroll = mouse_get_scroll_delta();
+    if (scroll > 0) {
+        vga_scrollback_down();
+    } else if (scroll < 0) {
+        vga_scrollback_up();
+    }
+}
+
 static const char *shell_basename(const char *path) {
     const char *base = path;
     while (*path) {
@@ -1185,6 +1196,11 @@ static void shell_poll_keyboard(void) {
             return;
         }
 
+        /* Snap back to live screen on any key except PgUp/PgDn scroll keys */
+        if (!(scancode == 0x49 || scancode == 0x51)) {
+            vga_show_live_screen();
+        }
+
         if (extended || scancode == 0x48 || scancode == 0x50 || scancode == 0x49 || scancode == 0x51) {
             if (scancode == 0x48) {
                 shell_history_prev();
@@ -1256,6 +1272,7 @@ void shell_run(void) {
     shell_cursor_reset();
 
     while (!shell_should_exit) {
+        shell_poll_mouse();
         shell_poll_keyboard();
         for (volatile int i = 0; i < 100; i++);
     }
