@@ -63,6 +63,35 @@ static const char *copy_token(const char *src, char *dst, u32 max) {
     return src;
 }
 
+static u32 parse_timeout(const char *args, const char **command_args) {
+    const char *timeout = args;
+    while (*timeout) {
+        if ((timeout == args || timeout[-1] == ' ') && timeout[0] == '-' &&
+            timeout[1] == '-' && timeout[2] == 't' && timeout[3] == 'i' &&
+            timeout[4] == 'm' && timeout[5] == 'e' && timeout[6] == 'o' &&
+            timeout[7] == 'u' && timeout[8] == 't' && timeout[9] == ' ') {
+            break;
+        }
+        timeout++;
+    }
+    if (!*timeout) {
+        *command_args = args;
+        return 3;
+    }
+
+    u32 seconds = 0;
+    const char *value = timeout + 10;
+    while (*value >= '0' && *value <= '9') {
+        seconds = seconds * 10 + (u32)(*value - '0');
+        value++;
+    }
+    if (seconds == 0 || (*value != 0 && *value != ' ')) {
+        return 0;
+    }
+    *command_args = args;
+    return seconds;
+}
+
 u8 shell_net_command(const char *args, const char *current_dir) {
     (void)current_dir;
     if (!args || *args == 0) {
@@ -132,12 +161,19 @@ u8 shell_net_command(const char *args, const char *current_dir) {
     }
 
     if (strncmp(args, "scan", 4) == 0 && (args[4] == ' ' || args[4] == '\0')) {
+        const char *scan_args = skip_spaces(args + 4);
+        const char *command_args = scan_args;
+        u32 timeout_seconds = parse_timeout(scan_args, &command_args);
+        if (timeout_seconds == 0) {
+            kprintf("Usage: net scan [--timeout <seconds>]\n");
+            return 0;
+        }
         net_device_t *wlan = netdev_get_by_name("wlan0");
         if (!wlan) {
             kprintf("No wireless devices available\n");
             return 0;
         }
-        wifi_scan_start();
+        wifi_scan_start_timeout(timeout_seconds);
         u32 count = 0;
         const wifi_scan_result_t *results = wifi_scan_results(&count);
         if (!results || count == 0) {

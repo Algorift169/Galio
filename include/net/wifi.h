@@ -11,6 +11,7 @@ typedef struct {
 
 void wifi_init(void);
 void wifi_scan_start(void);
+void wifi_scan_start_timeout(u32 timeout_seconds);
 void wifi_scan_stop(void);
 const wifi_scan_result_t *wifi_scan_results(u32 *count);
 int wifi_has_hardware(void);

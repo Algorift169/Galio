@@ -11,7 +11,8 @@
 #include "drivers/usb.h"
 
 #define WIFI_SCAN_CACHE_MAX 32
-#define WIFI_SCAN_TIMEOUT_MS 3000
+#define PIT_TICKS_PER_SECOND 100
+#define WIFI_SCAN_TIMEOUT_SECONDS 3
 
 static wifi_scan_result_t wifi_scan_cache[WIFI_SCAN_CACHE_MAX];
 static u32 wifi_scan_count = 0;
@@ -24,13 +25,9 @@ uint8_t wifi_build_probe_request(uint8_t *buffer, u32 buffer_len, const char *ss
 
 static int wifi_pci_probe(pci_device_t *pdev) {
     if (!pdev) return -1;
-    if (pdev->class_id != 0x02) return -1;
-    
-    wifi_hw_present = 1;
-    kprintf("wifi: Detected PCI device %04x:%04x at %u:%u.%u\n",
-            pdev->vendor_id, pdev->device_id,
-            pdev->bus, pdev->device, pdev->function);
-    return 0;
+    /* RTL8188EU is a USB device, not a generic PCI network device. Do not
+       claim E1000 or any other Ethernet controller as Wi-Fi hardware. */
+    return -1;
 }
 
 static pci_driver_t wifi_pci_driver = {
@@ -40,49 +37,26 @@ static pci_driver_t wifi_pci_driver = {
     .next = NULL,
 };
 
-static void wifi_register_device(void) {
-    if (wifi_device) return;
-    
-    net_device_t *ndev = netdev_get_by_name("wlan0");
-    if (ndev) {
-        wifi_device = ndev;
-        return;
-    }
-    
-    ndev = kmalloc(sizeof(net_device_t));
-    if (!ndev) return;
-    memset(ndev, 0, sizeof(*ndev));
-    
-    strncpy(ndev->name, "wlan0", NET_NAME_LEN - 1);
-    ndev->mtu = 1500;
-    /* Register as available but not up/running; real driver will set flags */
-    ndev->flags = 0;
-    ndev->priv = NULL;
-    ndev->tx = NULL;
-    
-    if (netdev_register(ndev) != 0) {
-        kfree(ndev);
-        return;
-    }
-    wifi_device = ndev;
-    kprintf("wifi: Registered wlan0 interface\n");
-}
-
 void wifi_init(void) {
     wifi_device = NULL;
     wifi_hw_present = 0;
     wifi_scan_count = 0;
     wifi_scan_active = 0;
     
-    pci_register_driver(&wifi_pci_driver);
     /* Initialize USB helpers so RTL driver can use control/bulk transfers */
     usb_init();
     kprintf("wifi: Initialized\n");
 }
 
 void wifi_scan_start(void) {
+    wifi_scan_start_timeout(WIFI_SCAN_TIMEOUT_SECONDS);
+}
+
+void wifi_scan_start_timeout(u32 timeout_seconds) {
     if (!wifi_device) {
-        wifi_register_device();
+        kprintf("wifi: no supported Wi-Fi device available\n");
+        wifi_scan_count = 0;
+        return;
     }
     wifi_scan_active = 1;
     wifi_scan_count = 0;
@@ -96,12 +70,15 @@ void wifi_scan_start(void) {
         return;
     }
 
+    if (timeout_seconds == 0) timeout_seconds = 1;
     u32 start = pit_get_ticks();
+    u32 timeout_ticks = timeout_seconds * PIT_TICKS_PER_SECOND;
     u32 now = start;
+    u32 scan_polls = 0;
     u8 probe_buf[256];
     uint8_t probe_len = wifi_build_probe_request(probe_buf, sizeof(probe_buf), NULL);
 
-    for (u8 ch = 1; ch <= 14 && (now - start) < WIFI_SCAN_TIMEOUT_MS; ch++) {
+    for (u8 ch = 1; ch <= 14 && (now - start) < timeout_ticks && scan_polls < 512; ch++) {
         if (ndev->set_channel) ndev->set_channel(ndev, ch);
         /* Transmit probe request */
         net_buf_t *nb = net_buf_clone_from_data(probe_buf, probe_len);
@@ -112,7 +89,9 @@ void wifi_scan_start(void) {
 
         /* Listen briefly on this channel */
         u32 listen_start = pit_get_ticks();
-        while ((pit_get_ticks() - listen_start) < 30) {
+         u32 channel_polls = 0;
+         while ((pit_get_ticks() - listen_start) < 3 &&
+             channel_polls++ < 32 && scan_polls++ < 512) {
             uint8_t rxbuf[2048];
             int got = usb_bulk_read(0, 0, 0x81, rxbuf, sizeof(rxbuf), 50);
             if (got > 0) {
@@ -135,6 +114,9 @@ void wifi_scan_start(void) {
             }
         }
         now = pit_get_ticks();
+    }
+    if (scan_polls >= 512) {
+        kprintf("wifi: scan backend timed out without a completed response\n");
     }
     kprintf("wifi: Scan finished, %u results\n", wifi_scan_count);
 }

@@ -21,18 +21,9 @@ typedef struct {
     u8 channel;
 } rtl8188eu_priv_t;
 
-/* Minimal firmware blob used to simulate firmware upload. Real devices
- * require larger binaries; this tiny blob is sufficient for bringing
- * the device to an operational state in our synchronous helper model.
- */
-static const u8 rtl_fw_stub[] = { 0x00, 0x01, 0x02, 0x03 };
-
 static int rtl8188eu_do_firmware_load(void) {
-    /* Send vendor control write with small firmware fragment */
-    int ret = usb_control_msg(0, 0, 0x40, 0xA0, 0, 0, (void *)rtl_fw_stub, sizeof(rtl_fw_stub), 1000);
-    if (ret < 0) return -1;
-    kprintf("rtl8188eu: firmware blob uploaded (%d bytes)\n", (int)sizeof(rtl_fw_stub));
-    return 0;
+    /* A real RTL8188EU firmware image and USB device handle are required. */
+    return -1;
 }
 
 static int rtl8188eu_tx(struct net_device *dev, net_buf_t *buf) {
@@ -86,9 +77,7 @@ static int rtl8188eu_probe(void) {
     priv->mac[0] = 0x02; priv->mac[1] = 0x00; priv->mac[2] = 0x00;
     priv->mac[3] = 0x00; priv->mac[4] = 0x00; priv->mac[5] = 0x02;
 
-    if (rtl8188eu_do_firmware_load() != 0) {
-        kprintf("rtl8188eu: firmware load failed\n");
-    }
+    if (rtl8188eu_do_firmware_load() != 0) return -1;
 
     net_device_t *ndev = kmalloc(sizeof(net_device_t));
     if (!ndev) { kfree(priv); return -1; }
@@ -106,7 +95,7 @@ static int rtl8188eu_probe(void) {
         kfree(ndev); kfree(priv); return -1;
     }
 
-    kprintf("rtl8188eu: Registered wlan0 (USB RTL8188EU simulated)\n");
+    kprintf("rtl8188eu: Registered wlan0\n");
     return 0;
 }
 
