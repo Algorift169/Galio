@@ -69,8 +69,8 @@ u8 validate_user_buffer(const void *ptr, u32 length, u8 write) {
     if (length == 0) return 1;
     if (!ptr) return 0; /* reject NULL unless length == 0 */
 
-    u32 start = (u32)ptr;
-    u32 end = start + length - 1;
+    uintptr_t start = (uintptr_t)ptr;
+    uintptr_t end = start + length - 1;
     /* Detect wraparound/overflow */
     if (end < start) return 0;
     /* Reject any range that touches kernel space */
@@ -119,134 +119,134 @@ static u8 copy_user_string(char *dst, const char *src, u32 dst_size) {
 static void syscall_handler(registers_t *regs) {
     /* For INT 0x80, we need to distinguish syscall number from interrupt_number */
     /* The actual syscall number is in EAX */
-    u32 syscall_num = regs->eax;
-    u32 arg1 = regs->ebx;
-    u32 arg2 = regs->ecx;
-    u32 arg3 = regs->edx;
-    u32 arg4 = regs->esi;
-    u32 arg5 = regs->edi;
-    u32 arg6 = 0;  /* Would need to come from stack if needed */
+    u64 syscall_num = regs->rax;
+    u64 arg1 = regs->rbx;
+    u64 arg2 = regs->rcx;
+    u64 arg3 = regs->rdx;
+    u64 arg4 = regs->rsi;
+    u64 arg5 = regs->rdi;
+    u64 arg6 = 0;  /* Would need to come from stack if needed */
 
     switch (syscall_num) {
         case SYS_EXIT:
-            kprintf("Process exit with code %d\n", arg1);
+            kprintf("Process exit with code %d\n", (i32)arg1);
             process_exit((i32)arg1);
             break;
             
         case SYS_WRITE: {
             if (arg1 == 1) {  /* stdout */
                 if (!validate_user_buffer((const void *)arg2, (u32)arg3, 0)) {
-                    regs->eax = (u32)-1;
+                    regs->rax = (u64)-1;
                     break;
                 }
                 for (u32 i = 0; i < arg3; i++) {
                     vga_putch(((char *)arg2)[i]);
                 }
-                regs->eax = arg3;
+                regs->rax = arg3;
             } else {
-                regs->eax = syscall_write((u32)arg1, (const void *)arg2, (u32)arg3);
+                regs->rax = syscall_write((u32)arg1, (const void *)arg2, (u32)arg3);
             }
             break;
         }
 
         case SYS_GETPID: {
             process_t *proc = process_current();
-            regs->eax = proc ? proc->pid : 0;
+            regs->rax = proc ? proc->pid : 0;
             break;
         }
 
         case SYS_FORK:
-            regs->eax = syscall_fork();
+            regs->rax = syscall_fork();
             break;
 
         case SYS_EXEC:
-            regs->eax = syscall_exec((const char *)arg1);
+            regs->rax = syscall_exec((const char *)arg1);
             break;
 
         case SYS_EXECVE:
-            regs->eax = syscall_execve((const char *)arg1, (char *const *)arg2, (char *const *)arg3);
+            regs->rax = syscall_execve((const char *)arg1, (char *const *)arg2, (char *const *)arg3);
             break;
 
         case SYS_SLEEP:
             kprintf("SYS_SLEEP not yet implemented\n");
-            regs->eax = 0;
+            regs->rax = 0;
             break;
 
         case SYS_WAITPID:
-            regs->eax = syscall_waitpid((i32)arg1);
+            regs->rax = syscall_waitpid((i32)arg1);
             break;
 
         case SYS_PIPE:
-            regs->eax = syscall_pipe((i32 *)arg1);
+            regs->rax = syscall_pipe((i32 *)arg1);
             break;
 
         case SYS_DUP:
-            regs->eax = syscall_dup((u32)arg1);
+            regs->rax = syscall_dup((u32)arg1);
             break;
 
         case SYS_DUP2:
-            regs->eax = syscall_dup2((u32)arg1, (u32)arg2);
+            regs->rax = syscall_dup2((u32)arg1, (u32)arg2);
             break;
 
         case SYS_CHDIR:
-            regs->eax = syscall_chdir((const char *)arg1);
+            regs->rax = syscall_chdir((const char *)arg1);
             break;
 
         case SYS_GETCWD:
-            regs->eax = syscall_getcwd((char *)arg1, (u32)arg2);
+            regs->rax = syscall_getcwd((char *)arg1, (u32)arg2);
             break;
 
         case SYS_TIME:
-            regs->eax = syscall_time();
+            regs->rax = syscall_time();
             break;
 
         case SYS_GETTIMEOFDAY:
-            regs->eax = syscall_gettimeofday((struct timeval *)arg1, (void *)arg2);
+            regs->rax = syscall_gettimeofday((struct timeval *)arg1, (void *)arg2);
             break;
 
         case SYS_GETUID:
-            regs->eax = syscall_getuid();
+            regs->rax = syscall_getuid();
             break;
 
         case SYS_GETGID:
-            regs->eax = syscall_getgid();
+            regs->rax = syscall_getgid();
             break;
 
         case SYS_OPEN:
-            regs->eax = syscall_open((const char *)arg1, (i32)arg2);
+            regs->rax = syscall_open((const char *)arg1, (i32)arg2);
             break;
 
         case SYS_READ:
-            regs->eax = syscall_read((u32)arg1, (void *)arg2, (u32)arg3);
+            regs->rax = syscall_read((u32)arg1, (void *)arg2, (u32)arg3);
             break;
 
         case SYS_CLOSE:
-            regs->eax = syscall_close((u32)arg1);
+            regs->rax = syscall_close((u32)arg1);
             break;
 
         case SYS_LSEEK:
-            regs->eax = syscall_lseek((u32)arg1, (i32)arg2, (i32)arg3);
+            regs->rax = syscall_lseek((u32)arg1, (i32)arg2, (i32)arg3);
             break;
 
         case SYS_STAT:
-            regs->eax = syscall_stat((const char *)arg1, (void *)arg2);
+            regs->rax = syscall_stat((const char *)arg1, (void *)arg2);
             break;
 
         case SYS_MMAP:
-            regs->eax = (u32)syscall_mmap((void *)arg1, (u32)arg2, (i32)arg3, (i32)arg4, (i32)arg5, (u32)arg6);
+            regs->rax = (uintptr_t)syscall_mmap((void *)arg1, (u32)arg2, (i32)arg3, (i32)arg4, (i32)arg5, (u32)arg6);
             break;
 
         case SYS_MUNMAP:
-            regs->eax = syscall_munmap((void *)arg1, (u32)arg2);
+            regs->rax = syscall_munmap((void *)arg1, (u32)arg2);
             break;
 
         case SYS_BRK:
-            regs->eax = (u32)syscall_brk((void *)arg1);
+            regs->rax = (uintptr_t)syscall_brk((void *)arg1);
             break;
 
         default:
-            kprintf("Unknown syscall: %u\n", syscall_num);
-            regs->eax = -1;
+            kprintf("Unknown syscall: %u\n", (u32)syscall_num);
+            regs->rax = (u64)-1;
             break;
     }
 }
@@ -368,22 +368,24 @@ static i32 syscall_exec(const char *path) {
     if (current->pagedir) {
         paging_load_directory(current->pagedir);
     }
-    tss_set_kernel_stack((u32)current->stack + current->stack_size - 4);
+    tss_set_kernel_stack((uintptr_t)current->stack + current->stack_size - 8);
 
     /* Set up user-mode segments (assuming GDT has user descriptors) */
     __asm__ volatile(
-        "movw $0x23, %%ax\n"  /* User data selector */
-        "movw %%ax, %%ds\n"
-        "movw %%ax, %%es\n"
-        "movw %%ax, %%fs\n"
-        "movw %%ax, %%gs\n"
-        "pushw $0x23\n"     /* User data SS */
-        "pushl %0\n"        /* ESP */
-        "pushfl\n"          /* EFLAGS */
-        "pushw $0x1B\n"     /* User code CS */
-        "pushl %1\n"        /* EIP */
-        "iret\n"
-        : : "r"(current->regs.user_esp), "r"(entry)
+        "mov $0x23, %%rax\n"
+        "mov %%ax, %%ds\n"
+        "mov %%ax, %%es\n"
+        "mov %%ax, %%fs\n"
+        "mov %%ax, %%gs\n"
+        "pushq $0x23\n"
+        "pushq %0\n"
+        "pushfq\n"
+        "orq $0x200, (%%rsp)\n"
+        "pushq $0x2B\n"
+        "pushq %1\n"
+        "iretq\n"
+        : : "r"(current->regs.user_esp), "r"((uintptr_t)entry)
+        : "rax", "memory"
     );
 
     /* Should not reach here */

@@ -4,25 +4,15 @@
 #include "common.h"
 
 typedef struct {
-    u32 edi;
-    u32 esi;
-    u32 ebp;
-    u32 esp;
-    u32 ebx;
-    u32 edx;
-    u32 ecx;
-    u32 eax;
-    u32 ds;
-    u32 es;
-    u32 fs;
-    u32 gs;
-    u32 error_code;
-    u32 interrupt_number;
-    u32 eip;
-    u32 cs;
-    u32 eflags;
-    u32 user_esp;
-    u32 user_ss;
+    u64 r15, r14, r13, r12, r11, r10, r9, r8;
+    u64 rbp, rdi, rsi, rdx, rcx, rbx, rax;
+    u64 interrupt_number;
+    u64 error_code;
+    u64 eip;       /* rip */
+    u64 cs;
+    u64 eflags;    /* rflags */
+    u64 rsp;       /* rsp */
+    u64 ss;        /* ss */
 } registers_t;
 
 typedef void (*interrupt_handler_t)(registers_t *regs);

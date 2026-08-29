@@ -32,19 +32,31 @@ typedef enum {
 } process_state_t;
 
 typedef struct {
-    u32 esp;
-    u32 ebp;
-    u32 esi;
-    u32 edi;
-    u32 ebx;
-    u32 edx;
-    u32 ecx;
-    u32 eax;
-    u32 eflags;
-    u32 eip;
-    u32 cs;
-    u32 user_esp;
-    u32 user_ss;
+    uintptr_t rsp;
+    uintptr_t rbp;
+    uintptr_t rsi;
+    uintptr_t rdi;
+    uintptr_t rbx;
+    uintptr_t rdx;
+    uintptr_t rcx;
+    uintptr_t rax;
+    uintptr_t rflags;
+    uintptr_t rip;
+    uintptr_t cs;
+    uintptr_t user_rsp;
+    uintptr_t user_ss;
+    uintptr_t eflags;
+    uintptr_t eip;
+    uintptr_t esp;
+    uintptr_t ebp;
+    uintptr_t esi;
+    uintptr_t edi;
+    uintptr_t edx;
+    uintptr_t ecx;
+    uintptr_t eax;
+    uintptr_t ebx;
+    uintptr_t user_esp;
+    uintptr_t user_ss_compat;
 } register_state_t;
 
 typedef struct {
@@ -62,7 +74,7 @@ typedef struct {
     u32 parent_pid;
     process_state_t state;
     register_state_t regs;
-    u32 *stack;
+    uintptr_t *stack;
     u32 stack_size;
     void *pagedir;
     u32 priority;

@@ -2,24 +2,23 @@
 #define COMMON_H
 
 #include <stdint.h>
+#include <stddef.h>
 
-typedef unsigned char u8;
-typedef unsigned short u16;
-typedef unsigned int u32;
-typedef signed char s8;
-typedef signed short s16;
-typedef signed int s32;
-
-/* Typedefs for clarity */
+/* Canonical fixed-width type aliases for the 64-bit kernel ABI */
 typedef uint8_t  u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
+typedef uint64_t u64;
+typedef int8_t   s8;
+typedef int16_t  s16;
+typedef int32_t  s32;
+typedef int64_t  s64;
 typedef int32_t  i32;
 
 /* Kernel utility functions */
-void *memset(void *s, int c, u32 n);
-void *memcpy(void *dest, const void *src, u32 n);
-void *memmove(void *dest, const void *src, u32 n);
+void *memset(void *s, int c, size_t n);
+void *memcpy(void *dest, const void *src, size_t n);
+void *memmove(void *dest, const void *src, size_t n);
 void panic(const char *msg);
 void assert_failed(const char *expr, const char *file, i32 line);
 void stack_trace(void);
@@ -30,7 +29,3 @@ void stack_trace(void);
 void kernel_status(void);
 
 #endif /* COMMON_H */
-
-/* 64-bit integer type for 32-bit kernel */
-typedef unsigned long long u64;
-typedef signed long long s64;

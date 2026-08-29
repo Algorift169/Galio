@@ -24,10 +24,10 @@ INCLUDES = -Iinclude \
            -Itools/shell/editor \
            -Iui/include
 
-CFLAGS = -m32 -ffreestanding -O2 -Wall -Wextra $(INCLUDES) -Wno-array-bounds -Wno-unused-function
-ASFLAGS = -f elf32
-LDFLAGS = -m elf_i386 -T kernel/arch/x86/boot/linker.ld
-LDLIBS = $(shell $(CC) -m32 -print-file-name=libgcc.a)
+CFLAGS = -m64 -mno-sse -mno-sse2 -mno-mmx -mno-3dnow -mno-avx -mcmodel=kernel -mno-red-zone -ffreestanding -fno-pie -no-pie -O2 -Wall -Wextra $(INCLUDES) -Wno-array-bounds -Wno-unused-function
+ASFLAGS = -f elf64
+LDFLAGS = -m elf_x86_64 -T kernel/arch/x86/boot/linker.ld
+LDLIBS = $(shell $(CC) -m64 -print-file-name=libgcc.a)
 USER_ELF_BASE = 0x40000000
 
 # Source files
@@ -77,6 +77,7 @@ SRCS = kernel/kmain.c \
        kernel/drivers/keyboard/keyboard.c \
        kernel/drivers/serial/serial.c \
        kernel/drivers/rtc/rtc.c \
+       kernel/drivers/timer/pit.c \
 	kernel/time.c \
        kernel/drivers/video/vga.c \
        kernel/drivers/usb/usb.c \
@@ -120,8 +121,10 @@ SRCS = kernel/kmain.c \
 
 # Object files
 C_OBJS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRCS))
-GAS_SRCS = kernel/drivers/timer/pit.s \
-           kernel/drivers/net/wifi.s
+# The legacy PIT assembly stub was written for 32-bit protected mode and is
+# not compatible with x86-64 long mode. The timer functionality is already
+# implemented in kernel/drivers/timer/pit.c using the 64-bit-safe ABI.
+GAS_SRCS = kernel/drivers/net/wifi.s
 GAS_OBJS = $(patsubst %.s,$(OBJ_DIR)/%.o,$(GAS_SRCS))
 ASM_OBJS = $(OBJ_DIR)/kernel/arch/x86/cpu/asm.o \
            $(OBJ_DIR)/kernel/arch/x86/cpu/isr_asm.o \
@@ -145,6 +148,9 @@ all: $(OBJS) $(KERNEL_BIN) $(KERNEL_ISO) $(DISK_IMAGE)
 	@echo "Wi-Fi: RTL8188EU driver with real 802.11 scanning"
 
 # Explicit object rules for nested paths (must come before generic rule)
+$(OBJ_DIR)/tools/shell/.created:
+	@mkdir -p $(OBJ_DIR)/tools/shell $(OBJ_DIR)/tools/shell/commands $(OBJ_DIR)/tools/shell/editor
+
 $(OBJ_DIR)/kernel/drivers/net/%.o: kernel/drivers/net/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -169,11 +175,15 @@ $(OBJ_DIR)/kernel/mm/%.o: kernel/mm/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(OBJ_DIR)/tools/shell/commands/%.o: tools/shell/commands/%.c
+$(OBJ_DIR)/tools/shell/commands/%.o: tools/shell/commands/%.c | $(OBJ_DIR)/tools/shell/.created
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(OBJ_DIR)/tools/shell/editor/%.o: tools/shell/editor/%.c
+$(OBJ_DIR)/tools/shell/editor/%.o: tools/shell/editor/%.c | $(OBJ_DIR)/tools/shell/.created
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ_DIR)/tools/shell/%.o: tools/shell/%.c | $(OBJ_DIR)/tools/shell/.created
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -192,10 +202,6 @@ $(OBJ_DIR)/kernel/arch/x86/cpu/isr_asm.o: kernel/arch/x86/cpu/isr_asm.s
 	$(AS) $(ASFLAGS) $< -o $@
 
 $(OBJ_DIR)/kernel/arch/x86/boot/boot.o: kernel/arch/x86/boot/boot.S
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(OBJ_DIR)/kernel/drivers/timer/%.o: kernel/drivers/timer/%.s
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -246,15 +252,15 @@ $(KERNEL_ISO): $(KERNEL_BIN) $(INITRD_IMAGE)
 # Embedded objects
 $(OBJ_DIR)/src/embedded_test.o: $(TEST_ELF)
 	@mkdir -p $(dir $@)
-	cd $(BUILD_DIR) && objcopy -I binary -O elf32-i386 -B i386 $(patsubst $(BUILD_DIR)/%,%,$<) $(patsubst $(BUILD_DIR)/%,%,$@)
+	cd $(BUILD_DIR) && objcopy -I binary -O elf64-x86-64 -B i386:x86-64 $(patsubst $(BUILD_DIR)/%,%,$<) $(patsubst $(BUILD_DIR)/%,%,$@)
 
 $(OBJ_DIR)/src/embedded_initrd.o: $(INITRD_IMAGE)
 	@mkdir -p $(dir $@)
-	cd $(BUILD_DIR) && objcopy -I binary -O elf32-i386 -B i386 $(patsubst $(BUILD_DIR)/%,%,$<) $(patsubst $(BUILD_DIR)/%,%,$@)
+	cd $(BUILD_DIR) && objcopy -I binary -O elf64-x86-64 -B i386:x86-64 $(patsubst $(BUILD_DIR)/%,%,$<) $(patsubst $(BUILD_DIR)/%,%,$@)
 
 $(OBJ_DIR)/test/test_elf.o: test/test_elf.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) -m32 -march=i686 -O2 -Wall -Wextra -c $< -o $@
 
 $(BIN_DIR)/test_elf.elf: $(OBJ_DIR)/test/test_elf.o
 	@mkdir -p $(dir $@)
@@ -276,24 +282,24 @@ run: $(KERNEL_ISO) $(DISK_IMAGE)
 
 # Run with network emulation (e1000 + USB for Wi-Fi testing)
 run-net: $(KERNEL_ISO) $(DISK_IMAGE)
-	qemu-system-i386 -cdrom $(KERNEL_ISO) -hda $(DISK_IMAGE) \
+	qemu-system-x86_64 -cdrom $(KERNEL_ISO) -hda $(DISK_IMAGE) \
 		-netdev user,id=net0,hostfwd=udp::7777-:7777,hostfwd=tcp::8888-:8888 \
 		-device e1000,netdev=net0 \
 		-usb -device usb-host,hostbus=1,hostaddr=2 \
 		-serial stdio \
 		-monitor none \
 		-no-reboot \
-		-cpu qemu32 \
+		-cpu qemu64 \
 		-m 128M
 
 # Run with USB passthrough for real Wi-Fi dongle
 run-usb: $(KERNEL_ISO) $(DISK_IMAGE)
-	qemu-system-i386 -cdrom $(KERNEL_ISO) -hda $(DISK_IMAGE) \
+	qemu-system-x86_64 -cdrom $(KERNEL_ISO) -hda $(DISK_IMAGE) \
 		-usb -device usb-host,hostbus=1,hostaddr=2 \
 		-serial stdio \
 		-monitor none \
 		-no-reboot \
-		-cpu qemu32 \
+		-cpu qemu64 \
 		-m 128M
 
 # Debug build with symbols
@@ -302,12 +308,12 @@ debug: all
 	@echo "Debug build complete (use 'make run-debug' to run)"
 
 run-debug: $(KERNEL_ISO) $(DISK_IMAGE)
-	qemu-system-i386 -cdrom $(KERNEL_ISO) -hda $(DISK_IMAGE) \
+	qemu-system-x86_64 -cdrom $(KERNEL_ISO) -hda $(DISK_IMAGE) \
 		-s -S \
 		-serial stdio \
 		-monitor stdio \
 		-no-reboot \
-		-cpu qemu32 \
+		-cpu qemu64 \
 		-m 128M
 
 # Help
@@ -334,4 +340,4 @@ help:
 	@echo "  - Real Wi-Fi scanning with channel hopping"
 	@echo ""
 	@echo "Prerequisites:"
-	@echo "  grub-mkrescue, qemu-system-i386, mtools, xorriso"
+	@echo "  grub-mkrescue, qemu-system-x86_64, mtools, xorriso"

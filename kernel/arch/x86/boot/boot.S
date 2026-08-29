@@ -1,9 +1,21 @@
-/* boot.S — Multiboot v1 header + simple entry */
-.section .multiboot
+/* boot.S — Multiboot v1 header + long-mode startup */
+.section .multiboot, "a"
 .align 4
-.long 0x1BADB002            /* magic */
-.long 0x00000003            /* flags: request memory info and boot device */
-.long -(0x1BADB002 + 0x00000003) /* checksum */
+.long 0x1BADB002
+.long 0x00000003
+.long -(0x1BADB002 + 0x00000003)
+
+.section .bss
+.align 4096
+pml4:
+    .skip 4096
+pdpt:
+    .skip 4096
+pd0:
+    .skip 16384
+stack_bottom:
+    .skip 65536
+stack_top:
 
 .section .text
 .code32
@@ -12,13 +24,97 @@
 
 start:
     cli
-    xor %ebp, %ebp
-    mov $0x90000, %esp
+    cld
+    mov $stack_top, %esp
 
-    /* Push multiboot info ptr (GRUB passes it in EBX) and call kernel entry */
-    push %ebx
+    /* Map PML4[0] -> pdpt */
+    mov $pml4, %eax
+    mov $pdpt, %ebx
+    or $0x3, %ebx
+    mov %ebx, (%eax)
+
+    /* Map PDPT[0..3] -> pd0, pd1, pd2, pd3 (4 contiguous 4KB PD tables) */
+    mov $pdpt, %eax
+    mov $pd0, %ebx
+    or $0x3, %ebx
+    mov %ebx, 0(%eax)
+    movl $0, 4(%eax)
+
+    add $4096, %ebx
+    mov %ebx, 8(%eax)
+    movl $0, 12(%eax)
+
+    add $4096, %ebx
+    mov %ebx, 16(%eax)
+    movl $0, 20(%eax)
+
+    add $4096, %ebx
+    mov %ebx, 24(%eax)
+    movl $0, 28(%eax)
+
+    /* Map the first 4 GiB as 2 MiB pages (2048 entries across pd0..pd3). */
+    mov $pd0, %eax
+    mov $2048, %ecx
+    mov $0x83, %edx
+1:
+    mov %edx, (%eax)
+    movl $0, 4(%eax)
+    add $0x200000, %edx
+    add $8, %eax
+    loop 1b
+
+    mov $pml4, %eax
+    mov %eax, %cr3
+
+    /* Enable PAE and PGE in CR4 */
+    mov %cr4, %eax
+    or $0x00000020, %eax
+    mov %eax, %cr4
+
+    /* Set EFER.LME to enable long mode */
+    mov $0xC0000080, %ecx
+    rdmsr
+    or $0x00000100, %eax
+    wrmsr
+
+    /* Enable paging and protected mode */
+    mov %cr0, %eax
+    or $0x80000000, %eax
+    mov %eax, %cr0
+
+    lgdt gdt64_pointer
+
+    ljmp $0x08, $long_mode
+
+.align 16
+gdt64:
+    .quad 0x0000000000000000
+    .quad 0x00AF9A000000FFFF
+    .quad 0x00CF93000000FFFF
+    .quad 0x00AFFA000000FFFF
+    .quad 0x00CFF2000000FFFF
+    .quad 0x0000000000000000
+
+gdt64_pointer:
+    .word gdt64_pointer - gdt64 - 1
+    .quad gdt64
+
+.code64
+long_mode:
+    mov $0x10, %ax
+    mov %ax, %ds
+    mov %ax, %es
+    mov %ax, %fs
+    mov %ax, %gs
+    mov %ax, %ss
+
+    mov $stack_top, %rsp
+    xor %rbp, %rbp
+
+    mov %ebx, %edi
     call kmain
 
 .hang:
+    cli
     hlt
     jmp .hang

@@ -28,14 +28,14 @@ static u8 alt_pressed = 0;
 static u8 poll_pending_extended = 0;
 static key_callback_t user_callback = NULL;
 
-static inline u32 irq_save(void) {
-    u32 flags;
-    __asm__ volatile("pushf; pop %0; cli" : "=r"(flags) :: "memory");
+static inline u64 irq_save(void) {
+    u64 flags;
+    __asm__ volatile("pushfq; popq %0; cli" : "=r"(flags) :: "memory");
     return flags;
 }
 
-static inline void irq_restore(u32 flags) {
-    if (flags & (1u << 9)) {
+static inline void irq_restore(u64 flags) {
+    if (flags & (1ULL << 9)) {
         __asm__ volatile("sti" ::: "memory");
     }
 }

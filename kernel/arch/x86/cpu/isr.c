@@ -33,17 +33,22 @@ static u8 exception_has_error_code(u32 int_no) {
 
 static void print_registers(registers_t *regs) {
     vga_puts("Registers:\n");
-    kprintf("  EAX=%08X  EBX=%08X  ECX=%08X  EDX=%08X\n",
-            regs->eax, regs->ebx, regs->ecx, regs->edx);
-    kprintf("  ESI=%08X  EDI=%08X  EBP=%08X  ESP=%08X\n",
-            regs->esi, regs->edi, regs->ebp, regs->esp);
-    kprintf("  EIP=%08X  EFLAGS=%08X  CS=%04X  DS=%04X\n",
-            regs->eip, regs->eflags, regs->cs, regs->ds);
+    kprintf("  RAX=%016llX  RBX=%016llX  RCX=%016llX  RDX=%016llX\n",
+            (unsigned long long)regs->rax, (unsigned long long)regs->rbx,
+            (unsigned long long)regs->rcx, (unsigned long long)regs->rdx);
+    kprintf("  RSI=%016llX  RDI=%016llX  RBP=%016llX  RSP=%016llX\n",
+            (unsigned long long)regs->rsi, (unsigned long long)regs->rdi,
+            (unsigned long long)regs->rbp, (unsigned long long)regs->rsp);
+    kprintf("  RIP=%016llX  RFLAGS=%016llX  CS=%04llX  SS=%04llX\n",
+            (unsigned long long)regs->eip, (unsigned long long)regs->eflags,
+            (unsigned long long)regs->cs, (unsigned long long)regs->ss);
     if ((regs->cs & 3) == 3) {
-        kprintf("  USER ESP=%08X  USER SS=%04X\n", regs->user_esp, regs->user_ss);
+        kprintf("  USER RSP=%016llX  USER SS=%04llX\n",
+                (unsigned long long)regs->rsp,
+                (unsigned long long)regs->ss);
     }
     if (regs->interrupt_number >= 32) {
-        kprintf("  Error code: %08X\n", regs->error_code);
+        kprintf("  Error code: %016llX\n", (unsigned long long)regs->error_code);
     }
 }
 
@@ -77,15 +82,15 @@ void isr_handler(registers_t *regs) {
         }
 
         if (int_no == 14) {
-            u32 cr2;
+            uintptr_t cr2;
             __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
-            u32 present = regs->error_code & 0x1;
-            u32 write = regs->error_code & 0x2;
-            u32 user = regs->error_code & 0x4;
-            u32 reserved = regs->error_code & 0x8;
-            u32 instr = regs->error_code & 0x10;
+            uintptr_t present = regs->error_code & 0x1;
+            uintptr_t write = regs->error_code & 0x2;
+            uintptr_t user = regs->error_code & 0x4;
+            uintptr_t reserved = regs->error_code & 0x8;
+            uintptr_t instr = regs->error_code & 0x10;
 
-            kprintf("Page fault at CR2=%08X\n", cr2);
+            kprintf("Page fault at CR2=%016llX\n", (unsigned long long)cr2);
             kprintf("  Cause: %s, %s, %s\n",
                     present ? "protection violation" : "non-present page",
                     write ? "write" : "read",
@@ -96,11 +101,14 @@ void isr_handler(registers_t *regs) {
             if (instr) {
                 kprintf("  Instruction fetch fault\n");
             }
-            kprintf("  EIP=%08X  ESP=%08X  CS=%04X\n",
-                    regs->eip, regs->esp, regs->cs);
+            kprintf("  RIP=%016llX  RSP=%016llX  CS=%04llX\n",
+                    (unsigned long long)regs->eip,
+                    (unsigned long long)regs->rsp,
+                    (unsigned long long)regs->cs);
             if ((regs->cs & 3) == 3) {
-                kprintf("  USER ESP=%08X  USER SS=%04X\n",
-                        regs->user_esp, regs->user_ss);
+                kprintf("  USER RSP=%016llX  USER SS=%04llX\n",
+                        (unsigned long long)regs->rsp,
+                        (unsigned long long)regs->ss);
             }
             process_t *current = process_current();
             kprintf("  Process PID=%u\n", current ? current->pid : 0xFFFFFFFFu);

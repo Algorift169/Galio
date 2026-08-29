@@ -11,13 +11,12 @@ tss_entry_t tss_entry;
 
 void tss_init(void) {
     memset(&tss_entry, 0, sizeof(tss_entry));
-    tss_entry.ss0 = KERNEL_DS;
-    tss_entry.esp0 = 0;
+    tss_entry.rsp0 = 0;
     tss_entry.iomap_base = sizeof(tss_entry);
 }
 
-void tss_set_kernel_stack(u32 stack) {
-    tss_entry.esp0 = stack;
+void tss_set_kernel_stack(u64 stack) {
+    tss_entry.rsp0 = stack;
 }
 
 void tss_load(void) {
@@ -25,10 +24,10 @@ void tss_load(void) {
     __asm__ volatile("ltr %0" :: "r"(selector));
 }
 
-void enter_userspace(u32 entry_point, u32 user_stack) {
+void enter_userspace(uintptr_t entry_point, uintptr_t user_stack) {
     process_t *proc = process_current();
     if (proc && proc->stack) {
-        tss_set_kernel_stack((u32)proc->stack + proc->stack_size - 4);
+        tss_set_kernel_stack((uintptr_t)proc->stack + proc->stack_size - 8);
     }
 
     page_directory_t *pd = paging_get_current();
@@ -37,24 +36,22 @@ void enter_userspace(u32 entry_point, u32 user_stack) {
     }
 
     __asm__ volatile(
-        "movw %[udata], %%ax\n"
-        "movw %%ax, %%ds\n"
-        "movw %%ax, %%es\n"
-        "movw %%ax, %%fs\n"
-        "movw %%ax, %%gs\n"
-        "pushw %[udata]\n"
-        "pushl %[ustack]\n"
-        "pushl %[eflags]\n"
-        "pushw %[ucode]\n"
-        "pushl %[entry]\n"
-        "iret\n"
+        "mov $0x23, %%ax\n"
+        "mov %%ax, %%ds\n"
+        "mov %%ax, %%es\n"
+        "mov %%ax, %%fs\n"
+        "mov %%ax, %%gs\n"
+        "pushq $0x23\n"
+        "pushq %[ustack]\n"
+        "pushfq\n"
+        "orq $0x200, (%%rsp)\n"
+        "pushq $0x2B\n"
+        "pushq %[entry]\n"
+        "iretq\n"
         :
-        : [udata] "i" (USER_DS),
-          [ustack] "r" (user_stack),
-          [eflags] "i" (0x202),
-          [ucode] "i" (USER_CS),
+        : [ustack] "r" (user_stack),
           [entry] "r" (entry_point)
-        : "ax"
+        : "rax", "memory"
     );
 
     for (;;);

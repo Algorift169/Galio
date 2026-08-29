@@ -86,7 +86,7 @@ void pmem_init(u32 mmap_addr, u32 mmap_length) {
         while ((u32)entry < mmap_addr + mmap_length) {
             u32 addr = entry->addr_low;
             u32 len = entry->len_low;
-            u32 next = (u32)entry + entry->size + sizeof(entry->size);
+            u32 next = (uintptr_t)entry + entry->size + sizeof(entry->size);
 
             if (entry->type == MMAP_AVAILABLE && len > 0) {
                 u32 start_frame = addr / FRAME_SIZE;

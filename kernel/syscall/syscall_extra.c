@@ -36,7 +36,7 @@ typedef struct {
     u32 head;
     u32 tail;
     u8 buffer[PIPE_BUFFER_SIZE];
-} pipe_t;
+}pipe_t;
 
 static pipe_t pipe_table[PIPE_MAX];
 
@@ -267,27 +267,29 @@ u32 syscall_execve(const char *path, char *const argv[], char *const envp[]) {
         return (u32)-1;
     }
 
-    proc->regs.eip = entry;
-    proc->regs.esp = USER_STACK_TOP;
-    proc->regs.user_esp = USER_STACK_TOP;
-    proc->regs.user_ss = USER_DS;
-    proc->regs.cs = USER_CS;
-    proc->regs.eflags &= ~0x3000;
-    proc->regs.eflags |= 0x202;
+    proc->regs.rip = entry;
+    proc->regs.rsp = USER_STACK_TOP;
+    proc->regs.user_rsp = USER_STACK_TOP;
+    proc->regs.user_ss = 0x23;
+    proc->regs.cs = 0x1B;
+    proc->regs.rflags &= ~0x3000;
+    proc->regs.rflags |= 0x202;
 
     __asm__ volatile(
-        "movw $0x23, %%ax\n"
-        "movw %%ax, %%ds\n"
-        "movw %%ax, %%es\n"
-        "movw %%ax, %%fs\n"
-        "movw %%ax, %%gs\n"
-        "pushl $0x23\n"
-        "pushl %0\n"
-        "pushfl\n"
-        "pushl $0x1B\n"
-        "pushl %1\n"
-        "iret\n"
-        : : "r"(proc->regs.esp), "r"(entry)
+        "mov $0x23, %%rax\n"
+        "mov %%ax, %%ds\n"
+        "mov %%ax, %%es\n"
+        "mov %%ax, %%fs\n"
+        "mov %%ax, %%gs\n"
+        "pushq $0x23\n"
+        "pushq %0\n"
+        "pushfq\n"
+        "orq $0x200, (%%rsp)\n"
+        "pushq $0x1B\n"
+        "pushq %1\n"
+        "iretq\n"
+        : : "r"((uintptr_t)proc->regs.rsp), "r"((uintptr_t)entry)
+        : "rax", "memory"
     );
 
     return (u32)-1;

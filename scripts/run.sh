@@ -15,15 +15,24 @@ set -euo pipefail
 
 ISO="build/bin/galio.iso"
 DISK="build/disk.img"
-QEMU_BIN="qemu-system-i386"
+QEMU_BIN="qemu-system-x86_64"
 EXTRA_ARGS=""
 NOGRAPHIC=false
+
+# Prefer GUI when a display is available; otherwise fall back to headless serial mode.
+if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    NOGRAPHIC=true
+fi
 
 # Parse arguments
 while [ $# -gt 0 ]; do
     case "$1" in
         --nogui|-n)
             NOGRAPHIC=true
+            shift
+            ;;
+        --gui|-g)
+            NOGRAPHIC=false
             shift
             ;;
         --iso)
@@ -86,9 +95,9 @@ COMMON_ARGS="-cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,inde
 
 # Run QEMU
 if [ "${NOGRAPHIC}" = true ]; then
-    # Headless mode: print serial to stdout
+    # Headless mode: print serial to stdout without competing with the monitor
     echo "Starting QEMU (headless). Serial output will appear on stdout."
-    exec ${QEMU_BIN} ${COMMON_ARGS} -nographic -serial stdio ${EXTRA_ARGS}
+    exec ${QEMU_BIN} ${COMMON_ARGS} -display none -monitor none -serial stdio ${EXTRA_ARGS}
 else
     # GUI mode: serial logged to serial.log
     echo "Starting QEMU (GUI). Serial logged to serial.log"

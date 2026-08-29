@@ -1,11 +1,10 @@
 ; isr_asm.s - ISR and IRQ stubs with proper argument passing
 
-BITS 32
+BITS 64
 
 extern isr_handler
 extern irq_handler
 
-; Macro for ISR without error code
 %macro ISR_NOERRCODE 1
 global isr%1
 isr%1:
@@ -14,7 +13,6 @@ isr%1:
     jmp isr_common_stub
 %endmacro
 
-; Macro for ISR with error code
 %macro ISR_ERRCODE 1
 global isr%1
 isr%1:
@@ -22,7 +20,6 @@ isr%1:
     jmp isr_common_stub
 %endmacro
 
-; Macro for IRQ stub
 %macro IRQ_STUB 2
 global irq%1
 irq%1:
@@ -31,7 +28,6 @@ irq%1:
     jmp irq_common_stub
 %endmacro
 
-; ISRs 0-31
 ISR_NOERRCODE 0
 ISR_NOERRCODE 1
 ISR_NOERRCODE 2
@@ -65,7 +61,6 @@ ISR_NOERRCODE 29
 ISR_ERRCODE 30
 ISR_NOERRCODE 31
 
-; IRQs 0-15
 IRQ_STUB 0, 32
 IRQ_STUB 1, 33
 IRQ_STUB 2, 34
@@ -83,64 +78,28 @@ IRQ_STUB 13, 45
 IRQ_STUB 14, 46
 IRQ_STUB 15, 47
 
-; Syscall handler (INT 0x80)
 global isr_syscall
 isr_syscall:
     push 0
     push 0x80
     jmp isr_common_stub
 
-; Common ISR stub – passes registers_t pointer to isr_handler
 isr_common_stub:
-    xor eax, eax
-    mov ax, gs
-    push eax
-    xor eax, eax
-    mov ax, fs
-    push eax
-    xor eax, eax
-    mov ax, es
-    push eax
-    xor eax, eax
-    mov ax, ds
-    push eax
-    pusha
-
-    mov ax, 0x10        ; kernel data segment
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-
-    ; Pass pointer to register frame as argument
-    mov eax, esp
-    push eax
-    call isr_handler
-    add esp, 4
-
-    popa
-    pop ds
-    pop es
-    pop fs
-    pop gs
-    add esp, 8          ; remove error code and interrupt number
-    iret
-
-; Common IRQ stub – passes registers_t pointer to irq_handler
-irq_common_stub:
-    xor eax, eax
-    mov ax, gs
-    push eax
-    xor eax, eax
-    mov ax, fs
-    push eax
-    xor eax, eax
-    mov ax, es
-    push eax
-    xor eax, eax
-    mov ax, ds
-    push eax
-    pusha
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push rbp
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
 
     mov ax, 0x10
     mov ds, ax
@@ -148,15 +107,67 @@ irq_common_stub:
     mov fs, ax
     mov gs, ax
 
-    mov eax, esp
-    push eax
-    call irq_handler
-    add esp, 4
+    mov rdi, rsp
+    call isr_handler
 
-    popa
-    pop ds
-    pop es
-    pop fs
-    pop gs
-    add esp, 8
-    iret
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    add rsp, 16
+    iretq
+
+irq_common_stub:
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push rbp
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+    mov rdi, rsp
+    call irq_handler
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    add rsp, 16
+    iretq

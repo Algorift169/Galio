@@ -12,10 +12,19 @@ EXTRA_ARGS=""
 NOGRAPHIC=false
 FULLSCREEN=false
 
+# Prefer GUI when a display is available; otherwise fall back to headless serial mode.
+if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    NOGRAPHIC=true
+fi
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --nogui|-n)
             NOGRAPHIC=true
+            shift
+            ;;
+        --gui|-g)
+            NOGRAPHIC=false
             shift
             ;;
         --fullscreen|-f)
@@ -82,7 +91,7 @@ echo "Note: networking disabled. This script always boots without internet."
 
 if [ "${NOGRAPHIC}" = true ]; then
     echo "Starting QEMU (headless). Serial output will appear on stdout."
-    exec ${QEMU_BIN} ${COMMON_ARGS} -nographic -monitor none -serial stdio ${EXTRA_ARGS}
+    exec ${QEMU_BIN} ${COMMON_ARGS} -display none -monitor none -serial stdio ${EXTRA_ARGS}
 elif [ "${FULLSCREEN}" = true ]; then
     echo "Starting QEMU (fullscreen). Serial logged to serial.log"
     exec ${QEMU_BIN} ${COMMON_ARGS} -vga std -full-screen -display gtk,zoom-to-fit=on -serial file:serial.log -monitor none -no-reboot ${EXTRA_ARGS}

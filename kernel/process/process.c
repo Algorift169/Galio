@@ -100,7 +100,7 @@ void process_init(void) {
     current_process = &processes[1];
     current_process->state = PROCESS_RUNNING;
     current_process->time_slice = PROCESS_TIME_SLICE;
-    tss_set_kernel_stack((u32)current_process->stack + current_process->stack_size - 4);
+    tss_set_kernel_stack((uintptr_t)current_process->stack + current_process->stack_size - 8);
     kprintf("Idle process created (PID 1)\n");
 }
 
@@ -150,21 +150,21 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->mmap_count = 0;
 
     /* Allocate a user-mode stack region for this process */
-    u32 stack_base = USER_STACK_TOP - USER_STACK_SIZE;
-    u32 stack_map_base = stack_base + PAGE_SIZE;
-    for (u32 addr = stack_map_base; addr < USER_STACK_TOP; addr += PAGE_SIZE) {
-        u32 phys = pmem_alloc(1);
+    uintptr_t stack_base = USER_STACK_TOP - USER_STACK_SIZE;
+    uintptr_t stack_map_base = stack_base + PAGE_SIZE;
+    for (uintptr_t addr = stack_map_base; addr < USER_STACK_TOP; addr += PAGE_SIZE) {
+        uintptr_t phys = pmem_alloc(1);
         if (!phys) {
             kprintf("process_create: Failed to allocate user stack page\n");
             /* Clean up partially allocated address space */
-            for (u32 cleanup_addr = stack_map_base; cleanup_addr < addr; cleanup_addr += PAGE_SIZE) {
-                u32 cleanup_phys = paging_get_physical(proc->pagedir, cleanup_addr);
+            for (uintptr_t cleanup_addr = stack_map_base; cleanup_addr < addr; cleanup_addr += PAGE_SIZE) {
+                uintptr_t cleanup_phys = paging_get_physical(proc->pagedir, cleanup_addr);
                 if (cleanup_phys) {
                     paging_unmap(proc->pagedir, cleanup_addr);
                     pmem_free(cleanup_phys, 1);
                 }
             }
-            pmem_free((u32)((page_directory_t *)proc->pagedir)->directory, 1);
+            pmem_free((uintptr_t)((page_directory_t *)proc->pagedir)->directory, 1);
             proc->pagedir = NULL;
             proc->pid = 0;
             proc->state = PROCESS_ZOMBIE;
@@ -201,19 +201,19 @@ u32 process_create(void (*entry)(void), u32 priority) {
      * This causes stack overflows to fault instead of corrupting adjacent memory.
      */
     u32 stack_frames = (PROCESS_STACK_SIZE + 4095) / 4096;
-    u32 phys = pmem_alloc(stack_frames);
+    uintptr_t phys = pmem_alloc(stack_frames);
     if (!phys) {
         spin_unlock(&process_table_lock);
         kprintf("process_create: Failed to allocate kernel stack frames\n");
         /* cleanup user pages */
-        for (u32 addr = stack_map_base; addr < USER_STACK_TOP; addr += PAGE_SIZE) {
-            u32 paddr = paging_get_physical(proc->pagedir, addr);
+        for (uintptr_t addr = stack_map_base; addr < USER_STACK_TOP; addr += PAGE_SIZE) {
+            uintptr_t paddr = paging_get_physical(proc->pagedir, addr);
             if (paddr) {
                 paging_unmap(proc->pagedir, addr);
                 pmem_free(paddr, 1);
             }
         }
-        pmem_free((u32)((page_directory_t *)proc->pagedir)->directory, 1);
+        pmem_free((uintptr_t)((page_directory_t *)proc->pagedir)->directory, 1);
         proc->pagedir = NULL;
         proc->pid = 0;
         proc->state = PROCESS_ZOMBIE;
@@ -221,17 +221,30 @@ u32 process_create(void (*entry)(void), u32 priority) {
     }
 
     /* Map stack into kernel virtual slot: leave first page in slot unmapped as guard */
-    u32 slot_base = KERNEL_STACK_BASE + (proc_index * KERNEL_STACK_SLOT_SIZE);
+    uintptr_t slot_base = KERNEL_STACK_BASE + (proc_index * KERNEL_STACK_SLOT_SIZE);
     for (u32 i = 0; i < stack_frames; i++) {
         paging_map_kernel(slot_base + PAGE_SIZE + i * PAGE_SIZE, phys + i * PAGE_SIZE, PAGE_PRESENT | PAGE_RW);
     }
-    proc->stack = (u32 *)(slot_base + PAGE_SIZE);
+    proc->stack = (uintptr_t *)(slot_base + PAGE_SIZE);
     proc->stack_size = stack_frames * PAGE_SIZE;
     proc->kernel_stack_phys = phys;
 
     /* Initialize stack and registers */
-    u32 stack_top = (u32)proc->stack + proc->stack_size - 4;
+    uintptr_t stack_top = (uintptr_t)proc->stack + proc->stack_size - 8;
     
+    proc->regs.rsp = stack_top;
+    proc->regs.rbp = stack_top;
+    proc->regs.rsi = 0;
+    proc->regs.rdi = 0;
+    proc->regs.rbx = 0;
+    proc->regs.rdx = 0;
+    proc->regs.rcx = 0;
+    proc->regs.rax = 0;
+    proc->regs.rflags = 0x202;
+    proc->regs.rip = (uintptr_t)entry;
+    proc->regs.cs = KERNEL_CS;
+    proc->regs.user_rsp = 0;
+    proc->regs.user_ss = 0;
     proc->regs.esp = stack_top;
     proc->regs.ebp = stack_top;
     proc->regs.esi = 0;
@@ -240,11 +253,10 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->regs.edx = 0;
     proc->regs.ecx = 0;
     proc->regs.eax = 0;
-    proc->regs.eflags = 0x202;  /* IF flag set */
-    proc->regs.eip = (u32)entry;
-    proc->regs.cs = KERNEL_CS;
+    proc->regs.eflags = 0x202;
+    proc->regs.eip = (uintptr_t)entry;
     proc->regs.user_esp = 0;
-    proc->regs.user_ss = 0;
+    proc->regs.user_ss_compat = 0;
     proc->time_slice = PROCESS_TIME_SLICE;
 
     /* Initialize file descriptor table */
@@ -264,33 +276,33 @@ void process_free_address_space(process_t *proc) {
     
     /* Walk page directory and free all user pages */
     for (u32 pd_idx = 0; pd_idx < 1024; pd_idx++) {
-        u32 pde = pd->directory[pd_idx];
+        uintptr_t pde = pd->directory[pd_idx];
         if (!(pde & PAGE_PRESENT) || !(pde & PAGE_USER)) {
             /* Skip kernel/shared page tables and non-present entries */
             continue;
         }
 
-        u32 *pt = pd->tables[pd_idx];
+        uintptr_t *pt = pd->tables[pd_idx];
         if (!pt) continue;
 
         for (u32 pt_idx = 0; pt_idx < 1024; pt_idx++) {
-            u32 pte = pt[pt_idx];
+            uintptr_t pte = pt[pt_idx];
             if (!(pte & PAGE_PRESENT)) continue;
             
             /* Decrement refcount for copied/allocated physical frames */
-            u32 phys_addr = pte & 0xFFFFF000;
+            uintptr_t phys_addr = pte & 0xFFFFF000ul;
             if (phys_addr) {
-                pmem_refcount_dec(phys_addr);
+                pmem_refcount_dec((u32)phys_addr);
             }
         }
         /* Free the page table frame */
-        u32 pt_phys = (u32)pt;
+        uintptr_t pt_phys = (uintptr_t)pt;
         if (pt_phys) {
-            pmem_free(pt_phys, 1);
+            pmem_free((u32)pt_phys, 1);
         }
     }
     /* Free page directory */
-    u32 pd_phys = (u32)pd->directory;
+    uintptr_t pd_phys = (uintptr_t)pd->directory;
     if (pd_phys) {
         pmem_free(pd_phys, 1);
     }
@@ -306,11 +318,11 @@ static void process_cleanup(process_t *proc) {
         /* If stack was allocated from physical pages, unmap and free; otherwise kfree */
         if (proc->kernel_stack_phys) {
             u32 stack_frames = (proc->stack_size + 4095) / 4096;
-            u32 slot_base = (u32)proc->stack - PAGE_SIZE;
+            uintptr_t slot_base = (uintptr_t)proc->stack - PAGE_SIZE;
             for (u32 i = 0; i < stack_frames; i++) {
                 paging_unmap_kernel(slot_base + PAGE_SIZE + i * PAGE_SIZE);
             }
-            pmem_free(proc->kernel_stack_phys, stack_frames);
+            pmem_free((u32)proc->kernel_stack_phys, stack_frames);
             proc->kernel_stack_phys = 0;
             proc->stack = NULL;
             proc->stack_size = 0;
@@ -422,19 +434,31 @@ static void save_current_registers(registers_t *regs) {
         return;
     }
 
-    current_process->regs.eax = regs->eax;
-    current_process->regs.ebx = regs->ebx;
-    current_process->regs.ecx = regs->ecx;
-    current_process->regs.edx = regs->edx;
-    current_process->regs.edi = regs->edi;
-    current_process->regs.esi = regs->esi;
-    current_process->regs.ebp = regs->ebp;
-    current_process->regs.esp = regs->esp;
+    current_process->regs.rax = regs->rax;
+    current_process->regs.rbx = regs->rbx;
+    current_process->regs.rcx = regs->rcx;
+    current_process->regs.rdx = regs->rdx;
+    current_process->regs.rdi = regs->rdi;
+    current_process->regs.rsi = regs->rsi;
+    current_process->regs.rbp = regs->rbp;
+    current_process->regs.rsp = regs->rsp;
+    current_process->regs.rflags = regs->eflags;
+    current_process->regs.rip = regs->eip;
+    current_process->regs.cs = regs->cs;
+    current_process->regs.user_rsp = regs->rsp;
+    current_process->regs.user_ss = regs->ss;
+    current_process->regs.eax = regs->rax;
+    current_process->regs.ebx = regs->rbx;
+    current_process->regs.ecx = regs->rcx;
+    current_process->regs.edx = regs->rdx;
+    current_process->regs.edi = regs->rdi;
+    current_process->regs.esi = regs->rsi;
+    current_process->regs.ebp = regs->rbp;
+    current_process->regs.esp = regs->rsp;
     current_process->regs.eflags = regs->eflags;
     current_process->regs.eip = regs->eip;
-    current_process->regs.cs = regs->cs;
-    current_process->regs.user_esp = regs->user_esp;
-    current_process->regs.user_ss = regs->user_ss;
+    current_process->regs.user_esp = regs->rsp;
+    current_process->regs.user_ss_compat = regs->ss;
 }
 
 void process_preempt(registers_t *regs) {
@@ -461,22 +485,21 @@ void process_preempt(registers_t *regs) {
     if (next->pagedir) {
         paging_load_directory(next->pagedir);
     }
-    tss_set_kernel_stack((u32)next->stack + next->stack_size - 4);
+    tss_set_kernel_stack((uintptr_t)next->stack + next->stack_size - 8);
 
     /* Copy next process state into the current IRQ frame so iret resumes it */
-    regs->eax = next->regs.eax;
-    regs->ebx = next->regs.ebx;
-    regs->ecx = next->regs.ecx;
-    regs->edx = next->regs.edx;
-    regs->edi = next->regs.edi;
-    regs->esi = next->regs.esi;
-    regs->ebp = next->regs.ebp;
-    regs->esp = next->regs.esp;
-    regs->eip = next->regs.eip;
-    regs->eflags = next->regs.eflags;
+    regs->rax = next->regs.rax;
+    regs->rbx = next->regs.rbx;
+    regs->rcx = next->regs.rcx;
+    regs->rdx = next->regs.rdx;
+    regs->rdi = next->regs.rdi;
+    regs->rsi = next->regs.rsi;
+    regs->rbp = next->regs.rbp;
+    regs->rsp = next->regs.rsp;
+    regs->eip = next->regs.rip;
+    regs->eflags = next->regs.rflags;
     regs->cs = next->regs.cs;
-    regs->user_esp = next->regs.user_esp;
-    regs->user_ss = next->regs.user_ss;
+    regs->ss = next->regs.user_ss;
 }
 
 void process_switch(process_t *from, process_t *to) {
@@ -486,7 +509,7 @@ void process_switch(process_t *from, process_t *to) {
     if (to->pagedir) {
         paging_load_directory(to->pagedir);
     }
-    tss_set_kernel_stack((u32)to->stack + to->stack_size - 4);
+    tss_set_kernel_stack((uintptr_t)to->stack + to->stack_size - 8);
 
     /* Perform context switch */
     process_switch_asm(&from->regs, &to->regs);

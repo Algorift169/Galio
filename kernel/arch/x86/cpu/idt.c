@@ -6,7 +6,7 @@
 static struct idt_entry idt[256];
 static struct idt_ptr idtp;
 
-extern void idt_load(u32);
+extern void idt_load(uintptr_t);
 
 /* Declare all ISR and IRQ handlers */
 extern void isr0(void), isr1(void), isr2(void), isr3(void), isr4(void);
@@ -21,7 +21,6 @@ extern void irq0(void), irq1(void), irq2(void), irq3(void), irq4(void);
 extern void irq5(void), irq6(void), irq7(void), irq8(void), irq9(void);
 extern void irq10(void), irq11(void), irq12(void), irq13(void), irq14(void), irq15(void);
 
-/* Array of ISR addresses */
 static void (*isr_array[])(void) = {
     isr0, isr1, isr2, isr3, isr4, isr5, isr6, isr7,
     isr8, isr9, isr10, isr11, isr12, isr13, isr14, isr15,
@@ -29,46 +28,41 @@ static void (*isr_array[])(void) = {
     isr24, isr25, isr26, isr27, isr28, isr29, isr30, isr31
 };
 
-/* Array of IRQ addresses */
 static void (*irq_array[])(void) = {
     irq0, irq1, irq2, irq3, irq4, irq5, irq6, irq7,
     irq8, irq9, irq10, irq11, irq12, irq13, irq14, irq15
 };
 
-/* Set an IDT gate */
-void idt_set_gate(int n, u32 handler, u16 sel, u8 flags) {
-    idt[n].base_lo = handler & 0xFFFF;
-    idt[n].base_hi = (handler >> 16) & 0xFFFF;
-    idt[n].sel = sel;
-    idt[n].always0 = 0;
+void idt_set_gate(int n, uintptr_t handler, u16 sel, u8 flags) {
+    idt[n].offset_low = handler & 0xFFFF;
+    idt[n].offset_mid = (handler >> 16) & 0xFFFF;
+    idt[n].offset_high = (handler >> 32) & 0xFFFFFFFFULL;
+    idt[n].selector = sel;
+    idt[n].ist = 0;
     idt[n].flags = flags;
+    idt[n].reserved = 0;
 }
 
 void idt_init(void) {
     idtp.limit = (sizeof(struct idt_entry) * 256) - 1;
-    idtp.base = (u32)&idt;
+    idtp.base = (uintptr_t)&idt;
 
-    /* Clear entire IDT */
     for (int i = 0; i < 256; ++i) {
         idt_set_gate(i, 0, 0x00, 0x00);
     }
 
-    /* Register ISRs (interrupts 0-31) */
     for (int i = 0; i < 32; ++i) {
-        idt_set_gate(i, (u32)isr_array[i], 0x08, 0x8E);
+        idt_set_gate(i, (uintptr_t)isr_array[i], 0x08, 0x8E);
     }
 
-    /* Register IRQs (interrupts 32-47) */
     for (int i = 0; i < 16; ++i) {
-        idt_set_gate(32 + i, (u32)irq_array[i], 0x08, 0x8E);
+        idt_set_gate(32 + i, (uintptr_t)irq_array[i], 0x08, 0x8E);
     }
 
-    /* Set up INT 0x80 for syscalls - accessible from user mode (DPL=3) */
     extern void isr_syscall(void);
-    idt_set_gate(0x80, (u32)isr_syscall, 0x08, 0xEE);  /* 0xEE = trap gate, DPL=3 */
+    idt_set_gate(0x80, (uintptr_t)isr_syscall, 0x08, 0xEE);
 
-    /* Load IDT */
-    idt_load((u32)&idtp);
+    idt_load((uintptr_t)&idtp);
 
     kprintf("IDT initialized with %d handlers\n", 48);
 }

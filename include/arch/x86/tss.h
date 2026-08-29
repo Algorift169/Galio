@@ -10,40 +10,28 @@
 #define TSS_SELECTOR   0x28
 
 typedef struct {
-    u32 prev_tss;
-    u32 esp0;
-    u32 ss0;
-    u32 esp1;
-    u32 ss1;
-    u32 esp2;
-    u32 ss2;
-    u32 cr3;
-    u32 eip;
-    u32 eflags;
-    u32 eax;
-    u32 ecx;
-    u32 edx;
-    u32 ebx;
-    u32 esp;
-    u32 ebp;
-    u32 esi;
-    u32 edi;
-    u32 es;
-    u32 cs;
-    u32 ss;
-    u32 ds;
-    u32 fs;
-    u32 gs;
-    u32 ldt;
-    u16 trap;
+    u32 reserved0;
+    u64 rsp0;
+    u64 rsp1;
+    u64 rsp2;
+    u64 reserved1;
+    u64 ist1;
+    u64 ist2;
+    u64 ist3;
+    u64 ist4;
+    u64 ist5;
+    u64 ist6;
+    u64 ist7;
+    u64 reserved2;
+    u16 reserved3;
     u16 iomap_base;
 } __attribute__((packed)) tss_entry_t;
 
 extern tss_entry_t tss_entry;
 
 void tss_init(void);
-void tss_set_kernel_stack(u32 stack);
+void tss_set_kernel_stack(u64 stack);
 void tss_load(void);
-void enter_userspace(u32 entry_point, u32 user_stack);
+void enter_userspace(uintptr_t entry_point, uintptr_t user_stack);
 
 #endif /* TSS_H */

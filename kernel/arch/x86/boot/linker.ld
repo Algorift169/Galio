@@ -5,33 +5,33 @@
  * the first 8 KiB of the file.
  */
 
-OUTPUT_FORMAT("elf32-i386")
+OUTPUT_FORMAT("elf64-x86-64")
 ENTRY(start)
 
 SECTIONS
 {
-  /* Put the multiboot header at the start of the first loadable segment.
-     KEEP prevents the linker from discarding the section. */
-  .text ALIGN(4) : {
+  . = 0x00100000;
+
+  .text ALIGN(4K) : {
     KEEP(*(.multiboot))
     *(.text)
     *(.text.*)
     *(.rodata)
+    *(.rodata.*)
   }
 
-  /* Set the virtual load address for the kernel in memory */
-  . = 0x00100000;
-
-  .data ALIGN(4) : {
+  .data ALIGN(4K) : {
     *(.data)
     *(.data.*)
   }
 
-  .bss ALIGN(4) : {
+  .bss ALIGN(4K) : {
     *(.bss)
     *(COMMON)
   }
 
-  /* Discard unwelcome sections */
-  /DISCARD/ : { *(.eh_frame) }
+  /DISCARD/ : {
+    *(.eh_frame)
+    *(.comment)
+  }
 }

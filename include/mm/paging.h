@@ -23,12 +23,12 @@
 #define USER_SPACE_START      0x00000000u
 #define USER_SPACE_END        0xBFFFFFFFu
 
-#define PAGE_ALIGN_DOWN(x)    ((x) & 0xFFFFF000u)
-#define PAGE_ALIGN_UP(x)      (((x) + PAGE_SIZE - 1) & 0xFFFFF000u)
+#define PAGE_ALIGN_DOWN(x)    ((uintptr_t)(x) & ~(uintptr_t)(PAGE_SIZE - 1))
+#define PAGE_ALIGN_UP(x)      (((uintptr_t)(x) + PAGE_SIZE - 1) & ~(uintptr_t)(PAGE_SIZE - 1))
 
 typedef struct {
-    u32 *directory;
-    u32 *tables[PAGE_ENTRIES];
+    uintptr_t *directory;
+    uintptr_t *tables[PAGE_ENTRIES];
 } page_directory_t;
 
 typedef enum {
@@ -39,10 +39,10 @@ typedef enum {
 void paging_init(void);
 page_directory_t *paging_create_directory(void);
 page_directory_t *paging_create_user_directory(void);
-void paging_map(page_directory_t *pd, u32 vaddr, u32 paddr, u32 flags);
-void paging_unmap(page_directory_t *pd, u32 vaddr);
-u32 paging_get_physical(page_directory_t *pd, u32 vaddr);
-u8 paging_validate_user_range(page_directory_t *pd, u32 vaddr, u32 length, u8 write);
+void paging_map(page_directory_t *pd, uintptr_t vaddr, uintptr_t paddr, u32 flags);
+void paging_unmap(page_directory_t *pd, uintptr_t vaddr);
+uintptr_t paging_get_physical(page_directory_t *pd, uintptr_t vaddr);
+u8 paging_validate_user_range(page_directory_t *pd, uintptr_t vaddr, uintptr_t length, u8 write);
 void paging_enable(page_directory_t *pd);
 page_directory_t *paging_get_current(void);
 page_directory_t *paging_clone_directory(page_directory_t *src);
@@ -53,6 +53,6 @@ paging_fault_result_t paging_handle_page_fault(registers_t *regs);
  * These are used by process management to create per-process kernel stacks with
  * an unmapped guard page. They operate on the internal kernel page directory.
  */
-void paging_map_kernel(u32 vaddr, u32 paddr, u32 flags);
-void paging_unmap_kernel(u32 vaddr);
+void paging_map_kernel(uintptr_t vaddr, uintptr_t paddr, u32 flags);
+void paging_unmap_kernel(uintptr_t vaddr);
 #endif /* PAGING_H */

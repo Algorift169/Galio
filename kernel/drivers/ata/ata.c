@@ -11,14 +11,14 @@ static u16 ata_ctrl_base = ATA_PRIMARY_CTRL;
 static u32 ata_sector_count = 0;  /* Total sectors on disk */
 static u32 ata_initialized = 0;
 
-static u32 ata_irq_save(void) {
-    u32 flags;
-    __asm__ volatile("pushf; pop %0; cli" : "=r"(flags) :: "memory");
+static u64 ata_irq_save(void) {
+    u64 flags;
+    __asm__ volatile("pushfq; popq %0; cli" : "=r"(flags) :: "memory");
     return flags;
 }
 
-static void ata_irq_restore(u32 flags) {
-    if (flags & (1 << 9)) {
+static void ata_irq_restore(u64 flags) {
+    if (flags & (1ULL << 9)) {
         __asm__ volatile("sti" ::: "memory");
     }
 }

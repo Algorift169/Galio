@@ -44,7 +44,7 @@ void heap_init(void) {
 static void split_block(block_t *block, size_t size) {
     if (block->size < size + BLOCK_HEADER_SIZE + MIN_BLOCK_SIZE)
         return;
-    block_t *new_block = (block_t *)((u32)block + BLOCK_HEADER_SIZE + size);
+    block_t *new_block = (block_t *)((uintptr_t)block + BLOCK_HEADER_SIZE + size);
     new_block->size = block->size - size - BLOCK_HEADER_SIZE;
     new_block->used = 0;
     new_block->next = block->next;
@@ -80,7 +80,7 @@ void *kmalloc(size_t size) {
         if (!curr->used && curr->size >= size) {
             split_block(curr, size);
             curr->used = 1;
-            return (void *)((u32)curr + BLOCK_HEADER_SIZE);
+            return (void *)((uintptr_t)curr + BLOCK_HEADER_SIZE);
         }
         curr = curr->next;
     }
@@ -90,9 +90,9 @@ void *kmalloc(size_t size) {
 
 void kfree(void *ptr) {
     if (!ptr) return;
-    block_t *block = (block_t *)((u32)ptr - BLOCK_HEADER_SIZE);
+    block_t *block = (block_t *)((uintptr_t)ptr - BLOCK_HEADER_SIZE);
     if (block->magic != MAGIC_VAL) {
-        kprintf("kfree: Invalid pointer 0x%x\n", (u32)ptr);
+        kprintf("kfree: Invalid pointer %p\n", ptr);
         return;
     }
     block->used = 0;
@@ -112,7 +112,7 @@ void *kcalloc(size_t nmemb, size_t size) {
 void *krealloc(void *ptr, size_t new_size) {
     if (!ptr) return kmalloc(new_size);
     if (new_size == 0) { kfree(ptr); return NULL; }
-    block_t *block = (block_t *)((u32)ptr - BLOCK_HEADER_SIZE);
+    block_t *block = (block_t *)((uintptr_t)ptr - BLOCK_HEADER_SIZE);
     if (block->size >= new_size) return ptr;
     void *new_ptr = kmalloc(new_size);
     if (!new_ptr) return NULL;
@@ -140,7 +140,7 @@ void *dma_alloc(size_t size) {
 void dma_free(void *ptr, size_t size) {
     if (!ptr || size == 0) return;
     size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-    pmem_free((u32)ptr, size / PAGE_SIZE);
+    pmem_free((uintptr_t)ptr, size / PAGE_SIZE);
 }
 
 void slab_cache_init(slab_cache_t *cache, size_t object_size, u32 object_count) {

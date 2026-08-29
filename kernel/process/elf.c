@@ -41,7 +41,7 @@ static u8 elf_segment_overlaps(void *elf_data, elf_program_header_t *segment, u3
 
     elf_header_t *hdr = (elf_header_t *)elf_data;
     for (u32 i = 0; i < segment_index; i++) {
-        elf_program_header_t *other = (elf_program_header_t *)((u32)elf_data + hdr->e_phoff + i * hdr->e_phentsize);
+        elf_program_header_t *other = (elf_program_header_t *)((uintptr_t)elf_data + hdr->e_phoff + i * hdr->e_phentsize);
         if (other->p_type != PT_LOAD || other->p_memsz == 0) {
             continue;
         }
@@ -113,7 +113,7 @@ u32 elf_load(void *elf_data, u32 elf_size) {
 
     /* Load each program header */
     for (i = 0; i < hdr->e_phnum; i++) {
-        ph = (elf_program_header_t *)((u32)elf_data + hdr->e_phoff + i * hdr->e_phentsize);
+        ph = (elf_program_header_t *)((uintptr_t)elf_data + hdr->e_phoff + i * hdr->e_phentsize);
 
         if (ph->p_type != PT_LOAD) {
             continue;

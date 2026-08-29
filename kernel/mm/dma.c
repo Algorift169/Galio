@@ -15,27 +15,12 @@ void *dma_alloc_coherent(u32 size, u32 *phys) {
     if (!paddr) return NULL;
     
     if (phys) *phys = paddr;
-    
-    /* Map to kernel virtual address space */
-    page_directory_t *pd = paging_get_current();
-    u32 vaddr = 0xF0000000; /* High memory area for DMA */
-    
-    for (u32 i = 0; i < pages; i++) {
-        paging_map(pd, vaddr + i * PAGE_SIZE, paddr + i * PAGE_SIZE, 
-                  PAGE_PRESENT | PAGE_RW);
-    }
-    
-    return (void *)vaddr;
+    return (void *)(uintptr_t)paddr;
 }
 
 /* Free DMA-coherent memory */
 void dma_free_coherent(void *virt, u32 phys, u32 size) {
+    (void)virt;
     u32 pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
     pmem_free(phys, pages);
-    
-    /* Unmap from kernel space */
-    page_directory_t *pd = paging_get_current();
-    for (u32 i = 0; i < pages; i++) {
-        paging_unmap(pd, (u32)virt + i * PAGE_SIZE);
-    }
 }

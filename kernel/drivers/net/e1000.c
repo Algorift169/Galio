@@ -107,13 +107,8 @@ typedef struct {
 static u32 e1000_mmio_valloc = E1000_MMIO_VBASE;
 
 static void *map_physical_region(u32 phys, u32 size) {
-    u32 pages = (size + 0xFFF) >> 12;
-    u32 vaddr = e1000_mmio_valloc & 0xFFFFF000;
-    for (u32 i = 0; i < pages; i++) {
-        paging_map(paging_get_current(), vaddr + i*0x1000, (phys & 0xFFFFF000) + i*0x1000, PAGE_PRESENT | PAGE_RW);
-    }
-    e1000_mmio_valloc += pages * 0x1000;
-    return (void *)(uintptr_t)vaddr;
+    (void)size;
+    return (void *)(uintptr_t)phys;
 }
 
 static inline void mmio_write32(void *base, u32 offset, u32 val) {
