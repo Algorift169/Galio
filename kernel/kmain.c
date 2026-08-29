@@ -14,6 +14,7 @@
 #include "keyboard.h"
 #include "process.h"
 #include "vfs.h"
+#include "dev/device_manager.h"
 #include "vfs_core.h"
 #include "ata.h"
 #include "ext2.h"
@@ -267,6 +268,9 @@ void kmain(void *multiboot_ptr) {
 
     extern u8 _binary_initrd_bin_start;
     vfs_init(&_binary_initrd_bin_start);
+    if (device_manager_init() != 0) {
+        kprintf("[DEV] ERROR: Device subsystem initialization failed\n");
+    }
     /* Attempt to read boot wall-clock time from ./boot/config.txt and set it */
     {
         char cfg[128];

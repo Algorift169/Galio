@@ -3,6 +3,7 @@
 #include "kprintf.h"
 #include "string.h"
 #include "ext2.h"
+#include "dev/device_manager.h"
 
 #define VFS_INVALID_OFFSET 0xFFFFFFFFu
 
@@ -74,7 +75,7 @@ static void vfs_reset_state(void) {
         vfs_dentries[i].hash_next = NULL; vfs_dentries[i].inode = NULL; vfs_dentries[i].name[0] = 0;
     }
     for (u32 i = 0; i < VFS_MAX_FILE_HANDLES; i++) {
-        vfs_files[i].inode = NULL; vfs_files[i].pos = 0; vfs_files[i].flags = 0; vfs_files[i].ref_count = 0;
+        vfs_files[i].inode = NULL; vfs_files[i].pos = 0; vfs_files[i].flags = 0; vfs_files[i].ref_count = 0; vfs_files[i].device = NULL;
     }
     vfs_reset_cache();
 }
@@ -119,6 +120,7 @@ static vfs_inode_t *vfs_alloc_inode(void) {
     inode->mode = 0; inode->size = 0; inode->uid = 0; inode->gid = 0;
     inode->atime = 0; inode->mtime = 0; inode->ctime = 0; inode->link_count = 1;
     inode->block_count = 0; inode->dirent_count = 0; inode->dirent_capacity = 0; inode->dirents = NULL;
+    inode->device_major = 0; inode->device_minor = 0; inode->device = NULL;
     for (u32 i = 0; i < VFS_MAX_BLOCKS; i++) inode->blocks[i] = VFS_INVALID_OFFSET;
     vfs_next_inode++;
     return inode;
@@ -576,10 +578,6 @@ void vfs_core_init(void *initrd_addr) {
     vfs_core_create_device("./proc/battery", 0444, 12);
 
     if (!vfs_disk_mode) {
-        vfs_core_create_dir("./dev", 1);
-        vfs_core_create_device("./dev/null", 0644, 1);
-        vfs_core_create_device("./dev/zero", 0644, 2);
-        vfs_core_create_device("./dev/random", 0644, 3);
         vfs_core_create_dir("./sys", 1);
         vfs_core_create_dir("./tmp", 1);
     }
@@ -607,6 +605,15 @@ static u32 vfs_core_open_internal(const char *path) {
         if (vfs_files[i].ref_count == 0) {
             vfs_files[i].inode = dentry->inode;
             vfs_files[i].pos = 0; vfs_files[i].flags = 0; vfs_files[i].ref_count = 1;
+            vfs_files[i].device = (type == VFS_TYPE_CHARDEV) ?
+                device_lookup_id(dentry->inode->device_major, dentry->inode->device_minor) : NULL;
+            if (vfs_files[i].device && vfs_files[i].device->ops->open &&
+                vfs_files[i].device->ops->open(vfs_files[i].device) != 0) {
+                vfs_files[i].inode = NULL;
+                vfs_files[i].device = NULL;
+                vfs_files[i].ref_count = 0;
+                return VFS_INVALID_FD;
+            }
             return i;
         }
     }
@@ -627,7 +634,10 @@ u32 vfs_core_close(u32 fd) {
     if (vfs_files[fd].ref_count == 0) return 0;
     vfs_files[fd].ref_count--;
     if (vfs_files[fd].ref_count == 0) {
+        if (vfs_files[fd].device && vfs_files[fd].device->ops->close)
+            vfs_files[fd].device->ops->close(vfs_files[fd].device);
         vfs_files[fd].inode = NULL; vfs_files[fd].pos = 0; vfs_files[fd].flags = 0;
+        vfs_files[fd].device = NULL;
     }
     return 1;
 }
@@ -637,9 +647,9 @@ u32 vfs_core_write(u32 fd, const void *buffer, u32 size) {
     if (!fh->inode || fh->ref_count == 0) return 0;
     u32 type = fh->inode->mode & VFS_TYPE_MASK;
     if (type == VFS_TYPE_CHARDEV) {
-        /* Device files discard writes and always succeed */
-        fh->pos += size;
-        return size;
+        if (!fh->device || !fh->device->ops->write) return 0;
+        device_ssize_t written = fh->device->ops->write(fh->device, buffer, size);
+        return written < 0 ? 0 : (u32)written;
     }
     if (type != VFS_TYPE_FILE) return 0;
     if (vfs_disk_mode) {
@@ -857,12 +867,21 @@ u32 vfs_core_readlink(const char *path, char *buffer, u32 size) {
     return to_copy;
 }
 
-u32 vfs_core_create_device(const char *path, u32 mode, u32 dev_id) {
+u32 vfs_core_create_device_ex(const char *path, u32 mode, u32 major, u32 minor) {
     if (!path) return 0;
     if (vfs_disk_mode) return 0;
     u32 full_mode = VFS_TYPE_CHARDEV | (mode & VFS_PERM_MASK);
-    vfs_dentry_t *created = vfs_make_node_internal(path, full_mode, NULL, 0, dev_id, 1);
+    vfs_dentry_t *created = vfs_make_node_internal(path, full_mode, NULL, 0, (major << 16) | minor, 1);
+    if (created && created->inode) {
+        created->inode->device_major = major;
+        created->inode->device_minor = minor;
+        created->inode->device = device_lookup_id(major, minor);
+    }
     return created != NULL;
+}
+
+u32 vfs_core_create_device(const char *path, u32 mode, u32 dev_id) {
+    return vfs_core_create_device_ex(path, mode, dev_id >> 16, dev_id & 0xFFFFu);
 }
 
 u32 vfs_core_chmod(const char *path, u32 mode) {
@@ -980,6 +999,10 @@ u32 vfs_core_read(u32 fd, void *buffer, u32 size) {
     if (!fh->inode || fh->ref_count == 0) return 0;
     u32 type = fh->inode->mode & VFS_TYPE_MASK;
     if (type == VFS_TYPE_CHARDEV) {
+        if (fh->device && fh->device->ops->read) {
+            device_ssize_t result = fh->device->ops->read(fh->device, buffer, size);
+            return result < 0 ? 0 : (u32)result;
+        }
         u32 dev_id = fh->inode->blocks[0];
         if (dev_id == 1) {
             return 0;

@@ -30,6 +30,11 @@ static u8 packet_index = 0;
 static u8 packet_length = 3;
 static u8 mouse_buttons = 0;
 static s8 mouse_scroll_delta = 0;
+#define MOUSE_EVENT_QUEUE_SIZE 128
+static mouse_event_t mouse_events[MOUSE_EVENT_QUEUE_SIZE];
+static u32 mouse_event_head = 0;
+static u32 mouse_event_tail = 0;
+static u64 mouse_event_sequence = 0;
 
 static void ps2_wait_input(void) {
     while (inb(PS2_STATUS_PORT) & PS2_STATUS_INPUT_BUFFER) {
@@ -101,6 +106,24 @@ static void update_mouse_state(s8 dx, s8 dy, u8 buttons) {
     if (mouse_y >= 25) mouse_y = 24;
 }
 
+static void mouse_enqueue_event(s8 dx, s8 dy, u8 buttons, s8 wheel) {
+    u32 next = (mouse_event_head + 1) % MOUSE_EVENT_QUEUE_SIZE;
+    if (next == mouse_event_tail) {
+        mouse_event_tail = (mouse_event_tail + 1) % MOUSE_EVENT_QUEUE_SIZE;
+    }
+    mouse_event_t *event = &mouse_events[mouse_event_head];
+    event->dx = dx;
+    event->dy = dy;
+    event->buttons = buttons;
+    event->flags = 0;
+    if (dx || dy) event->flags |= MOUSE_EVENT_MOVE;
+    if (buttons != mouse_buttons) event->flags |= MOUSE_EVENT_BUTTON;
+    if (wheel) event->flags |= MOUSE_EVENT_WHEEL;
+    event->wheel = wheel;
+    event->timestamp = mouse_event_sequence++;
+    mouse_event_head = next;
+}
+
 void mouse_init(void) {
     /* Enable auxiliary port */
     outb(PS2_COMMAND_PORT, PS2_CMD_ENABLE_AUX);
@@ -145,6 +168,8 @@ void mouse_init(void) {
     mouse_x = 40;
     mouse_y = 12;
     packet_index = 0;
+    mouse_event_head = 0;
+    mouse_event_tail = 0;
 }
 
 void mouse_poll_position(void) {
@@ -195,6 +220,9 @@ void mouse_poll_position(void) {
             if (accumulated < -127) accumulated = -127;
             mouse_scroll_delta = (s8)accumulated;
         }
+        mouse_enqueue_event(dx, dy, buttons, wheel);
+    } else {
+        mouse_enqueue_event(dx, dy, buttons, 0);
     }
     
         mouse_buttons = buttons;
@@ -268,6 +296,8 @@ void mouse_enable(void) {
     /* Reset packet state */
     packet_index = 0;
     mouse_scroll_delta = 0;
+    mouse_event_head = 0;
+    mouse_event_tail = 0;
 
     /* Flush any stale bytes */
     mouse_flush_port();
@@ -282,4 +312,11 @@ s8 mouse_get_scroll_delta(void) {
     s8 delta = mouse_scroll_delta;
     mouse_scroll_delta = 0;
     return delta;
+}
+
+u8 mouse_read_event(mouse_event_t *event) {
+    if (!event || mouse_event_head == mouse_event_tail) return 0;
+    *event = mouse_events[mouse_event_tail];
+    mouse_event_tail = (mouse_event_tail + 1) % MOUSE_EVENT_QUEUE_SIZE;
+    return 1;
 }

@@ -95,6 +95,8 @@ SRCS = kernel/kmain.c \
        ui/src/buttons/gsh.c \
        kernel/pci/pci.c \
        kernel/drivers/net/e1000.c \
+	kernel/dev/device.c \
+	kernel/dev/device_manager.c \
        kernel/drivers/net/rtl8188eu.c \
        kernel/tests/run_tests.c \
        kernel/tests/scheduler_test.c \

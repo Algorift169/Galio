@@ -248,9 +248,9 @@ void vga_scrollback_up(void) {
         if (row < history_rows) {
             /* This row shows a scrollback line.
                The topmost row shows the oldest visible history line. */
-            u32 lines_back = history_rows - row;  /* how far back from current */
-            /* scrollback_head points past the newest entry;
-               newest = head-1, oldest visible = head - lines_back */
+                u32 lines_back = scroll_offset - row;  /* how far back from live top */
+                /* scrollback_head points past the newest entry; the viewport's
+                    first history row is scroll_offset lines behind the live top. */
             u32 idx = (scrollback_head + SCROLLBACK_LINES - lines_back) % SCROLLBACK_LINES;
             for (u32 x = 0; x < VGA_WIDTH; x++) {
                 vga_buf[row * VGA_WIDTH + x] = scrollback_buf[idx][x];
@@ -282,7 +282,7 @@ void vga_scrollback_down(void) {
     for (u32 row = 0; row < VGA_HEIGHT; row++) {
         u32 history_rows = scroll_offset < VGA_HEIGHT ? scroll_offset : VGA_HEIGHT;
         if (row < history_rows) {
-            u32 lines_back = history_rows - row;
+            u32 lines_back = scroll_offset - row;
             u32 idx = (scrollback_head + SCROLLBACK_LINES - lines_back) % SCROLLBACK_LINES;
             for (u32 x = 0; x < VGA_WIDTH; x++) {
                 vga_buf[row * VGA_WIDTH + x] = scrollback_buf[idx][x];

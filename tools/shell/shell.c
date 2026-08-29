@@ -836,7 +836,7 @@ static void shell_execute_command(void) {
         if (strlen(cmd) == 0) {
             SHELL_COLOR_ERR();
             kprintf("[REX] Usage: rex <command> [args...]\n");
-            kprintf("[REX] Available commands: goto, file, new file, dir, new dir, mkdir, write, recycle, delete, clean\n");
+            kprintf("[REX] Available commands: goto, where, file, new file, dir, new dir, mkdir, write, recycle, delete, clean\n");
             SHELL_COLOR_RESET();
         } else if (strncmp(cmd, "goto ", 5) == 0) {
             const char *path = cmd + 5;
@@ -845,6 +845,14 @@ static void shell_execute_command(void) {
             current_dir[255] = 0;
             SHELL_COLOR_CMD();
             kprintf("[REX] Changed to: %s\n", current_dir);
+            SHELL_COLOR_RESET();
+        } else if (strncmp(cmd, "where ", 6) == 0) {
+            SHELL_COLOR_OUT();
+            shell_where_command(cmd + 6, current_dir);
+            SHELL_COLOR_RESET();
+        } else if (strcmp(cmd, "where") == 0) {
+            SHELL_COLOR_CMD();
+            shell_where_command("", current_dir);
             SHELL_COLOR_RESET();
         } else if (strncmp(cmd, "file", 4) == 0 && (cmd[4] == ' ' || cmd[4] == '\0')) {
             const char *file_args = cmd + 4;
@@ -901,7 +909,7 @@ static void shell_execute_command(void) {
         } else {
             SHELL_COLOR_ERR();
             kprintf("[REX] Unknown privileged command: %s\n", cmd);
-            kprintf("[REX] Available: goto, file, new file, dir, new dir, mkdir, write, recycle, delete, clean\n");
+            kprintf("[REX] Available: goto, where, file, new file, dir, new dir, mkdir, write, recycle, delete, clean\n");
             SHELL_COLOR_RESET();
         }
     } else if (strcmp(input.buffer, "jobs") == 0) {

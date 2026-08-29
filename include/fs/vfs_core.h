@@ -3,6 +3,7 @@
 
 #include "vfs.h"
 #include "common.h"
+#include "dev/device.h"
 
 #define VFS_TYPE_MASK 0xF000
 #define VFS_TYPE_UNKNOWN 0x0000
@@ -45,6 +46,9 @@ typedef struct vfs_inode {
     u32 dirent_count;
     u32 dirent_capacity;
     vfs_core_dirent_t *dirents;
+    u32 device_major;
+    u32 device_minor;
+    device_t *device;
 } vfs_inode_t;
 
 typedef struct vfs_dentry {
@@ -61,6 +65,7 @@ typedef struct vfs_file {
     u32 pos;
     u32 flags;
     u32 ref_count;
+    device_t *device;
 } vfs_file_t;
 
 void vfs_core_init(void *initrd_addr);
@@ -91,6 +96,7 @@ u32 vfs_core_unlink_nodisk(const char *path);
 u32 vfs_core_create_symlink(const char *target, const char *linkpath, u8 force);
 u32 vfs_core_readlink(const char *path, char *buffer, u32 size);
 u32 vfs_core_create_device(const char *path, u32 mode, u32 dev_id);
+u32 vfs_core_create_device_ex(const char *path, u32 mode, u32 major, u32 minor);
 u32 vfs_core_chmod(const char *path, u32 mode);
 void vfs_core_init_disk_mode(void);
 u8 vfs_core_reload_root_from_disk(void);
