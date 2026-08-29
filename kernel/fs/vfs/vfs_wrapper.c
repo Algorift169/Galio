@@ -419,7 +419,9 @@ static u32 vfs_ext2_read_dirents(u32 inode_num, ext2_tree_entry_t *entries, u32 
 static void vfs_print_tree_ext2_recursive(u32 inode_num, const char *prefix, u32 prefix_len, u32 *dirs, u32 *files) {
     if (prefix_len > 60) return;
     
-    ext2_tree_entry_t entries[EXT2_TREE_MAX_ENTRIES];
+    ext2_tree_entry_t *entries = (ext2_tree_entry_t *)kmalloc(sizeof(ext2_tree_entry_t) * EXT2_TREE_MAX_ENTRIES);
+    if (!entries) return;
+
     u32 count = vfs_ext2_read_dirents(inode_num, entries, EXT2_TREE_MAX_ENTRIES);
     
     for (u32 i = 0; i < count; i++) {
@@ -442,6 +444,7 @@ static void vfs_print_tree_ext2_recursive(u32 inode_num, const char *prefix, u32
             (*files)++;
         }
     }
+    kfree(entries);
 }
 
 void vfs_tree_dir(const char *path) {

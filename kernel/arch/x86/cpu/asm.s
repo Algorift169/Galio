@@ -40,19 +40,20 @@ extern process_switch_new_eip
 
 GLOBAL process_switch_asm
 process_switch_asm:
+    ; register_state_t offsets:
+    ; rsp=0x00, rbp=0x08, rbx=0x20, rflags=0x40, rip=0x48.
     test rdi, rdi
     jz .load_new
 
+    ; Remove this call's return address from the live stack and save it as
+    ; the resume address. The saved rsp must point above that address.
+    pop rax
     mov [rdi + 0x00], rsp
     mov [rdi + 0x08], rbp
+    pushfq
+    pop qword [rdi + 0x40]
     mov [rdi + 0x20], rbx
-    mov [rdi + 0x68], r12
-    mov [rdi + 0x70], r13
-    mov [rdi + 0x78], r14
-    mov [rdi + 0x80], r15
-    pop rax
     mov [rdi + 0x48], rax
-    push rax
 
 .load_new:
     test rsi, rsi
@@ -61,10 +62,8 @@ process_switch_asm:
     mov rsp, [rsi + 0x00]
     mov rbp, [rsi + 0x08]
     mov rbx, [rsi + 0x20]
-    mov r12, [rsi + 0x68]
-    mov r13, [rsi + 0x70]
-    mov r14, [rsi + 0x78]
-    mov r15, [rsi + 0x80]
+    push qword [rsi + 0x40]
+    popfq
     mov rax, [rsi + 0x48]
     jmp rax
 

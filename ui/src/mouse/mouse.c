@@ -148,34 +148,37 @@ void mouse_init(void) {
 }
 
 void mouse_poll_position(void) {
-    u8 status = inb(PS2_STATUS_PORT);
+    /* Drain a bounded batch so queued four-byte wheel packets do not take
+       several delayed shell iterations to reach the scroll handler. */
+    for (u32 sample = 0; sample < 32; sample++) {
+        u8 status = inb(PS2_STATUS_PORT);
 
-    /* Only read from the aux/mouse output buffer. Keyboard data must not be drained here. */
-    if (!(status & PS2_STATUS_AUX_OUTPUT)) {
-        return;
-    }
+        /* Only read from the aux/mouse output buffer. Keyboard data must not be drained here. */
+        if (!(status & PS2_STATUS_AUX_OUTPUT)) {
+            return;
+        }
 
-    u8 data = inb(PS2_DATA_PORT);
+        u8 data = inb(PS2_DATA_PORT);
     
     /* Start of new packet: bit 3 must be set */
     if (packet_index == 0) {
         if (!(data & 0x08)) {
-            return;
+            continue;
         }
     }
     
     packet[packet_index++] = data;
     
-    if (packet_index < packet_length) {
-        return;
-    }
+        if (packet_index < packet_length) {
+            continue;
+        }
     
     /* Reset for next packet */
     packet_index = 0;
     
     /* Check for overflow or invalid packet */
-    if (packet[0] & 0xC0) {
-        return;
+        if (packet[0] & 0xC0) {
+            continue;
     }
     
     s8 dx = (s8)packet[1];
@@ -187,12 +190,16 @@ void mouse_poll_position(void) {
            4th-byte delta and expose it via the generic scroll API for all consumers. */
         s8 wheel = (s8)packet[3];
         if (wheel != 0) {
-            mouse_scroll_delta = wheel;
+            int accumulated = (int)mouse_scroll_delta + (int)wheel;
+            if (accumulated > 127) accumulated = 127;
+            if (accumulated < -127) accumulated = -127;
+            mouse_scroll_delta = (s8)accumulated;
         }
     }
     
-    mouse_buttons = buttons;
-    update_mouse_state(dx, dy, buttons);
+        mouse_buttons = buttons;
+        update_mouse_state(dx, dy, buttons);
+    }
 }
 
 u8 mouse_get_buttons(void) {

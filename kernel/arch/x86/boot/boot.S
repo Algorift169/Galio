@@ -26,6 +26,7 @@ start:
     cli
     cld
     mov $stack_top, %esp
+    mov %ebx, %esi      /* Save Multiboot info pointer in %esi */
 
     /* Map PML4[0] -> pdpt */
     mov $pml4, %eax
@@ -111,7 +112,7 @@ long_mode:
     mov $stack_top, %rsp
     xor %rbp, %rbp
 
-    mov %ebx, %edi
+    mov %esi, %edi
     call kmain
 
 .hang:

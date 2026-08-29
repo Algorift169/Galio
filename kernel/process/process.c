@@ -220,12 +220,10 @@ u32 process_create(void (*entry)(void), u32 priority) {
         return 0;
     }
 
-    /* Map stack into kernel virtual slot: leave first page in slot unmapped as guard */
-    uintptr_t slot_base = KERNEL_STACK_BASE + (proc_index * KERNEL_STACK_SLOT_SIZE);
-    for (u32 i = 0; i < stack_frames; i++) {
-        paging_map_kernel(slot_base + PAGE_SIZE + i * PAGE_SIZE, phys + i * PAGE_SIZE, PAGE_PRESENT | PAGE_RW);
-    }
-    proc->stack = (uintptr_t *)(slot_base + PAGE_SIZE);
+    /* Boot long mode currently uses an identity map for the low 4 GiB. Keep
+     * kernel task stacks in their allocated low physical range until the
+     * higher-half page-table mapper is fully active. */
+    proc->stack = (uintptr_t *)phys;
     proc->stack_size = stack_frames * PAGE_SIZE;
     proc->kernel_stack_phys = phys;
 
@@ -482,7 +480,7 @@ void process_preempt(registers_t *regs) {
         old->state = PROCESS_READY;
     }
 
-    if (next->pagedir) {
+    if (next->pagedir && next->regs.cs != KERNEL_CS) {
         paging_load_directory(next->pagedir);
     }
     tss_set_kernel_stack((uintptr_t)next->stack + next->stack_size - 8);
@@ -506,7 +504,7 @@ void process_switch(process_t *from, process_t *to) {
     kprintf("[KTEST] process_switch: from PID %u to PID %u (esp=%x, eip=%x, ebx=%x, ebp=%x)\n",
             from->pid, to->pid, to->regs.esp, to->regs.eip, to->regs.ebx, to->regs.ebp);
 
-    if (to->pagedir) {
+    if (to->pagedir && to->regs.cs != KERNEL_CS) {
         paging_load_directory(to->pagedir);
     }
     tss_set_kernel_stack((uintptr_t)to->stack + to->stack_size - 8);
@@ -528,6 +526,10 @@ void process_exit(i32 code) {
     current_process->exit_code = (u32)code;
     current_process->pending_signals = 0;
     current_process->waiting_for_pid = -1;
+    process_t *parent = process_get_any(current_process->parent_pid);
+    if (parent && parent->state == PROCESS_WAITING) {
+        parent->state = PROCESS_READY;
+    }
     process_send_signal(current_process->parent_pid, SIGCHLD);
     process_yield();
 }

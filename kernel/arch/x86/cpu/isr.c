@@ -75,10 +75,10 @@ void isr_handler(registers_t *regs) {
     if (int_no < 32) {
         vga_puts("\n=== CPU EXCEPTION ===\n");
         kprintf("Exception: %s (INT %d)\n", exception_names[int_no], int_no);
-        //print_registers(regs);
+        print_registers(regs);
 
         if (exception_has_error_code(int_no)) {
-            kprintf("  Error code: %08X\n", regs->error_code);
+            kprintf("  Error code: %016llX\n", (unsigned long long)regs->error_code);
         }
 
         if (int_no == 14) {
@@ -101,32 +101,26 @@ void isr_handler(registers_t *regs) {
             if (instr) {
                 kprintf("  Instruction fetch fault\n");
             }
-            kprintf("  RIP=%016llX  RSP=%016llX  CS=%04llX\n",
-                    (unsigned long long)regs->eip,
-                    (unsigned long long)regs->rsp,
-                    (unsigned long long)regs->cs);
-            if ((regs->cs & 3) == 3) {
-                kprintf("  USER RSP=%016llX  USER SS=%04llX\n",
-                        (unsigned long long)regs->rsp,
-                        (unsigned long long)regs->ss);
-            }
             process_t *current = process_current();
             kprintf("  Process PID=%u\n", current ? current->pid : 0xFFFFFFFFu);
 
             if (paging_handle_page_fault(regs) == PAGE_FAULT_HANDLED) {
-                //return;
+                return;
             }
         }
 
         process_t *current = process_current();
         if ((regs->cs & 3) == 3 && current) {
-            kprintf("Delivering SIGSEGV to PID=%u and keeping kernel alive\n", current->pid);
+            kprintf("Delivering SIGSEGV to PID=%u\n", current->pid);
             process_send_signal(current->pid, SIGSEGV);
             return;
         }
 
-        kprintf("Kernel exception ignored, continuing execution.\n");
-        return;
+        kprintf("KERNEL PANIC: Unhandled exception in kernel mode. Halting.\n");
+        __asm__ volatile("cli");
+        while(1) {
+            __asm__ volatile("hlt");
+        }
     }
 
     if (handlers[int_no] != NULL) {

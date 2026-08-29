@@ -1,3 +1,0 @@
-// Add these forward declarations at the top of kernel/drivers/net/wifi.c after includes:
-// int wifi_parse_beacon(const uint8_t *frame, uint32_t len, char *ssid_out, int8_t *rssi_out, uint8_t *channel_out);
-// uint8_t wifi_build_probe_request(uint8_t *buffer, uint32_t buffer_len, const char *ssid);
