@@ -1,4 +1,5 @@
 #include "vga.h"
+#include "framebuffer.h"
 #include "gdt.h"
 #include "idt.h"
 #include "irq.h"
@@ -183,6 +184,7 @@ void kmain(void *multiboot_ptr) {
 
     serial_init();
     vga_init();
+    fb_init();
     vga_set_color(0x0A);
     kprintf("=== Galio Kernel Boot ===\n\n");
 

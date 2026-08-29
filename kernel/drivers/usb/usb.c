@@ -20,8 +20,12 @@
 #define UHCI_FRNUM      0x06
 #define UHCI_PORTSC0    0x10
 
-static u8 usb_initialized = 0;
+static u8 usb_ready = 0;
 static u16 uhci_io_base = 0;
+
+int usb_initialized(void) {
+    return usb_ready;
+}
 
 /* Helper: find UHCI PCI controller and enable I/O space */
 void usb_init(void) {
@@ -58,7 +62,7 @@ void usb_init(void) {
     for (int i = 0; i < 200; i++) inb(0x80);
     outw(uhci_io_base + UHCI_USBINTR, 0x0000);
 
-    usb_initialized = 1;
+    usb_ready = 1;
     kprintf("USB: helper initialized\n");
 }
 

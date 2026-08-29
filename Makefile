@@ -80,6 +80,7 @@ SRCS = kernel/kmain.c \
        kernel/drivers/timer/pit.c \
 	kernel/time.c \
        kernel/drivers/video/vga.c \
+       kernel/drivers/video/fb.c \
        kernel/drivers/usb/usb.c \
        ui/src/display/display.c \
        ui/src/display/pk.c \
@@ -97,6 +98,7 @@ SRCS = kernel/kmain.c \
        kernel/drivers/net/e1000.c \
 	kernel/dev/device.c \
 	kernel/dev/device_manager.c \
+	kernel/drivers/net/wifi.c \
        kernel/drivers/net/rtl8188eu.c \
        kernel/tests/run_tests.c \
        kernel/tests/scheduler_test.c \
@@ -127,7 +129,7 @@ C_OBJS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRCS))
 # The legacy PIT assembly stub was written for 32-bit protected mode and is
 # not compatible with x86-64 long mode. The timer functionality is already
 # implemented in kernel/drivers/timer/pit.c using the 64-bit-safe ABI.
-GAS_SRCS = kernel/drivers/net/wifi.s
+GAS_SRCS =
 GAS_OBJS = $(patsubst %.s,$(OBJ_DIR)/%.o,$(GAS_SRCS))
 ASM_OBJS = $(OBJ_DIR)/kernel/arch/x86/cpu/asm.o \
            $(OBJ_DIR)/kernel/arch/x86/cpu/isr_asm.o \
