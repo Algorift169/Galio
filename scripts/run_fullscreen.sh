@@ -17,10 +17,14 @@ set -euo pipefail
 
 ISO="build/bin/galio.iso"
 DISK="build/disk.img"
-QEMU_BIN="qemu-system-i386"
+QEMU_BIN="qemu-system-x86_64"
 EXTRA_ARGS=""
 NOGRAPHIC=false
 FULLSCREEN=true
+
+if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    NOGRAPHIC=true
+fi
 
 # Parse arguments
 while [ $# -gt 0 ]; do
@@ -99,13 +103,13 @@ COMMON_ARGS="-cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,inde
 if [ "${NOGRAPHIC}" = true ]; then
     # Headless mode: print serial to stdout
     echo "Starting QEMU (headless). Serial output will appear on stdout."
-    exec ${QEMU_BIN} ${COMMON_ARGS} -nographic -serial stdio ${EXTRA_ARGS}
+    exec ${QEMU_BIN} ${COMMON_ARGS} -display none -monitor none -serial stdio ${EXTRA_ARGS}
 elif [ "${FULLSCREEN}" = true ]; then
     # Fullscreen mode with scaling
     echo "Starting QEMU (fullscreen). Serial logged to serial.log"
-    exec ${QEMU_BIN} ${COMMON_ARGS} -vga std -full-screen -display gtk,zoom-to-fit=on -serial file:serial.log -monitor none -no-reboot ${EXTRA_ARGS}
+    exec ${QEMU_BIN} ${COMMON_ARGS} -vga std -display gtk -full-screen -serial file:serial.log -monitor none -no-reboot ${EXTRA_ARGS}
 else
     # Windowed mode with scaling to fill window
     echo "Starting QEMU (windowed). Serial logged to serial.log"
-    exec ${QEMU_BIN} ${COMMON_ARGS} -vga std -display gtk,zoom-to-fit=on -serial file:serial.log -monitor none -no-reboot ${EXTRA_ARGS}
+    exec ${QEMU_BIN} ${COMMON_ARGS} -vga std -display gtk -serial file:serial.log -monitor none -no-reboot ${EXTRA_ARGS}
 fi
