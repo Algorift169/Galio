@@ -29,6 +29,7 @@
 #include "net/wifi.h"
 #include "drivers/net/e1000.h"
 #include "drivers/net/rtl8188eu.h"
+#include "shell.h"
 
 // Disk entry - line: 193
 
@@ -228,8 +229,7 @@ void kmain(void *multiboot_ptr) {
     kprintf("Initializing heap...\n");
     heap_init();
 
-    /* Initialize display and panel (draw header and register update callback) */
-    display_init();
+    /* UI shell is intentionally disabled; the system boots directly into fullscreen gsh after auth. */
 
     kprintf("Initializing networking subsystem...\n");
     net_init();
@@ -252,7 +252,6 @@ void kmain(void *multiboot_ptr) {
     pit_init(100);
     /* Initialize wall-clock from CMOS/RTC if available */
     kernel_time_initialize();
-    panel_draw_header();
 
     kprintf("Initializing CPU subsystem...\n");
     cpu_init();
@@ -295,7 +294,6 @@ void kmain(void *multiboot_ptr) {
                     if (current_time.year < 1970) {
                         kernel_time_set_boot_seconds(epoch);
                         kprintf("[TIME] Boot time set from config: %s (epoch=%u)\n", datebuf, epoch);
-                        panel_draw_header();
                     } else {
                         kprintf("[TIME] RTC valid; ignoring stale boot_time config: %s\n", datebuf);
                     }
@@ -336,7 +334,6 @@ void kmain(void *multiboot_ptr) {
                         kernel_time_set_timezone_offset_seconds(offset_seconds);
                         const char *sign_str = (offset < 0) ? "-" : "+";
                         kprintf("[TIME] Timezone offset configured: %s%u hours\n", sign_str, (offset < 0) ? (u32)(-offset) : (u32)offset);
-                        panel_draw_header();
                     }
                 }
             }
@@ -386,6 +383,9 @@ void kmain(void *multiboot_ptr) {
 
     auth_bootstrap();
 
+    display_enter_shell_mode();
+    shell_run();
+
     /* Create init process early so the embedded ELF gets scheduled */
     u32 init_pid = process_create(init_main, 1);
     if (!init_pid) {
@@ -399,26 +399,6 @@ void kmain(void *multiboot_ptr) {
     /* Unmask keyboard IRQ */
     irq_unmask(1);
 
-    /* Enter cursor movement mode with mouse support */
-    display_enter_userland_mode();
-    
-    int last_x = -1, last_y = -1;
-    
-    for (;;) {
-        cursor_poll();
-        int cursor_x = 0, cursor_y = 0;
-        cursor_get_position(&cursor_x, &cursor_y);
-
-        if (cursor_x != last_x || cursor_y != last_y) {
-            last_x = cursor_x;
-            last_y = cursor_y;
-        }
-
-        for (volatile int i = 0; i < 100; i++);
-        __asm__ volatile("hlt");
-    }
-
-    /* Should never reach here */
     for (;;) {
         __asm__ volatile("hlt");
     }
