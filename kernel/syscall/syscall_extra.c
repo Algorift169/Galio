@@ -54,6 +54,27 @@ static u8 copy_user_string(char *dst, const char *src, u32 dst_size) {
     return 0;
 }
 
+static u8 validate_execve_vector(char *const *vector, u32 max_entries) {
+    if (!vector) {
+        return 1;
+    }
+
+    for (u32 i = 0; i < max_entries; i++) {
+        void *ptr = (void *)vector[i];
+        if (!ptr) {
+            return 1;
+        }
+        if (!validate_user_ptr(ptr, 0)) {
+            return 0;
+        }
+        if (!validate_user_string((const char *)ptr, PROCESS_PATH_MAX)) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
 static u32 pipe_handle(u32 id, u32 flags) {
     return PIPE_FD_FLAG | flags | (id & PIPE_ID_MASK);
 }
@@ -231,40 +252,41 @@ u32 pipe_close_handle(u32 handle) {
     return 0;
 }
 
-u32 syscall_execve(const char *path, char *const argv[], char *const envp[]) {
-    (void)argv;
-    (void)envp;
-
+uintptr_t syscall_execve(const char *path, char *const argv[], char *const envp[]) {
     process_t *proc = process_current();
     if (!proc || !path) {
-        return (u32)-1;
+        return (uintptr_t)-1;
+    }
+
+    if (!validate_execve_vector(argv, 64) || !validate_execve_vector(envp, 64)) {
+        return (uintptr_t)-1;
     }
 
     char kpath[PROCESS_PATH_MAX];
     if (!copy_user_string(kpath, path, sizeof(kpath))) {
-        return (u32)-1;
+        return (uintptr_t)-1;
     }
 
     char resolved[PROCESS_PATH_MAX];
     if (!process_resolve_path(proc->cwd, kpath, resolved, PROCESS_PATH_MAX)) {
-        return (u32)-1;
+        return (uintptr_t)-1;
     }
 
     void *elf_data = kmalloc(65536);
     if (!elf_data) {
-        return (u32)-1;
+        return (uintptr_t)-1;
     }
 
     u32 size = vfs_read(resolved, elf_data, 65536);
     if (!size) {
         kfree(elf_data);
-        return (u32)-1;
+        return (uintptr_t)-1;
     }
 
     u32 entry = elf_load(elf_data, size);
     kfree(elf_data);
     if (!entry) {
-        return (u32)-1;
+        return (uintptr_t)-1;
     }
 
     process_set_path(proc, resolved);
@@ -294,7 +316,7 @@ u32 syscall_execve(const char *path, char *const argv[], char *const envp[]) {
         : "rax", "memory"
     );
 
-    return (u32)-1;
+    return (uintptr_t)-1;
 }
 
 i32 syscall_pipe(i32 pipefd[2]) {
@@ -342,6 +364,10 @@ u32 syscall_dup(u32 oldfd) {
     u32 handle = proc->fd_table[oldfd];
     if (handle == VFS_INVALID_FD) {
         return (u32)-1;
+    }
+
+    if (handle & PIPE_FD_FLAG) {
+        pipe_increment_ref(handle);
     }
 
     for (u32 fd = 0; fd < PROCESS_MAX_FDS; fd++) {

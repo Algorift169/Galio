@@ -328,7 +328,7 @@ static void vfs_print_tree_ram_recursive(vfs_dentry_t *node, const char *prefix,
     
     if (node != vfs_core_root()) {
         kprintf("%s", prefix);
-        kprintf(is_last ? "└── " : "├── ");
+        kprintf(is_last ? "--- " : "|-- ");
         kprintf("%s", node->name);
         if ((node->inode->mode & VFS_TYPE_MASK) == VFS_TYPE_DIR) {
             kprintf("/\n");
@@ -354,7 +354,7 @@ static void vfs_print_tree_ram_recursive(vfs_dentry_t *node, const char *prefix,
             if (prefix_len + 4 >= sizeof(child_prefix)) continue;
             strncpy(child_prefix, prefix, sizeof(child_prefix) - 1);
             child_prefix[sizeof(child_prefix) - 1] = 0;
-            strncat(child_prefix, is_last ? "    " : "│   ", sizeof(child_prefix) - strlen(child_prefix) - 1);
+            strncat(child_prefix, is_last ? "    " : "|   ", sizeof(child_prefix) - strlen(child_prefix) - 1);
             vfs_print_tree_ram_recursive(child, child_prefix, strlen(child_prefix), last_child, dirs, files);
         }
     }
@@ -427,7 +427,7 @@ static void vfs_print_tree_ext2_recursive(u32 inode_num, const char *prefix, u32
     for (u32 i = 0; i < count; i++) {
         u8 last_child = (i + 1 == count);
         kprintf("%s", prefix);
-        kprintf(last_child ? "└── " : "├── ");
+        kprintf(last_child ? "--- " : "|-- ");
         kprintf("%s", entries[i].name);
         if (entries[i].is_dir) {
             kprintf("/\n");
@@ -436,7 +436,7 @@ static void vfs_print_tree_ext2_recursive(u32 inode_num, const char *prefix, u32
             if (prefix_len + 4 < sizeof(child_prefix)) {
                 strncpy(child_prefix, prefix, sizeof(child_prefix) - 1);
                 child_prefix[sizeof(child_prefix) - 1] = 0;
-                strncat(child_prefix, last_child ? "    " : "│   ", sizeof(child_prefix) - strlen(child_prefix) - 1);
+                strncat(child_prefix, last_child ? "    " : "|   ", sizeof(child_prefix) - strlen(child_prefix) - 1);
                 vfs_print_tree_ext2_recursive(entries[i].inode_num, child_prefix, strlen(child_prefix), dirs, files);
             }
         } else {

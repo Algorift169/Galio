@@ -247,7 +247,16 @@ u8 keyboard_read_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
         return 1;
     }
 
-    /* Fallback direct polling if IRQ-driven queue is empty or IRQ delivery is unreliable. */
+    /* Only poll the PS/2 port when it actually contains a pending byte. This
+     * avoids the duplicate-read bug caused by polling after the IRQ handler has
+     * already consumed the same scancode, while still recovering keyboard input
+     * when the queue is empty.
+     */
+    u8 status = inb(KEYBOARD_CTRL);
+    if (!(status & 0x01) || (status & 0x20)) {
+        return 0;
+    }
+
     return keyboard_poll_port_event(scancode, is_pressed, extended);
 }
 

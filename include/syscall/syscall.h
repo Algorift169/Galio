@@ -68,7 +68,7 @@ u8 validate_user_buffer(const void *ptr, u32 length, u8 write);
 u8 validate_user_string(const char *str, u32 max_length);
 
 /* Extended syscall implementations */
-u32 syscall_execve(const char *path, char *const argv[], char *const envp[]);
+uintptr_t syscall_execve(const char *path, char *const argv[], char *const envp[]);
 i32 syscall_pipe(i32 pipefd[2]);
 u32 syscall_dup(u32 oldfd);
 i32 syscall_dup2(u32 oldfd, u32 newfd);

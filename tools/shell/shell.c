@@ -162,7 +162,7 @@ static void shell_print_prompt(void) {
         host = session_current()->username;
     }
     SHELL_COLOR_CMD();
-    kprintf("%s @ galio: %s -# ", host, dir);
+    kprintf("[ %s @ galio ]: <%s> ", host, dir);
     SHELL_COLOR_RESET();
     shell_cursor_draw();
 }
@@ -1028,9 +1028,20 @@ static void shell_execute_command(void) {
         shell_cursor_restore();
         vga_clear();
         SHELL_COLOR_OUT();
-    } else if (strcmp(input.buffer, "tree") == 0) {
+    } else if (strncmp(input.buffer, "tree", 4) == 0) {
+        const char *path = input.buffer + 4;
+        while (*path == ' ') path++;
+
+        char target[DIR_PATH_SIZE];
+        if (*path == 0) {
+            strncpy(target, current_dir, sizeof(target) - 1);
+            target[sizeof(target) - 1] = 0;
+        } else {
+            shell_resolve_path(current_dir, path, target);
+        }
+
         SHELL_COLOR_OUT();
-        shell_tree_command(current_dir);
+        shell_tree_command(target);
         SHELL_COLOR_RESET();
         kprintf("                                                                     \n");
         kprintf("                                                                     \n");
@@ -1066,17 +1077,23 @@ static void shell_execute_command(void) {
         kprintf(" |__________________________________________________________________|\n");
         kprintf(" |  net      - Networking commands (usage: net stat|scan|list|devices)     |\n");
         kprintf(" |________________________________________________________|\n");
-        kprintf(" |  syscall pid       - Show current process ID                 |\n");
-        kprintf(" |  syscall uid       - Show current user ID                   |\n");
-        kprintf(" |  syscall gid       - Show current group ID                  |\n");
-        kprintf(" |  syscall time      - Show system time                       |\n");
-        kprintf(" |  syscall fork      - Create a child process                 |\n");
-        kprintf(" |  syscall pipe      - Create an IPC pipe                     |\n");
-        kprintf(" |  syscall dup       - Duplicate a file descriptor            |\n");
-        kprintf(" |  syscall mmap      - Map one memory page                    |\n");
-        kprintf(" |  syscall brk       - Change the process heap break          |\n");
-        kprintf(" |  syscall wait      - Wait for a child process               |\n");
-        kprintf(" |  syscall open/read/close/seek/stat/exec - File/process ABI |\n");
+        kprintf(" |  syscall pid                    - Get current process ID                 |\n");
+        kprintf(" |  syscall uid                    - Get current user ID                    |\n");
+        kprintf(" |  syscall gid                    - Get current group ID                   |\n");
+        kprintf(" |  syscall time                   - Get system time                        |\n");
+        kprintf(" |  syscall fork                   - Create a child process                 |\n");
+        kprintf(" |  syscall pipe                   - Create an IPC pipe                     |\n");
+        kprintf(" |  syscall dup <fd>               - Duplicate a file descriptor            |\n");
+        kprintf(" |  syscall mmap <length>          - Map anonymous memory                   |\n");
+        kprintf(" |  syscall brk [address]          - Get/set process heap break             |\n");
+        kprintf(" |  syscall wait [pid]             - Wait for child process                 |\n");
+        kprintf(" |  syscall open <path> [flags]    - Open file                              |\n");
+        kprintf(" |  syscall read <fd> <count>      - Read from file descriptor              |\n");
+        kprintf(" |  syscall close <fd>             - Close file descriptor                  |\n");
+        kprintf(" |  syscall seek <fd> <off> <wh>   - Change file offset                     |\n");
+        kprintf(" |  syscall stat <path>            - Show file metadata                     |\n");
+        kprintf(" |  syscall exec <path>            - Replace process image                  |\n");
+        kprintf(" |  syscall execve <path> [...]    - Execute program with argv/env          |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" |  top      - Live process monitor (Ctrl+C to stop)      |\n");
         kprintf(" |________________________________________________________|\n");
@@ -1107,8 +1124,19 @@ static void shell_execute_command(void) {
         shell_should_exit = 1;
         return;
     } else if (strncmp(input.buffer, "ls", 2) == 0) {
+        const char *path = input.buffer + 2;
+        while (*path == ' ') path++;
+
+        char target[DIR_PATH_SIZE];
+        if (*path == 0) {
+            strncpy(target, current_dir, sizeof(target) - 1);
+            target[sizeof(target) - 1] = 0;
+        } else {
+            shell_resolve_path(current_dir, path, target);
+        }
+
         SHELL_COLOR_OUT();
-        vfs_listdir(current_dir);
+        vfs_listdir(target);
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "dir ", 4) == 0) {
         shell_dir_command(input.buffer + 4, current_dir, 0, 0);
