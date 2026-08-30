@@ -25,6 +25,7 @@ static volatile u16 queue_tail = 0;
 static u8 shift_pressed = 0;
 static u8 ctrl_pressed = 0;
 static u8 alt_pressed = 0;
+static volatile u8 ctrl_c_pending = 0;
 static u8 poll_pending_extended = 0;
 static key_callback_t user_callback = NULL;
 
@@ -137,6 +138,10 @@ static void keyboard_handler(registers_t *regs) {
         return;
     }
 
+    if (is_pressed && raw_scancode == 0x2E && ctrl_pressed) {
+        ctrl_c_pending = 1;
+    }
+
     keyboard_enqueue(raw_scancode, is_pressed, extended);
 
     if (user_callback) {
@@ -190,6 +195,10 @@ static u8 keyboard_poll_port_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
         return 0;
     }
 
+    if (pressed && raw_scancode == 0x2E && ctrl_pressed) {
+        ctrl_c_pending = 1;
+    }
+
     if (scancode) *scancode = raw_scancode;
     if (is_pressed) *is_pressed = pressed;
     if (extended) *extended = ext;
@@ -210,6 +219,7 @@ void keyboard_reset_state(void) {
     shift_pressed = 0;
     ctrl_pressed = 0;
     alt_pressed = 0;
+    ctrl_c_pending = 0;
     poll_pending_extended = 0;
     irq_restore(flags);
 
@@ -252,6 +262,12 @@ u8 keyboard_read_shell_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
     result = keyboard_dequeue(scancode, is_pressed, extended);
     irq_restore(flags);
     return result;
+}
+
+u8 keyboard_take_ctrl_c(void) {
+    u8 pending = ctrl_c_pending;
+    ctrl_c_pending = 0;
+    return pending;
 }
 
 u8 scancode_to_ascii(u8 scancode) {

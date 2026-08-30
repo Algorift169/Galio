@@ -3,6 +3,8 @@
 #include "kprintf.h"
 
 #define FRAME_SIZE 4096
+#define KERNEL_HEAP_START 0x500000u
+#define KERNEL_HEAP_END   0x1500000u
 #define FRAMES_PER_BYTE 8
 #define BITMAP_SIZE (128 * 1024 * 1024 / FRAME_SIZE / 8)  /* For 128MB */
 
@@ -52,7 +54,7 @@ static void deref_frame(u32 frame) {
 }
 
 void pmem_init(u32 mmap_addr, u32 mmap_length) {
-    u32 kernel_end = 0x400000;  /* Approximate kernel end */
+    u32 kernel_end = KERNEL_HEAP_END;
 
     kprintf("Physical memory manager initializing...\n");
     kprintf("pmem_init: Bitmap size = %u bytes (supports %u MB)\n", BITMAP_SIZE, BITMAP_SIZE * 8 * FRAME_SIZE / (1024*1024));
@@ -111,11 +113,12 @@ void pmem_init(u32 mmap_addr, u32 mmap_length) {
         kprintf("pmem_init: Parsed %u memory map entries\n", entry_count);
     }
 
-    /* Mark kernel space as used */
+    /* Reserve the kernel image and identity-mapped heap. The heap lives at
+     * these physical addresses in the current identity-mapped layout. */
     u32 kernel_start_frame = 0x100000 / FRAME_SIZE;
     u32 kernel_end_frame = kernel_end / FRAME_SIZE;
 
-    kprintf("pmem_init: Marking kernel frames %u-%u (0x100000-0x%x) as used\n",
+        kprintf("pmem_init: Marking kernel/heap frames %u-%u (0x100000-0x%x) as used\n",
             kernel_start_frame, kernel_end_frame, kernel_end);
 
     for (u32 frame = kernel_start_frame; frame < kernel_end_frame; frame++) {

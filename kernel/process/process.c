@@ -78,6 +78,20 @@ void idle_main(void) {
     }
 }
 
+static void kernel_service_main(void) {
+    for (;;) {
+        process_yield();
+    }
+}
+
+u32 process_create_kernel_service(const char *path) {
+    u32 pid = process_create(kernel_service_main, 0);
+    if (pid) {
+        process_set_path(process_get(pid), path);
+    }
+    return pid;
+}
+
 void process_init(void) {
     kprintf("Process manager initialized\n");
     
@@ -522,9 +536,6 @@ void process_preempt(registers_t *regs) {
 }
 
 void process_switch(process_t *from, process_t *to) {
-    kprintf("[KTEST] process_switch: from PID %u to PID %u (esp=%x, eip=%x, ebx=%x, ebp=%x)\n",
-            from->pid, to->pid, to->regs.esp, to->regs.eip, to->regs.ebx, to->regs.ebp);
-
     if (to->pagedir && to->regs.cs != KERNEL_CS) {
         paging_load_directory(to->pagedir);
     }
@@ -533,8 +544,6 @@ void process_switch(process_t *from, process_t *to) {
     /* Perform context switch */
     process_switch_asm(&from->regs, &to->regs);
 
-    kprintf("[KTEST] process_switch returned to PID %u\n", current_process ? current_process->pid : 0);
-    /* Use current_process instead of local vars (they don't exist here) */
     process_t *restored = current_process;
     if (restored && restored->pagedir) {
         paging_load_directory(restored->pagedir);

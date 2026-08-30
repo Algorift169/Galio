@@ -1066,7 +1066,17 @@ static void shell_execute_command(void) {
         kprintf(" |__________________________________________________________________|\n");
         kprintf(" |  net      - Networking commands (usage: net stat|scan|list|devices)     |\n");
         kprintf(" |________________________________________________________|\n");
-        kprintf(" |  syscall  - Expose syscall ABI commands (pid, uid, gid, time, fork, pipe, mmap, brk, etc.) |\n");
+        kprintf(" |  syscall pid       - Show current process ID                 |\n");
+        kprintf(" |  syscall uid       - Show current user ID                   |\n");
+        kprintf(" |  syscall gid       - Show current group ID                  |\n");
+        kprintf(" |  syscall time      - Show system time                       |\n");
+        kprintf(" |  syscall fork      - Create a child process                 |\n");
+        kprintf(" |  syscall pipe      - Create an IPC pipe                     |\n");
+        kprintf(" |  syscall dup       - Duplicate a file descriptor            |\n");
+        kprintf(" |  syscall mmap      - Map one memory page                    |\n");
+        kprintf(" |  syscall brk       - Change the process heap break          |\n");
+        kprintf(" |  syscall wait      - Wait for a child process               |\n");
+        kprintf(" |  syscall open/read/close/seek/stat/exec - File/process ABI |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" |  top      - Live process monitor (Ctrl+C to stop)      |\n");
         kprintf(" |________________________________________________________|\n");

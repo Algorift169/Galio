@@ -8,6 +8,8 @@
 #define MAX_PAGE_DIRS 64
 #define KERNEL_IDENTITY_MAP_SIZE 0x01000000u
 #define KERNEL_PDE_START (KERNEL_BASE >> 22)
+#define PAGING_ALLOC_START 0x01600000u
+#define PAGING_ALLOC_END   0x04000000u
 
 static page_directory_t page_directory_pool[MAX_PAGE_DIRS];
 static u32 page_directory_count = 0;
@@ -49,7 +51,7 @@ static page_directory_t *alloc_page_directory(void) {
 }
 
 static u32 alloc_page_table(void) {
-    u32 pt_phys = pmem_alloc_region(1, 0x100000, 0x1000000);
+    u32 pt_phys = pmem_alloc_region(1, PAGING_ALLOC_START, PAGING_ALLOC_END);
     if (!pt_phys) {
         kprintf("paging: low-memory page table allocation failed\n");
         return 0;
@@ -198,7 +200,7 @@ page_directory_t *paging_create_directory(void) {
     page_directory_t *pd = alloc_page_directory();
     if (!pd) return NULL;
 
-    u32 pd_phys = pmem_alloc_region(1, 0x100000, 0x1000000);
+    u32 pd_phys = pmem_alloc_region(1, PAGING_ALLOC_START, PAGING_ALLOC_END);
     if (!pd_phys) {
         kprintf("paging: low-memory page directory allocation failed\n");
         return NULL;
@@ -209,7 +211,7 @@ page_directory_t *paging_create_directory(void) {
 
     pd->directory = phys_to_virt(pd_phys);
     u32 pdpt_phys = alloc_page_table();
-    u32 page_directory_phys = pmem_alloc_region(4, 0x100000, 0x1000000);
+    u32 page_directory_phys = pmem_alloc_region(4, PAGING_ALLOC_START, PAGING_ALLOC_END);
     if (!pdpt_phys || !page_directory_phys) return NULL;
     pd->pdpt = phys_to_virt(pdpt_phys);
     pd->page_directory = phys_to_virt(page_directory_phys);

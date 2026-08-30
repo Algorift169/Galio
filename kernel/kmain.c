@@ -178,6 +178,36 @@ static void vfs_verify_disk_write(void) {
     }
 }
 
+static void register_kernel_services(void) {
+    static const char *const services[] = {
+        "/kernel/scheduler",
+        "/kernel/timer",
+        "/kernel/interrupts",
+        "/kernel/memory",
+        "/kernel/vfs",
+        "/kernel/ext2",
+        "/kernel/devices",
+        "/kernel/syscalls",
+        "/kernel/ipc",
+        "/kernel/security",
+        "/kernel/reaper",
+        "/kernel/kworker",
+        "/kernel/ksoftirqd",
+        "/kernel/kblockd",
+        "/kernel/kswapd",
+        "/sbin/devd",
+        "/sbin/logd",
+        "/sbin/netd",
+        NULL
+    };
+
+    for (u32 i = 0; services[i] != NULL; i++) {
+        if (!process_create_kernel_service(services[i])) {
+            kprintf("Failed to register kernel service: %s\n", services[i]);
+        }
+    }
+}
+
 /* Entry point from bootloader - receives Multiboot info */
 void kmain(void *multiboot_ptr) {
     (void)multiboot_ptr;
@@ -399,6 +429,7 @@ void kmain(void *multiboot_ptr) {
         }
     }
     process_set_path(process_get(init_pid), "/sbin/init");
+    register_kernel_services();
 
     /* The shell runs in the boot process context. Enable timer and keyboard
      * interrupts before entering it so scheduling and CPU accounting work. */

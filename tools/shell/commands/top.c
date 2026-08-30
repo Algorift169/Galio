@@ -33,12 +33,89 @@ static u32 process_cpu_percent(process_t *proc, u32 now, u32 index) {
     return percent;
 }
 
+static void top_put_u32(u32 value) {
+    char buffer[11];
+    u32 length = 0;
+    if (value == 0) {
+        vga_putch('0');
+        return;
+    }
+    while (value != 0) {
+        buffer[length++] = (char)('0' + (value % 10));
+        value /= 10;
+    }
+    while (length > 0) {
+        vga_putch(buffer[--length]);
+    }
+}
+
+static void top_put_padded_u32(u32 value, u32 width) {
+    char buffer[11];
+    u32 length = 0;
+    if (value == 0) {
+        buffer[length++] = '0';
+    } else {
+        while (value != 0) {
+            buffer[length++] = (char)('0' + (value % 10));
+            value /= 10;
+        }
+    }
+    while (length < width) {
+        vga_putch(' ');
+        width--;
+    }
+    while (length > 0) {
+        vga_putch(buffer[--length]);
+    }
+}
+
+static void top_put_process(process_t *proc, u32 cpu, u32 memory) {
+    top_put_padded_u32(proc->pid, 4);
+    vga_puts("  ");
+    top_put_padded_u32(proc->parent_pid, 4);
+    vga_puts("  ");
+    vga_puts(process_state_name(proc->state));
+    vga_puts("   ");
+    top_put_padded_u32(cpu, 3);
+    vga_puts("%  ");
+    top_put_padded_u32(memory / 1024, 6);
+    vga_puts("K  ");
+    vga_puts(proc->path);
+    vga_putch('\n');
+}
+
+static void top_sort_processes(process_t **processes, u32 *cpus, u32 *memory_bytes, u32 count) {
+    for (u32 i = 1; i < count; i++) {
+        process_t *process = processes[i];
+        u32 process_cpu = cpus[i];
+        u32 process_memory = memory_bytes[i];
+        u32 position = i;
+
+        while (position > 0 &&
+               (cpus[position - 1] < process_cpu ||
+                (cpus[position - 1] == process_cpu && memory_bytes[position - 1] < process_memory) ||
+                (cpus[position - 1] == process_cpu && memory_bytes[position - 1] == process_memory &&
+                 processes[position - 1]->pid > process->pid))) {
+            processes[position] = processes[position - 1];
+            cpus[position] = cpus[position - 1];
+            memory_bytes[position] = memory_bytes[position - 1];
+            position--;
+        }
+        processes[position] = process;
+        cpus[position] = process_cpu;
+        memory_bytes[position] = process_memory;
+    }
+}
+
 static void print_process_table_once(void) {
     extern u32 pit_get_ticks(void);
     u32 now = pit_get_ticks();
+    process_t *processes[MAX_PROCESSES];
+    u32 cpus[MAX_PROCESSES];
+    u32 memory_bytes[MAX_PROCESSES];
     u32 visible = 0;
-    kprintf("PID   PPID  STATE   CPU%%  MEMORY   PATH\n");
-    kprintf("-----------------------------------------------\n");
+    vga_puts("PID   PPID  STATE   CPU%  MEMORY   PATH\n");
+    vga_puts("-----------------------------------------------\n");
 
     for (u32 i = 0; i < MAX_PROCESSES; i++) {
         process_t *proc = process_get_by_index(i);
@@ -46,23 +123,24 @@ static void print_process_table_once(void) {
             continue;
         }
 
-        u32 memory = process_get_memory_usage(proc);
+        u32 process_memory = process_get_memory_usage(proc);
         u32 cpu = process_cpu_percent(proc, now, i);
-        kprintf("%4u  %4u  %s   %3u%%  %6uK  %s\n",
-                proc->pid,
-                proc->parent_pid,
-                process_state_name(proc->state),
-            cpu,
-            memory / 1024,
-            proc->path);
+        processes[visible] = proc;
+        cpus[visible] = cpu;
+        memory_bytes[visible] = process_memory;
         visible++;
     }
 
+    top_sort_processes(processes, cpus, memory_bytes, visible);
+    for (u32 i = 0; i < visible; i++) {
+        top_put_process(processes[i], cpus[i], memory_bytes[i]);
+    }
+
     if (visible == 0) {
-        kprintf("No active processes\n");
+        vga_puts("No active processes\n");
     }
     top_previous_time = now;
-    kprintf("Press Ctrl+C to stop top\n");
+    vga_puts("Press Ctrl+C to stop top\n");
 }
 
 static u8 top_should_exit(void) {
@@ -70,7 +148,13 @@ static u8 top_should_exit(void) {
     u8 is_pressed = 0;
     u8 extended = 0;
 
-    while (keyboard_read_event(&scancode, &is_pressed, &extended)) {
+    if (keyboard_take_ctrl_c()) {
+        keyboard_clear_pending_input();
+        vga_puts("\nStopping top\n");
+        return 1;
+    }
+
+    while (keyboard_read_shell_event(&scancode, &is_pressed, &extended)) {
         if (!is_pressed || extended) {
             continue;
         }
@@ -112,6 +196,7 @@ u8 shell_top_command(const char *args, const char *current_dir) {
 
         vga_clear_no_update();
         print_process_table_once();
+        process_yield();
 
         for (volatile u32 i = 0; i < 2000000; i++) {
             if (top_should_exit()) {
