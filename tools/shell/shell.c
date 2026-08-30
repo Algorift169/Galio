@@ -30,6 +30,7 @@
 #include "syscall_cmd.h"
 #include "top.h"
 #include "user_syscall.h"
+#include "kernel_time.h"
 
 u8 shell_net_command(const char *args, const char *current_dir);
 u8 shell_pkg_command(const char *args, const char *current_dir);
@@ -1023,6 +1024,25 @@ static void shell_execute_command(void) {
     } else if (strcmp(input.buffer, "where") == 0) {
         SHELL_COLOR_CMD();
         shell_where_command("", current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "date") == 0) {
+        SHELL_COLOR_OUT();
+        DateTime dt = kernel_time_get_datetime();
+        static const char *day_names[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
+        static const char *month_names[] = {"","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+        /* compute day-of-week: Tomohiko Sakamoto */
+        int y2 = dt.year; int m2 = dt.month; int d2 = dt.day;
+        static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+        if (m2 < 3) y2--;
+        int dow = (y2 + y2/4 - y2/100 + y2/400 + t[m2-1] + d2) % 7;
+        kprintf("%s %s %02u %04u %02u:%02u:%02u\n",
+                day_names[dow], month_names[dt.month], dt.day, dt.year,
+                dt.hour, dt.minute, dt.second);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "time") == 0) {
+        SHELL_COLOR_OUT();
+        DateTime dt = kernel_time_get_datetime();
+        kprintf("%02u:%02u:%02u\n", dt.hour, dt.minute, dt.second);
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "clear", 5) == 0) {
         shell_cursor_restore();

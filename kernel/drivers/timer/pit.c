@@ -3,6 +3,7 @@
 #include "irq.h"
 #include "kprintf.h"
 #include "common.h"
+#include "time/galio_time.h"
 #include <stddef.h>
 
 #define PIT_FREQUENCY 1193182

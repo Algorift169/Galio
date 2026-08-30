@@ -29,6 +29,18 @@ static inline void disable_interrupts(void) {
     __asm__ volatile("cli");
 }
 
+static inline u64 irq_save(void) {
+    u64 flags;
+    __asm__ volatile("pushfq; popq %0; cli" : "=r"(flags) :: "memory");
+    return flags;
+}
+
+static inline void irq_restore(u64 flags) {
+    if (flags & (1ULL << 9)) {
+        __asm__ volatile("sti" ::: "memory");
+    }
+}
+
 static inline void halt(void) {
     __asm__ volatile("hlt");
 }

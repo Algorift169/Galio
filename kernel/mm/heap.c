@@ -1,5 +1,3 @@
-/* heap.c - Simple kernel heap allocator (uses paging and pmem) */
-/* heap.c - Simple kernel heap allocator (uses paging and pmem) */
 #include "heap.h"
 #include "pmem.h"
 #include "paging.h"

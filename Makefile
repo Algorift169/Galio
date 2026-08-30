@@ -78,7 +78,16 @@ SRCS = kernel/kmain.c \
        kernel/drivers/serial/serial.c \
        kernel/drivers/rtc/rtc.c \
        kernel/drivers/timer/pit.c \
-	kernel/time.c \
+       kernel/time.c \
+       kernel/time/jiffies.c \
+       kernel/time/clocksource.c \
+       kernel/time/clockevents.c \
+       kernel/time/ktimer.c \
+       kernel/time/hrtimer.c \
+       kernel/time/timekeeping.c \
+       kernel/time/sched_clock.c \
+       kernel/time/timeconv.c \
+       kernel/time/sleep_timeout.c \
        kernel/drivers/video/vga.c \
        kernel/drivers/video/fb.c \
        kernel/drivers/usb/usb.c \
