@@ -14,7 +14,8 @@ void cpu_scheduler_tick(registers_t *regs) {
         current->time_slice--;
     }
 
-    if (current->time_slice == 0 && current->state == PROCESS_RUNNING) {
+    if (regs && (regs->cs & 3) == 3 &&
+        current->time_slice == 0 && current->state == PROCESS_RUNNING) {
         current->time_slice = PROCESS_TIME_SLICE;
         process_preempt(regs);
     }

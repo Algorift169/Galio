@@ -41,7 +41,9 @@ void gdt_init(void) {
     gdt_set_gate(0, 0, 0, 0, 0);
     gdt_set_gate(1, 0, 0xFFFFFFFF, 0x9A, 0xAF);
     gdt_set_gate(2, 0, 0xFFFFFFFF, 0x92, 0xCF);
-    gdt_set_gate(3, 0, 0xFFFFFFFF, 0xFA, 0xAF);
+    /* User programs are ELF32 binaries; keep the kernel in 64-bit long mode
+     * while entering user code through a 32-bit compatibility segment. */
+    gdt_set_gate(3, 0, 0xFFFFFFFF, 0xFA, 0xCF);
     gdt_set_gate(4, 0, 0xFFFFFFFF, 0xF2, 0xCF);
 
     tss_init();

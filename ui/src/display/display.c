@@ -2,7 +2,9 @@
 #include "panel/panel.h"
 #include "mouse/cursor.h"
 #include "keyboard.h"
+#include "irq.h"
 #include "mouse/mouse.h"
+#include "arch/x86/cpu.h"
 #include "vga.h"
 #include "common.h"
 
@@ -26,11 +28,42 @@ void display_enter_userland_mode(void) {
 void display_enter_shell_mode(void) {
     panel_set_enabled(0);
     cursor_deactivate();
-    /* Re-enable PS/2 mouse data reporting so the shell can poll for scroll wheel
-       events. Only the visual mouse cursor is deactivated; the hardware device
-       keeps streaming packets. */
-    mouse_enable();
+
+    /*
+     * Do NOT call mouse_disable() here. mouse_init() is only invoked in
+     * display_enter_userland_mode() (the GUI path). If we reach here through
+     * the direct-boot shell path in kmain.c, the PS/2 aux port has never been
+     * initialised. Sending 0xF5 (disable data reporting) to an uninitialised
+     * aux port corrupts the PS/2 CCB read-back and ends up disabling the
+     * keyboard IRQ (bit 0), which silently kills all keystrokes in gsh.
+     *
+     * Instead, write a known-good CCB directly: keyboard IRQ enabled (bit 0),
+     * mouse IRQ disabled (bit 1), AT translation enabled (bit 6).
+     */
+    /* Drain any stale bytes first so the CCB read returns the real byte */
+    while (inb(0x64) & 0x01) { (void)inb(0x60); }
+
+    /* Write CCB: enable keyboard IRQ, enable mouse IRQ, enable translation */
+    while (inb(0x64) & 0x02);          /* wait for input buffer empty */
+    outb(0x64, 0x60);                   /* "Write Command Byte" */
+    while (inb(0x64) & 0x02);
+    outb(0x60, 0x41);   /* keyboard IRQ, both devices enabled, AT translation on */
+
+    /* Re-enable the keyboard port just in case it was disabled */
+    while (inb(0x64) & 0x02);
+    outb(0x64, 0xAE);   /* Enable first PS/2 port */
+
+    mouse_init();
+    /* GSH polls AUX data directly; keep mouse streaming for wheel events but
+     * leave IRQ 1 as the only active PS/2 input interrupt. */
+    while (inb(0x64) & 0x01) { (void)inb(0x60); }
+    while (inb(0x64) & 0x02);
+    outb(0x64, 0x60);
+    while (inb(0x64) & 0x02);
+    outb(0x60, 0x41);
     keyboard_reset_state();
+    keyboard_clear_pending_input();
+    irq_unmask(1);
     vga_clear();
     vga_disable_hardware_cursor();
 }

@@ -14,7 +14,8 @@ void scheduler_tick(registers_t *regs) {
             current->time_slice--;
         }
 
-        if (current->time_slice == 0 && current->state == PROCESS_RUNNING) {
+        if (regs && (regs->cs & 3) == 3 &&
+            current->time_slice == 0 && current->state == PROCESS_RUNNING) {
             current->time_slice = PROCESS_TIME_SLICE;
             process_preempt(regs);
         }
@@ -33,8 +34,8 @@ void scheduler_init(void) {
 u32 process_get_total_ticks(void) {
     u32 total = 0;
     
-    for (u32 pid = 1; pid <= MAX_PROCESSES; pid++) {
-        process_t *proc = process_get(pid);
+    for (u32 index = 0; index < MAX_PROCESSES; index++) {
+        process_t *proc = process_get_by_index(index);
         if (proc) {
             total += proc->ticks;
         }
@@ -43,8 +44,8 @@ u32 process_get_total_ticks(void) {
 }
 
 u32 process_get_idle_ticks(void) {
-    process_t *idle = process_get(0);
-    if (idle && idle->pid == 0) {
+    process_t *idle = process_get(1);
+    if (idle) {
         return idle->ticks;
     }
     return 0;

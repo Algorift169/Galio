@@ -7,6 +7,7 @@
 
 #define PAGE_SIZE             4096
 #define PAGE_ENTRIES          1024
+#define PAGE_TABLE_SLOTS      2048
 #define PAGE_DIRECTORY_SIZE   0x400000
 
 #define PAGE_PRESENT          0x001
@@ -28,7 +29,9 @@
 
 typedef struct {
     uintptr_t *directory;
-    uintptr_t *tables[PAGE_ENTRIES];
+    uintptr_t *pdpt;
+    uintptr_t *page_directory;
+    uintptr_t *tables[PAGE_TABLE_SLOTS];
 } page_directory_t;
 
 typedef enum {

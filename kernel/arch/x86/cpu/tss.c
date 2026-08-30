@@ -45,7 +45,7 @@ void enter_userspace(uintptr_t entry_point, uintptr_t user_stack) {
         "pushq %[ustack]\n"
         "pushfq\n"
         "orq $0x200, (%%rsp)\n"
-        "pushq $0x2B\n"
+        "pushq $0x1B\n"
         "pushq %[entry]\n"
         "iretq\n"
         :

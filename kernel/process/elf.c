@@ -24,15 +24,25 @@ static u8 elf_range_within_file(u32 offset, u32 length, u32 file_size) {
     return end <= file_size;
 }
 
-static u8 elf_user_range_valid(u32 vaddr, u32 memsz) {
+static u8 elf_range_valid(u32 vaddr, u32 memsz, u32 minimum) {
     u32 end;
     if (memsz == 0 || !checked_add_u32(vaddr, memsz - 1, &end)) {
         return 0;
     }
-    if (vaddr < USER_HEAP_START || end > USER_SPACE_END) {
+    if (vaddr < minimum || end > USER_SPACE_END) {
         return 0;
     }
     return 1;
+}
+
+static u8 elf_entry_valid(u32 vaddr) {
+    return elf_range_valid(vaddr, 1, USER_HEAP_START);
+}
+
+static u8 elf_segment_valid(u32 vaddr, u32 memsz) {
+    /* PT_LOAD ranges may begin one page below the image base after ELF
+     * page alignment; the process heap still begins at USER_HEAP_START. */
+    return elf_range_valid(vaddr, memsz, USER_HEAP_START - PAGE_SIZE);
 }
 
 static u8 elf_segment_overlaps(void *elf_data, elf_program_header_t *segment, u32 segment_index) {
@@ -92,7 +102,7 @@ u32 elf_load(void *elf_data, u32 elf_size) {
         kprintf("elf_load: Invalid ELF header sizes\n");
         return 0;
     }
-    if (!elf_user_range_valid(hdr->e_entry, 1)) {
+    if (!elf_entry_valid(hdr->e_entry)) {
         kprintf("elf_load: Entry point outside user space: 0x%x\n", hdr->e_entry);
         return 0;
     }
@@ -135,7 +145,7 @@ u32 elf_load(void *elf_data, u32 elf_size) {
             kprintf("elf_load: Segment %u file range outside ELF image\n", i);
             return 0;
         }
-        if (!elf_user_range_valid(vaddr, memsz)) {
+        if (!elf_segment_valid(vaddr, memsz)) {
             kprintf("elf_load: Segment %u maps outside user space\n", i);
             return 0;
         }

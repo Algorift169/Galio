@@ -14,6 +14,7 @@ void keyboard_reset_state(void);
 void keyboard_clear_pending_input(void);
 /* Returns 1 and fills scancode/is_pressed/extended if an event is available. */
 u8 keyboard_read_event(u8 *scancode, u8 *is_pressed, u8 *extended);
+u8 keyboard_read_shell_event(u8 *scancode, u8 *is_pressed, u8 *extended);
 u8 scancode_to_ascii(u8 scancode);
 
 /* Query current modifier state */

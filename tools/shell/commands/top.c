@@ -15,10 +15,30 @@ static const char *process_state_name(process_state_t state) {
     }
 }
 
+static u32 top_previous_ticks[MAX_PROCESSES];
+static u32 top_previous_time;
+
+static u32 process_cpu_percent(process_t *proc, u32 now, u32 index) {
+    u32 elapsed = now - top_previous_time;
+    u32 delta = proc->ticks - top_previous_ticks[index];
+    u32 percent = 0;
+
+    if (elapsed != 0) {
+        percent = (delta * 100) / elapsed;
+        if (percent > 100) {
+            percent = 100;
+        }
+    }
+    top_previous_ticks[index] = proc->ticks;
+    return percent;
+}
+
 static void print_process_table_once(void) {
+    extern u32 pit_get_ticks(void);
+    u32 now = pit_get_ticks();
     u32 visible = 0;
-    kprintf("PID   PPID  STATE     PRI  TICKS  CMD\n");
-    kprintf("----------------------------------------\n");
+    kprintf("PID   PPID  STATE   CPU%%  MEMORY   PATH\n");
+    kprintf("-----------------------------------------------\n");
 
     for (u32 i = 0; i < MAX_PROCESSES; i++) {
         process_t *proc = process_get_by_index(i);
@@ -26,19 +46,22 @@ static void print_process_table_once(void) {
             continue;
         }
 
-        kprintf("%4u  %4u  %-8s  %3u  %5u  %p\n",
+        u32 memory = process_get_memory_usage(proc);
+        u32 cpu = process_cpu_percent(proc, now, i);
+        kprintf("%4u  %4u  %s   %3u%%  %6uK  %s\n",
                 proc->pid,
                 proc->parent_pid,
                 process_state_name(proc->state),
-                proc->priority,
-                proc->ticks,
-                (void *)proc->stack);
+            cpu,
+            memory / 1024,
+            proc->path);
         visible++;
     }
 
     if (visible == 0) {
         kprintf("No active processes\n");
     }
+    top_previous_time = now;
     kprintf("Press Ctrl+C to stop top\n");
 }
 

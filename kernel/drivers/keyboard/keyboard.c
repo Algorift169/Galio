@@ -241,6 +241,19 @@ u8 keyboard_read_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
     return keyboard_poll_port_event(scancode, is_pressed, extended);
 }
 
+u8 keyboard_read_shell_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
+    /* Shell uses IRQ-driven queue exclusively. Now that the PS/2 CCB has been
+     * correctly configured (keyboard IRQ enabled, AT translation on), the IRQ
+     * handler is the sole reader of port 0x60. Falling back to direct port
+     * polling would read the same byte the IRQ handler already consumed and
+     * produce a duplicate keystroke (every key appearing twice). */
+    u8 result;
+    u32 flags = irq_save();
+    result = keyboard_dequeue(scancode, is_pressed, extended);
+    irq_restore(flags);
+    return result;
+}
+
 u8 scancode_to_ascii(u8 scancode) {
     if (scancode < 128) {
         return shift_pressed ? scancode_table_shift[scancode] : scancode_table[scancode];

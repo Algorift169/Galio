@@ -81,6 +81,7 @@ typedef struct {
     u32 burst_time;
     u32 arrival_order;
     u32 ticks;
+    u32 memory_bytes;
     u32 time_slice;
     u32 fd_table[PROCESS_MAX_FDS];
     u32 heap_start;
@@ -93,6 +94,7 @@ typedef struct {
     u32 gid;
     u32 pending_signals;
     u32 exit_code;
+    char path[PROCESS_PATH_MAX];
     /* Kernel stack physical base (0 if allocated from kmalloc) */
     u32 kernel_stack_phys;
 } process_t;
@@ -107,6 +109,8 @@ void process_exit(i32 code);
 process_t *process_get(u32 pid);
 process_t *process_get_any(u32 pid);
 process_t *process_get_by_index(u32 index);
+u32 process_get_memory_usage(process_t *proc);
+void process_set_path(process_t *proc, const char *path);
 process_t *process_find_child(u32 parent_pid, i32 pid);
 process_t *process_find_any_child(u32 parent_pid);
 void process_free_address_space(process_t *proc);

@@ -1227,7 +1227,7 @@ static void shell_poll_keyboard(void) {
     u8 is_pressed;
     u8 extended;
 
-    if (keyboard_read_event(&scancode, &is_pressed, &extended)) {
+    if (keyboard_read_shell_event(&scancode, &is_pressed, &extended)) {
         if (!is_pressed) {
             return;
         }
@@ -1306,10 +1306,11 @@ void shell_run(void) {
 
     shell_print_prompt();
     shell_cursor_reset();
+    enable_interrupts();
 
     while (!shell_should_exit) {
-        shell_poll_mouse();
         shell_poll_keyboard();
+        shell_poll_mouse();
         for (volatile int i = 0; i < 100; i++);
     }
 

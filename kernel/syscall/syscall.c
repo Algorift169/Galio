@@ -259,6 +259,8 @@ static u32 syscall_fork(void) {
     process_t *child = process_get(child_pid);
     if (!child) return -1;
 
+    process_set_path(child, current->path);
+
     /* Copy parent's register state */
     memcpy(&child->regs, &current->regs, sizeof(register_state_t));
 
@@ -351,6 +353,8 @@ static i32 syscall_exec(const char *path) {
         return -1;
     }
 
+    process_set_path(current, resolved);
+
     /* Switch to user mode */
     current->regs.eip = entry;
     current->regs.esp = USER_STACK_TOP;  /* Kernel stack top for the process */
@@ -376,7 +380,7 @@ static i32 syscall_exec(const char *path) {
         "pushq %0\n"
         "pushfq\n"
         "orq $0x200, (%%rsp)\n"
-        "pushq $0x2B\n"
+        "pushq $0x1B\n"
         "pushq %1\n"
         "iretq\n"
         : : "r"(current->regs.user_esp), "r"((uintptr_t)entry)

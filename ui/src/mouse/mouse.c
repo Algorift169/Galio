@@ -245,14 +245,18 @@ void mouse_disable(void) {
     mouse_send_data(0xF5);  /* Disable data reporting */
     mouse_buttons = 0;
 
+    mouse_flush_port();
     ps2_wait_input();
     outb(PS2_COMMAND_PORT, PS2_CMD_DISABLE_AUX);
 
+    mouse_flush_port();
     ps2_wait_input();
     outb(PS2_COMMAND_PORT, PS2_CMD_READ_BYTE);
     ps2_wait_output();
     u8 command_byte = inb(PS2_DATA_PORT);
+    
     command_byte &= ~0x02;  /* Disable auxiliary (mouse) IRQ */
+    command_byte |= 0x01;   /* Ensure keyboard IRQ remains enabled */
 
     ps2_wait_input();
     outb(PS2_COMMAND_PORT, PS2_CMD_WRITE_BYTE);
@@ -268,13 +272,14 @@ void mouse_enable(void) {
     for (volatile int i = 0; i < 1000; i++);
 
     /* Read current command byte */
+    mouse_flush_port();
     ps2_wait_input();
     outb(PS2_COMMAND_PORT, PS2_CMD_READ_BYTE);
     ps2_wait_output();
     u8 command_byte = inb(PS2_DATA_PORT);
 
-    /* Enable mouse IRQ (bit 1) while keeping keyboard IRQ (bit 0) */
-    command_byte |= 0x02;
+    /* Enable mouse IRQ (bit 1) and keyboard IRQ (bit 0) */
+    command_byte |= 0x03;
 
     /* Write back command byte */
     ps2_wait_input();

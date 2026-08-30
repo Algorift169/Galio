@@ -390,21 +390,25 @@ void kmain(void *multiboot_ptr) {
 
     auth_bootstrap();
 
-    display_enter_shell_mode();
-    shell_run();
-
-    /* Create init process early so the embedded ELF gets scheduled */
+    /* Register init before the interactive shell so top can see it. */
     u32 init_pid = process_create(init_main, 1);
     if (!init_pid) {
         kprintf("Failed to create init process!\n");
-        for(;;);
+        for (;;) {
+            __asm__ volatile("hlt");
+        }
     }
+    process_set_path(process_get(init_pid), "/sbin/init");
 
-    /* Keep interrupts enabled */
+    /* The shell runs in the boot process context. Enable timer and keyboard
+     * interrupts before entering it so scheduling and CPU accounting work. */
     __asm__ volatile("sti");
-    
-    /* Unmask keyboard IRQ */
     irq_unmask(1);
+
+    display_enter_shell_mode();
+    process_set_path(process_current(), "/bin/gsh");
+    enable_interrupts();
+    shell_run();
 
     for (;;) {
         __asm__ volatile("hlt");

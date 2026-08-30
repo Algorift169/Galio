@@ -98,6 +98,7 @@ void process_init(void) {
     /* Create idle process */
     process_create(idle_main, 0);
     current_process = &processes[1];
+    process_set_path(current_process, "/kernel/boot-shell");
     current_process->state = PROCESS_RUNNING;
     current_process->time_slice = PROCESS_TIME_SLICE;
     tss_set_kernel_stack((uintptr_t)current_process->stack + current_process->stack_size - 8);
@@ -137,6 +138,7 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->burst_time = priority == 0 ? 1 : priority;
     proc->arrival_order = next_arrival_order++;
     proc->ticks = 0;
+    proc->memory_bytes = 0;
     proc->pagedir = paging_create_user_directory();
     if (!proc->pagedir) {
         spin_unlock(&process_table_lock);
@@ -188,6 +190,8 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->exit_code = 0;
     strncpy(proc->cwd, "/", PROCESS_PATH_MAX - 1);
     proc->cwd[PROCESS_PATH_MAX - 1] = 0;
+    strncpy(proc->path, "/kernel/process", PROCESS_PATH_MAX - 1);
+    proc->path[PROCESS_PATH_MAX - 1] = 0;
 
     /* Initialize mmap regions */
     for (u32 i = 0; i < PROCESS_MAX_MMAPS; i++) {
@@ -226,6 +230,7 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->stack = (uintptr_t *)phys;
     proc->stack_size = stack_frames * PAGE_SIZE;
     proc->kernel_stack_phys = phys;
+    proc->memory_bytes = stack_frames * PAGE_SIZE;
 
     /* Initialize stack and registers */
     uintptr_t stack_top = (uintptr_t)proc->stack + proc->stack_size - 8;
@@ -273,17 +278,25 @@ void process_free_address_space(process_t *proc) {
     page_directory_t *pd = proc->pagedir;
     
     /* Walk page directory and free all user pages */
-    for (u32 pd_idx = 0; pd_idx < 1024; pd_idx++) {
-        uintptr_t pde = pd->directory[pd_idx];
+    for (u32 table_slot = 0; table_slot < PAGE_TABLE_SLOTS; table_slot++) {
+        uintptr_t pde = pd->page_directory[table_slot];
         if (!(pde & PAGE_PRESENT) || !(pde & PAGE_USER)) {
             /* Skip kernel/shared page tables and non-present entries */
             continue;
         }
 
-        uintptr_t *pt = pd->tables[pd_idx];
+        uintptr_t *pt = pd->tables[table_slot];
         if (!pt) continue;
+        u8 duplicate = 0;
+        for (u32 previous = 0; previous < table_slot; previous++) {
+            if (pd->tables[previous] == pt) {
+                duplicate = 1;
+                break;
+            }
+        }
+        if (duplicate) continue;
 
-        for (u32 pt_idx = 0; pt_idx < 1024; pt_idx++) {
+        for (u32 pt_idx = 0; pt_idx < 512; pt_idx++) {
             uintptr_t pte = pt[pt_idx];
             if (!(pte & PAGE_PRESENT)) continue;
             
@@ -303,6 +316,12 @@ void process_free_address_space(process_t *proc) {
     uintptr_t pd_phys = (uintptr_t)pd->directory;
     if (pd_phys) {
         pmem_free(pd_phys, 1);
+    }
+    if (pd->pdpt) {
+        pmem_free((uintptr_t)pd->pdpt, 1);
+    }
+    if (pd->page_directory) {
+        pmem_free((uintptr_t)pd->page_directory, 4);
     }
     proc->pagedir = NULL;
 }
@@ -331,6 +350,7 @@ static void process_cleanup(process_t *proc) {
     }
     proc->pid = 0;
     proc->state = PROCESS_ZOMBIE;
+    proc->memory_bytes = 0;
     proc->mmap_count = 0;
     proc->heap_start = USER_HEAP_START;
     proc->brk = USER_HEAP_START;
@@ -467,7 +487,8 @@ void process_preempt(registers_t *regs) {
     process_handle_pending_signals(current_process);
     save_current_registers(regs);
     process_t *next = find_next_ready_process();
-    if (!next || next == current_process) {
+    if (!next || next == current_process ||
+        ((next->regs.cs & 3) != (regs->cs & 3))) {
         current_process->time_slice = PROCESS_TIME_SLICE;
         return;
     }
@@ -554,6 +575,48 @@ process_t *process_get_by_index(u32 index) {
     }
 
     return proc;
+}
+
+u32 process_get_memory_usage(process_t *proc) {
+    u32 pages = 0;
+
+    if (!proc || proc->state == PROCESS_ZOMBIE) {
+        return 0;
+    }
+
+    if (proc->pagedir) {
+        page_directory_t *pd = (page_directory_t *)proc->pagedir;
+        for (u32 table_slot = 0; table_slot < PAGE_TABLE_SLOTS; table_slot++) {
+            if (!(pd->page_directory[table_slot] & PAGE_PRESENT) ||
+                !(pd->page_directory[table_slot] & PAGE_USER) || !pd->tables[table_slot]) {
+                continue;
+            }
+            u8 duplicate = 0;
+            for (u32 previous = 0; previous < table_slot; previous++) {
+                if (pd->tables[previous] == pd->tables[table_slot]) {
+                    duplicate = 1;
+                    break;
+                }
+            }
+            if (duplicate) continue;
+            for (u32 pt_idx = 0; pt_idx < 512; pt_idx++) {
+                if (pd->tables[table_slot][pt_idx] & PAGE_PRESENT) {
+                    pages++;
+                }
+            }
+        }
+    }
+
+    proc->memory_bytes = (pages * PAGE_SIZE) + proc->stack_size;
+    return proc->memory_bytes;
+}
+
+void process_set_path(process_t *proc, const char *path) {
+    if (!proc || !path) {
+        return;
+    }
+    strncpy(proc->path, path, PROCESS_PATH_MAX - 1);
+    proc->path[PROCESS_PATH_MAX - 1] = 0;
 }
 
 process_t *process_get_any(u32 pid) {

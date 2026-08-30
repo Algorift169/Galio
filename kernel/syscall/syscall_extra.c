@@ -267,6 +267,8 @@ u32 syscall_execve(const char *path, char *const argv[], char *const envp[]) {
         return (u32)-1;
     }
 
+    process_set_path(proc, resolved);
+
     proc->regs.rip = entry;
     proc->regs.rsp = USER_STACK_TOP;
     proc->regs.user_rsp = USER_STACK_TOP;
