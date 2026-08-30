@@ -2,8 +2,6 @@
  *
  * clockevents.c - Clock event device abstraction for the Galio kernel.
  *
- * Linux analogue: kernel/time/clockevents.c
- *
  * Handles the registration of hardware timers (e.g., PIT, APIC timer)
  * and dispatches their ticks to the high-level timing subsystems (ktimer/hrtimer).
  */
@@ -14,7 +12,6 @@ static galio_clock_event_t *active_clock_event = NULL;
 
 /* ------------------------------------------------------------------
  * galio_clockevents_register - register a clock event device.
- * Linux equivalent: clockevents_register_device()
  * ------------------------------------------------------------------ */
 void galio_clockevents_register(galio_clock_event_t *dev)
 {
@@ -31,7 +28,6 @@ void galio_clockevents_register(galio_clock_event_t *dev)
 /* ------------------------------------------------------------------
  * galio_clockevents_tick - the main tick handler.
  * Called from the hardware timer interrupt (e.g., PIT).
- * Linux equivalent: tick_handle_periodic() / tick_handle_oneshot()
  * ------------------------------------------------------------------ */
 void galio_clockevents_tick(void)
 {

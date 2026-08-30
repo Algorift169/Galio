@@ -2,14 +2,8 @@
  *
  * galio_time.h - Master header for the Galio kernel time subsystem.
  *
- * Inspired by Linux kernel/time/. Provides:
- *  - galio_timespec64 / galio_ktime_t   (linux: timespec64 / ktime_t)
- *  - galio_jiffies                       (linux: jiffies / get_jiffies_64)
- *  - galio_clocksource                   (linux: clocksource)
- *  - galio_clock_event                   (linux: clock_event_device)
- *  - galio_ktimer                        (linux: timer_list)
- *  - galio_hrtimer                       (linux: hrtimer)
- *  - sleep helpers                       (linux: msleep / usleep_range)
+ * This header provides the Galio equivalents of common kernel timing concepts,
+ * including nanosecond timestamps, jiffies, clock abstractions, and timers.
  */
 
 #ifndef GALIO_TIME_H
@@ -20,20 +14,18 @@
 
 /* =========================================================
  * 1. Basic time types
- * linux analogue: <linux/time.h>, <linux/ktime.h>
  * ========================================================= */
 
-/* 64-bit nanosecond timestamp (monotonic). Same role as ktime_t in Linux. */
+/* 64-bit nanosecond timestamp (monotonic). */
 typedef s64 galio_ktime_t;
 
-/* Broken-down time with nanosecond precision.
- * Linux equivalent: struct timespec64. */
+/* Broken-down time with nanosecond precision. */
 typedef struct {
     s64 tv_sec;   /* seconds since epoch */
     s32 tv_nsec;  /* nanoseconds [0, 999999999] */
 } galio_timespec64;
 
-/* Day-of-week/year extension of DateTime (linux: struct tm). */
+/* Day-of-week/year extension of DateTime. */
 typedef struct {
     int tm_sec;
     int tm_min;
@@ -94,7 +86,7 @@ static inline s64 galio_ktime_to_ns(galio_ktime_t kt)
 }
 
 /* =========================================================
- * 2. Jiffies  (linux: jiffies.c / jiffies.h)
+ * 2. Jiffies
  * ========================================================= */
 
 #define GALIO_HZ           100u   /* PIT configured at 100 Hz */
@@ -111,7 +103,7 @@ int  galio_time_before(u64 a, u64 b);  /* a < b */
 void galio_jiffies_init(void);
 
 /* =========================================================
- * 3. Clocksource abstraction  (linux: clocksource.c)
+ * 3. Clocksource abstraction
  * ========================================================= */
 
 #define GALIO_CLOCKSOURCE_NAME_LEN 32
@@ -134,7 +126,7 @@ u64  galio_clocksource_cyc2ns(struct galio_clocksource *cs, u64 cycles);
 void galio_clocksource_init(void);
 
 /* =========================================================
- * 4. Clock-event abstraction  (linux: clockevents.c)
+ * 4. Clock-event abstraction
  * ========================================================= */
 
 typedef void (*galio_clock_event_handler_t)(void *data);
@@ -154,8 +146,7 @@ void galio_clockevents_tick(void);         /* call from PIT IRQ */
 void galio_clockevents_init(void);
 
 /* =========================================================
- * 5. Low-resolution kernel timers  (linux: timer.c)
- * timer_list equivalent: galio_ktimer_t
+ * 5. Low-resolution kernel timers
  * ========================================================= */
 
 struct galio_ktimer;
@@ -177,7 +168,7 @@ void galio_ktimer_run_pending(void);   /* called from PIT tick */
 void galio_ktimer_subsystem_init(void);
 
 /* =========================================================
- * 6. High-resolution timers  (linux: hrtimer.c)
+ * 6. High-resolution timers
  * ========================================================= */
 
 typedef enum {
@@ -204,7 +195,7 @@ void galio_hrtimer_run_queues(void);   /* call from PIT tick */
 void galio_hrtimer_subsystem_init(void);
 
 /* =========================================================
- * 7. Monotonic / wall-clock reads  (linux: timekeeping.c)
+ * 7. Monotonic / wall-clock reads
  * ========================================================= */
 
 galio_ktime_t    galio_ktime_get(void);          /* monotonic ns since boot */
@@ -215,14 +206,14 @@ u64              galio_ktime_get_boot_ns(void);  /* boot time in ns */
 void             galio_timekeeping_init(void);
 
 /* =========================================================
- * 8. Scheduler clock  (linux: sched_clock.c)
+ * 8. Scheduler clock
  * ========================================================= */
 
 u64 galio_sched_clock_ns(void);   /* monotonic ns, cheap, for scheduler use */
 void galio_sched_clock_init(void);
 
 /* =========================================================
- * 9. Time conversion utilities  (linux: timeconv.c)
+ * 9. Time conversion utilities
  * ========================================================= */
 
 void galio_time64_to_tm(s64 totalsecs, int offset, galio_tm *result);
@@ -231,7 +222,7 @@ galio_timespec64 galio_ns_to_timespec64(s64 ns);
 s64  galio_timespec64_to_ns(const galio_timespec64 *ts);
 
 /* =========================================================
- * 10. Sleep helpers  (linux: sleep_timeout.c)
+ * 10. Sleep helpers
  * ========================================================= */
 
 void galio_msleep(u32 msecs);

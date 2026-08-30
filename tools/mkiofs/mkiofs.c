@@ -229,7 +229,7 @@ static file_spec_t files[] = {
         "# and Bourne compatible shells (bash(1), ksh(1), pdksh(1), etc.)\n"
         "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/bin\n"
         "export LANG=en_US.UTF-8\n"
-        "export TERM=linux\n",
+        "export TERM=xterm\n",
         220, 0},
 
     {"./etc/bashrc",
@@ -387,7 +387,7 @@ static file_spec_t files[] = {
         98, 0},
 
     {"./var/log/dmesg",
-        "[    0.000000] Linux version (built for x86 32-bit)\n"
+        "[    0.000000] Galio version (built for x86 32-bit)\n"
         "[    0.000000] Command line: \n"
         "[    0.000000] BIOS-provided physical RAM map:\n"
         "[    0.000000] BIOS-e820: [mem 0x0000000000000000-0x000000000009fbff] usable\n",

@@ -133,6 +133,11 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/syscall.c \
        tools/shell/commands/top.c \
 	tools/shell/commands/where.c \
+       tools/shell/commands/socket.c \
+       tools/shell/commands/semtest.c \
+       tools/shell/commands/shmtest.c \
+       tools/shell/commands/sigtest.c \
+       tools/shell/commands/pread.c \
        tools/shell/editor/editor.c
 
 # Object files

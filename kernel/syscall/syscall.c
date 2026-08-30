@@ -26,6 +26,46 @@ static void *syscall_mmap(void *addr, u32 length, i32 prot, i32 flags, i32 fd, u
 static i32 syscall_munmap(void *addr, u32 length);
 static void *syscall_brk(void *addr);
 
+/* Extended syscall declarations from syscall_extra.c */
+extern i32 syscall_lstat(const char *path, struct stat *statbuf);
+extern i32 syscall_mprotect(void *addr, u32 len, i32 prot);
+extern i64 syscall_pread64(u32 fd, void *buf, u32 count, u64 offset);
+extern i64 syscall_pwrite64(u32 fd, const void *buf, u32 count, u64 offset);
+extern i32 syscall_readv(u32 fd, void *iov, i32 iovcnt);
+extern i32 syscall_writev(u32 fd, const void *iov, i32 iovcnt);
+extern i32 syscall_select(i32 nfds, void *readfds, void *writefds, void *exceptfds, struct timespec *timeout);
+extern i32 syscall_sched_yield(void);
+extern i32 syscall_pause(void);
+extern i32 syscall_socket(i32 domain, i32 type, i32 protocol);
+extern i32 syscall_connect(i32 sockfd, const void *addr, u32 addrlen);
+extern i32 syscall_accept(i32 sockfd, void *addr, u32 *addrlen);
+extern i32 syscall_sendto(i32 sockfd, const void *buf, u32 len, i32 flags, const void *dest_addr, u32 addrlen);
+extern i32 syscall_recvfrom(i32 sockfd, void *buf, u32 len, i32 flags, void *src_addr, u32 *addrlen);
+extern i32 syscall_sendmsg(i32 sockfd, const void *msg, i32 flags);
+extern i32 syscall_recvmsg(i32 sockfd, void *msg, i32 flags);
+extern i32 syscall_shutdown(i32 sockfd, i32 how);
+extern i32 syscall_bind(i32 sockfd, const void *addr, u32 addrlen);
+extern i32 syscall_listen(i32 sockfd, i32 backlog);
+extern i32 syscall_getsockname(i32 sockfd, void *addr, u32 *addrlen);
+extern i32 syscall_getpeername(i32 sockfd, void *addr, u32 *addrlen);
+extern i32 syscall_socketpair(i32 domain, i32 type, i32 protocol, i32 *sv);
+extern i32 syscall_setsockopt(i32 sockfd, i32 level, i32 optname, const void *optval, u32 optlen);
+extern i32 syscall_getsockopt(i32 sockfd, i32 level, i32 optname, void *optval, u32 *optlen);
+extern u32 syscall_clone(u32 flags, void *stack, i32 *ptid, void *tls, i32 *ctid);
+extern u32 syscall_vfork(void);
+extern i32 syscall_wait4(i32 pid, i32 *wstatus, i32 options, void *rusage);
+extern i32 syscall_semget(u32 key, i32 nsems, i32 semflg);
+extern i32 syscall_semop(i32 semid, void *sops, u32 nsops);
+extern i32 syscall_semctl(i32 semid, i32 semnum, i32 cmd, void *arg);
+extern void *syscall_shmat(i32 shmid, const void *shmaddr, i32 shmflg);
+extern i32 syscall_shmdt(const void *shmaddr);
+extern i32 syscall_shmget(u32 key, u32 size, i32 shmflg);
+extern i32 syscall_shmctl(i32 shmid, i32 cmd, void *buf);
+extern i32 syscall_rt_sigaction(i32 sig, const void *act, void *oldact, u32 sigsetsize);
+extern i32 syscall_rt_sigprocmask(i32 how, const void *set, void *oldset, u32 sigsetsize);
+extern i32 syscall_rt_sigreturn(void);
+extern i32 syscall_sysinfo(void *info);
+
 #define USER_STRING_MAX PROCESS_PATH_MAX
 #define SIMPLE_STAT_SIZE (sizeof(u32) * 6)
 
@@ -105,9 +145,12 @@ static void syscall_handler(registers_t *regs) {
         case SYS_CLOSE: name = "close"; break;
         case SYS_LSEEK: name = "lseek"; break;
         case SYS_STAT: name = "stat"; break;
+        case SYS_FSTAT: name = "fstat"; break;
+        case SYS_LSTAT: name = "lstat"; break;
         case SYS_MMAP: name = "mmap"; break;
         case SYS_MUNMAP: name = "munmap"; break;
         case SYS_BRK: name = "brk"; break;
+        case SYS_MPROTECT: name = "mprotect"; break;
         case SYS_EXECVE: name = "execve"; break;
         case SYS_PIPE: name = "pipe"; break;
         case SYS_DUP: name = "dup"; break;
@@ -118,6 +161,55 @@ static void syscall_handler(registers_t *regs) {
         case SYS_GETTIMEOFDAY: name = "gettimeofday"; break;
         case SYS_GETUID: name = "getuid"; break;
         case SYS_GETGID: name = "getgid"; break;
+        case SYS_GETEUID: name = "geteuid"; break;
+        case SYS_GETEGID: name = "getegid"; break;
+        case SYS_GETPPID: name = "getppid"; break;
+        case SYS_KILL: name = "kill"; break;
+        case SYS_UNAME: name = "uname"; break;
+        case SYS_READLINK: name = "readlink"; break;
+        case SYS_ACCESS: name = "access"; break;
+        case SYS_CLOCK_GETTIME: name = "clock_gettime"; break;
+        case SYS_NANOSLEEP: name = "nanosleep"; break;
+        case SYS_IOCTL: name = "ioctl"; break;
+        case SYS_POLL: name = "poll"; break;
+        case SYS_PREAD64: name = "pread64"; break;
+        case SYS_PWRITE64: name = "pwrite64"; break;
+        case SYS_READV: name = "readv"; break;
+        case SYS_WRITEV: name = "writev"; break;
+        case SYS_SELECT: name = "select"; break;
+        case SYS_SCHED_YIELD: name = "sched_yield"; break;
+        case SYS_PAUSE: name = "pause"; break;
+        case SYS_SOCKET: name = "socket"; break;
+        case SYS_CONNECT: name = "connect"; break;
+        case SYS_ACCEPT: name = "accept"; break;
+        case SYS_SENDTO: name = "sendto"; break;
+        case SYS_RECVFROM: name = "recvfrom"; break;
+        case SYS_SENDMSG: name = "sendmsg"; break;
+        case SYS_RECVMSG: name = "recvmsg"; break;
+        case SYS_SHUTDOWN: name = "shutdown"; break;
+        case SYS_BIND: name = "bind"; break;
+        case SYS_LISTEN: name = "listen"; break;
+        case SYS_GETSOCKNAME: name = "getsockname"; break;
+        case SYS_GETPEERNAME: name = "getpeername"; break;
+        case SYS_SOCKETPAIR: name = "socketpair"; break;
+        case SYS_SETSOCKOPT: name = "setsockopt"; break;
+        case SYS_GETSOCKOPT: name = "getsockopt"; break;
+        case SYS_CLONE: name = "clone"; break;
+        case SYS_VFORK: name = "vfork"; break;
+        case SYS_WAIT4: name = "wait4"; break;
+        case SYS_WAIT: name = "wait"; break;
+        case SYS_SEMGET: name = "semget"; break;
+        case SYS_SEMOP: name = "semop"; break;
+        case SYS_SEMCTL: name = "semctl"; break;
+        case SYS_SHMDT: name = "shmdt"; break;
+        case SYS_SHMGET: name = "shmget"; break;
+        case SYS_SHMAT: name = "shmat"; break;
+        case SYS_SHMCTL: name = "shmctl"; break;
+        case SYS_RT_SIGACTION: name = "rt_sigaction"; break;
+        case SYS_RT_SIGPROCMASK: name = "rt_sigprocmask"; break;
+        case SYS_RT_SIGRETURN: name = "rt_sigreturn"; break;
+        case SYS_SYSINFO: name = "sysinfo"; break;
+        case SYS_MMAP2: name = "mmap2"; break;
     }
     kprintf("[SYSCALL] pid=%u nr=%llu %s()\n", process_current() ? process_current()->pid : 0, (unsigned long long)syscall_num, name);
 #endif
@@ -207,6 +299,54 @@ static void syscall_handler(registers_t *regs) {
             regs->rax = syscall_getgid();
             break;
 
+        case SYS_GETEUID:
+            regs->rax = syscall_geteuid();
+            break;
+
+        case SYS_GETEGID:
+            regs->rax = syscall_getegid();
+            break;
+
+        case SYS_GETPPID:
+            regs->rax = syscall_getppid();
+            break;
+
+        case SYS_KILL:
+            regs->rax = syscall_kill((u32)arg1, (i32)arg2);
+            break;
+
+        case SYS_UNAME:
+            regs->rax = syscall_uname((struct utsname *)arg1);
+            break;
+
+        case SYS_ACCESS:
+            regs->rax = syscall_access((const char *)arg1, (i32)arg2);
+            break;
+
+        case SYS_FSTAT:
+            regs->rax = syscall_fstat((int)arg1, (struct stat *)arg2);
+            break;
+
+        case SYS_READLINK:
+            regs->rax = syscall_readlink((const char *)arg1, (char *)arg2, (u32)arg3);
+            break;
+
+        case SYS_CLOCK_GETTIME:
+            regs->rax = syscall_clock_gettime((i32)arg1, (void *)arg2);
+            break;
+
+        case SYS_NANOSLEEP:
+            regs->rax = syscall_nanosleep((const struct timespec *)arg1, (struct timespec *)arg2);
+            break;
+
+        case SYS_IOCTL:
+            regs->rax = syscall_ioctl((u32)arg1, (u32)arg2, (void *)arg3);
+            break;
+
+        case SYS_POLL:
+            regs->rax = syscall_poll((void *)arg1, (u32)arg2, (i32)arg3);
+            break;
+
         case SYS_OPEN:
             regs->rax = syscall_open((const char *)arg1, (i32)arg2);
             break;
@@ -237,6 +377,166 @@ static void syscall_handler(registers_t *regs) {
 
         case SYS_BRK:
             regs->rax = (uintptr_t)syscall_brk((void *)arg1);
+            break;
+
+        case SYS_LSTAT:
+            regs->rax = syscall_lstat((const char *)arg1, (struct stat *)arg2);
+            break;
+
+        case SYS_MPROTECT:
+            regs->rax = syscall_mprotect((void *)arg1, (u32)arg2, (i32)arg3);
+            break;
+
+        case SYS_PREAD64:
+            regs->rax = syscall_pread64((u32)arg1, (void *)arg2, (u32)arg3, (u64)arg4);
+            break;
+
+        case SYS_PWRITE64:
+            regs->rax = syscall_pwrite64((u32)arg1, (const void *)arg2, (u32)arg3, (u64)arg4);
+            break;
+
+        case SYS_READV:
+            regs->rax = syscall_readv((u32)arg1, (void *)arg2, (i32)arg3);
+            break;
+
+        case SYS_WRITEV:
+            regs->rax = syscall_writev((u32)arg1, (const void *)arg2, (i32)arg3);
+            break;
+
+        case SYS_SELECT:
+            regs->rax = syscall_select((i32)arg1, (void *)arg2, (void *)arg3, (void *)arg4, (struct timespec *)arg5);
+            break;
+
+        case SYS_SCHED_YIELD:
+            regs->rax = syscall_sched_yield();
+            break;
+
+        case SYS_PAUSE:
+            regs->rax = syscall_pause();
+            break;
+
+        case SYS_SOCKET:
+            regs->rax = syscall_socket((i32)arg1, (i32)arg2, (i32)arg3);
+            break;
+
+        case SYS_CONNECT:
+            regs->rax = syscall_connect((i32)arg1, (const void *)arg2, (u32)arg3);
+            break;
+
+        case SYS_ACCEPT:
+            regs->rax = syscall_accept((i32)arg1, (void *)arg2, (u32 *)arg3);
+            break;
+
+        case SYS_SENDTO:
+            regs->rax = syscall_sendto((i32)arg1, (const void *)arg2, (u32)arg3, (i32)arg4, (const void *)arg5, (u32)arg6);
+            break;
+
+        case SYS_RECVFROM:
+            regs->rax = syscall_recvfrom((i32)arg1, (void *)arg2, (u32)arg3, (i32)arg4, (void *)arg5, (u32 *)arg6);
+            break;
+
+        case SYS_SENDMSG:
+            regs->rax = syscall_sendmsg((i32)arg1, (const void *)arg2, (i32)arg3);
+            break;
+
+        case SYS_RECVMSG:
+            regs->rax = syscall_recvmsg((i32)arg1, (void *)arg2, (i32)arg3);
+            break;
+
+        case SYS_SHUTDOWN:
+            regs->rax = syscall_shutdown((i32)arg1, (i32)arg2);
+            break;
+
+        case SYS_BIND:
+            regs->rax = syscall_bind((i32)arg1, (const void *)arg2, (u32)arg3);
+            break;
+
+        case SYS_LISTEN:
+            regs->rax = syscall_listen((i32)arg1, (i32)arg2);
+            break;
+
+        case SYS_GETSOCKNAME:
+            regs->rax = syscall_getsockname((i32)arg1, (void *)arg2, (u32 *)arg3);
+            break;
+
+        case SYS_GETPEERNAME:
+            regs->rax = syscall_getpeername((i32)arg1, (void *)arg2, (u32 *)arg3);
+            break;
+
+        case SYS_SOCKETPAIR:
+            regs->rax = syscall_socketpair((i32)arg1, (i32)arg2, (i32)arg3, (i32 *)arg4);
+            break;
+
+        case SYS_SETSOCKOPT:
+            regs->rax = syscall_setsockopt((i32)arg1, (i32)arg2, (i32)arg3, (const void *)arg4, (u32)arg5);
+            break;
+
+        case SYS_GETSOCKOPT:
+            regs->rax = syscall_getsockopt((i32)arg1, (i32)arg2, (i32)arg3, (void *)arg4, (u32 *)arg5);
+            break;
+
+        case SYS_CLONE:
+            regs->rax = syscall_clone((u32)arg1, (void *)arg2, (i32 *)arg3, (void *)arg4, (i32 *)arg5);
+            break;
+
+        case SYS_VFORK:
+            regs->rax = syscall_vfork();
+            break;
+
+        case SYS_WAIT4:
+            regs->rax = syscall_wait4((i32)arg1, (i32 *)arg2, (i32)arg3, (void *)arg4);
+            break;
+
+        case SYS_WAIT:
+            regs->rax = syscall_waitpid((i32)arg1);
+            break;
+
+        case SYS_SEMGET:
+            regs->rax = syscall_semget((u32)arg1, (i32)arg2, (i32)arg3);
+            break;
+
+        case SYS_SEMOP:
+            regs->rax = syscall_semop((i32)arg1, (void *)arg2, (u32)arg3);
+            break;
+
+        case SYS_SEMCTL:
+            regs->rax = syscall_semctl((i32)arg1, (i32)arg2, (i32)arg3, (void *)arg4);
+            break;
+
+        case SYS_SHMDT:
+            regs->rax = syscall_shmdt((const void *)arg1);
+            break;
+
+        case SYS_SHMGET:
+            regs->rax = syscall_shmget((u32)arg1, (u32)arg2, (i32)arg3);
+            break;
+
+        case SYS_SHMAT:
+            regs->rax = (uintptr_t)syscall_shmat((i32)arg1, (const void *)arg2, (i32)arg3);
+            break;
+
+        case SYS_SHMCTL:
+            regs->rax = syscall_shmctl((i32)arg1, (i32)arg2, (void *)arg3);
+            break;
+
+        case SYS_RT_SIGACTION:
+            regs->rax = syscall_rt_sigaction((i32)arg1, (const void *)arg2, (void *)arg3, (u32)arg4);
+            break;
+
+        case SYS_RT_SIGPROCMASK:
+            regs->rax = syscall_rt_sigprocmask((i32)arg1, (const void *)arg2, (void *)arg3, (u32)arg4);
+            break;
+
+        case SYS_RT_SIGRETURN:
+            regs->rax = syscall_rt_sigreturn();
+            break;
+
+        case SYS_SYSINFO:
+            regs->rax = syscall_sysinfo((void *)arg1);
+            break;
+
+        case SYS_MMAP2:
+            regs->rax = (uintptr_t)syscall_mmap((void *)arg1, (u32)arg2, (i32)arg3, (i32)arg4, (i32)arg5, (u32)arg6);
             break;
 
         default:

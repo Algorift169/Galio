@@ -4,7 +4,7 @@
 #include "common.h"
 #include <stddef.h>
 
-/* Virtual Filesystem Layer - Linux-like with directory support */
+/* Virtual Filesystem Layer with directory support */
 
 #define VFS_MAGIC 0xDEADBEEF
 #define VFS_VERSION 1

@@ -2,10 +2,7 @@
  *
  * hrtimer.c - High-resolution timers for Galio.
  *
- * Linux analogue: kernel/time/hrtimer.c
- *
  * Implements a queue of timers driven by nanosecond precision monotonic time.
- * In Linux, this uses a red-black tree (rbtree) and programs clockevents.
  * For Galio, we use an ordered list polled by the tick handler (or clockevent).
  */
 
@@ -16,7 +13,6 @@ static galio_hrtimer_t *hrtimer_list = NULL;
 
 /* ------------------------------------------------------------------
  * galio_hrtimer_init
- * Linux equivalent: hrtimer_init()
  * ------------------------------------------------------------------ */
 void galio_hrtimer_init(galio_hrtimer_t *timer, galio_hrtimer_fn fn)
 {
@@ -29,7 +25,6 @@ void galio_hrtimer_init(galio_hrtimer_t *timer, galio_hrtimer_fn fn)
 
 /* ------------------------------------------------------------------
  * galio_hrtimer_start
- * Linux equivalent: hrtimer_start()
  * ------------------------------------------------------------------ */
 void galio_hrtimer_start(galio_hrtimer_t *timer, galio_ktime_t expires_ns)
 {
@@ -65,7 +60,6 @@ void galio_hrtimer_start_ms(galio_hrtimer_t *timer, u64 ms)
 
 /* ------------------------------------------------------------------
  * galio_hrtimer_cancel
- * Linux equivalent: hrtimer_cancel()
  * ------------------------------------------------------------------ */
 void galio_hrtimer_cancel(galio_hrtimer_t *timer)
 {
@@ -98,8 +92,7 @@ int galio_hrtimer_active(const galio_hrtimer_t *timer)
 
 /* ------------------------------------------------------------------
  * galio_hrtimer_run_queues - process expired timers.
- * Called from clockevents_tick()
- * Linux equivalent: hrtimer_run_queues() / hrtimer_interrupt()
+ * Called from clockevents_tick().
  * ------------------------------------------------------------------ */
 void galio_hrtimer_run_queues(void)
 {

@@ -2,17 +2,9 @@
  *
  * jiffies.c - Jiffies tick counter for the Galio kernel.
  *
- * Linux analogue: kernel/time/jiffies.c
- *
- * Linux's jiffies are a globally shared counter incremented on every timer
- * interrupt. Here we build the same abstraction on top of Galio's PIT driver
+ * The jiffies counter is a globally shared tick value incremented on each timer
+ * interrupt. This implementation builds the abstraction on top of the PIT driver
  * (pit_get_ticks()), which increments at GALIO_HZ (100) per second.
- *
- * Galio differences from Linux:
- *  - No seqcount locking (single-CPU kernel, preemption disabled in IRQ).
- *  - galio_jiffies_read() wraps pit_get_ticks() for clocksource compatibility.
- *  - Conversion helpers (msecs_to_jiffies / jiffies_to_msecs) are inlined
- *    here rather than living in a separate header to avoid header sprawl.
  */
 
 #include "time/galio_time.h"
@@ -21,7 +13,6 @@
 
 /* ------------------------------------------------------------------
  * Internal: read the raw 64-bit jiffy counter from the PIT driver.
- * Linux equivalent: jiffies_read() (clocksource callback).
  * ------------------------------------------------------------------ */
 u64 galio_jiffies_read(void)
 {
@@ -30,7 +21,6 @@ u64 galio_jiffies_read(void)
 
 /* ------------------------------------------------------------------
  * galio_jiffies_to_msecs - convert jiffies to milliseconds.
- * Linux equivalent: jiffies_to_msecs() in <linux/jiffies.h>.
  * ------------------------------------------------------------------ */
 u64 galio_jiffies_to_msecs(u64 j)
 {
@@ -39,7 +29,6 @@ u64 galio_jiffies_to_msecs(u64 j)
 
 /* ------------------------------------------------------------------
  * galio_msecs_to_jiffies - convert milliseconds to jiffies.
- * Linux equivalent: msecs_to_jiffies() in <linux/jiffies.h>.
  * Rounds up to guarantee at-least the requested delay.
  * ------------------------------------------------------------------ */
 u64 galio_msecs_to_jiffies(u64 ms)
@@ -50,7 +39,6 @@ u64 galio_msecs_to_jiffies(u64 ms)
 
 /* ------------------------------------------------------------------
  * galio_jiffies_to_usecs / galio_usecs_to_jiffies
- * Linux equivalent: jiffies_to_usecs() / usecs_to_jiffies().
  * ------------------------------------------------------------------ */
 u64 galio_jiffies_to_usecs(u64 j)
 {
@@ -64,7 +52,6 @@ u64 galio_usecs_to_jiffies(u64 us)
 
 /* ------------------------------------------------------------------
  * galio_time_after / galio_time_before
- * Linux equivalent: time_after() / time_before() in <linux/jiffies.h>.
  * Uses unsigned subtraction to handle 64-bit wraparound.
  * ------------------------------------------------------------------ */
 int galio_time_after(u64 a, u64 b)
@@ -79,7 +66,6 @@ int galio_time_before(u64 a, u64 b)
 
 /* ------------------------------------------------------------------
  * galio_jiffies_init - nothing to do: PIT initialises jiffies for us.
- * Kept for symmetry with Linux's clocksource_default_clock().
  * ------------------------------------------------------------------ */
 void galio_jiffies_init(void)
 {

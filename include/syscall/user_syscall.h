@@ -38,5 +38,17 @@ static inline long sys_time(void) { return galio_syscall(SYS_TIME, 0, 0, 0, 0, 0
 static inline int sys_gettimeofday(void *tv) { return (int)galio_syscall(SYS_GETTIMEOFDAY, (long)tv, 0, 0, 0, 0); }
 static inline int sys_getuid(void) { return (int)galio_syscall(SYS_GETUID, 0, 0, 0, 0, 0); }
 static inline int sys_getgid(void) { return (int)galio_syscall(SYS_GETGID, 0, 0, 0, 0, 0); }
+static inline int sys_socket(int domain, int type, int protocol) { return (int)galio_syscall(SYS_SOCKET, domain, type, protocol, 0, 0); }
+static inline int sys_bind(int sockfd, const void *addr, unsigned int addrlen) { return (int)galio_syscall(SYS_BIND, sockfd, (long)addr, addrlen, 0, 0); }
+static inline int sys_listen(int sockfd, int backlog) { return (int)galio_syscall(SYS_LISTEN, sockfd, backlog, 0, 0, 0); }
+static inline int sys_accept(int sockfd, void *addr, unsigned int *addrlen) { return (int)galio_syscall(SYS_ACCEPT, sockfd, (long)addr, (long)addrlen, 0, 0); }
+static inline int sys_connect(int sockfd, const void *addr, unsigned int addrlen) { return (int)galio_syscall(SYS_CONNECT, sockfd, (long)addr, addrlen, 0, 0); }
+static inline int sys_semget(unsigned int key, int nsems, int semflg) { return (int)galio_syscall(SYS_SEMGET, key, nsems, semflg, 0, 0); }
+static inline int sys_semop(int semid, void *sops, unsigned int nsops) { return (int)galio_syscall(SYS_SEMOP, semid, (long)sops, nsops, 0, 0); }
+static inline int sys_semctl(int semid, int semnum, int cmd, void *arg) { return (int)galio_syscall(SYS_SEMCTL, semid, semnum, cmd, (long)arg, 0); }
+static inline void *sys_shmat(int shmid, const void *shmaddr, int shmflg) { return (void *)galio_syscall(SYS_SHMAT, shmid, (long)shmaddr, shmflg, 0, 0); }
+static inline int sys_shmdt(const void *shmaddr) { return (int)galio_syscall(SYS_SHMDT, (long)shmaddr, 0, 0, 0, 0); }
+static inline int sys_shmget(unsigned int key, unsigned int size, int shmflg) { return (int)galio_syscall(SYS_SHMGET, key, size, shmflg, 0, 0); }
+static inline int sys_shmctl(int shmid, int cmd, void *buf) { return (int)galio_syscall(SYS_SHMCTL, shmid, cmd, (long)buf, 0, 0); }
 
 #endif /* USER_SYSCALL_H */

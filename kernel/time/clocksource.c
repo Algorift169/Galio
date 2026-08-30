@@ -2,8 +2,6 @@
  *
  * clocksource.c - Clocksource abstraction for the Galio kernel.
  *
- * Linux analogue: kernel/time/clocksource.c
- *
  * This provides a unified interface for reading underlying hardware counters
  * (e.g., PIT, TSC) and converting their cycle counts to nanoseconds.
  */
@@ -19,7 +17,6 @@ static struct galio_clocksource *best_clocksource = NULL;
 
 /* ------------------------------------------------------------------
  * galio_clocksource_register - register a new hardware clocksource.
- * Linux equivalent: __clocksource_register()
  * ------------------------------------------------------------------ */
 void galio_clocksource_register(struct galio_clocksource *cs)
 {
@@ -37,7 +34,6 @@ void galio_clocksource_register(struct galio_clocksource *cs)
 
 /* ------------------------------------------------------------------
  * galio_clocksource_get_best - returns the clocksource with highest rating.
- * Linux equivalent: clocksource_find_best()
  * ------------------------------------------------------------------ */
 struct galio_clocksource *galio_clocksource_get_best(void)
 {
@@ -46,7 +42,6 @@ struct galio_clocksource *galio_clocksource_get_best(void)
 
 /* ------------------------------------------------------------------
  * galio_clocksource_cyc2ns - convert cycles to nanoseconds safely.
- * Linux equivalent: clocksource_cyc2ns()
  * ------------------------------------------------------------------ */
 u64 galio_clocksource_cyc2ns(struct galio_clocksource *cs, u64 cycles)
 {

@@ -1125,13 +1125,19 @@ static void shell_execute_command(void) {
         kprintf(" |________________________________________________________|\n");
         kprintf(" | uname    - Show system name                            |\n");
         kprintf(" |___________________________ ____________________________|\n");
+        kprintf(" | socket   - Test socket syscalls                        |\n");
+        kprintf(" | semtest  - Test semaphore syscalls                     |\n");
+        kprintf(" | shmtest  - Test shared memory syscalls                 |\n");
+        kprintf(" | sigtest  - Test signal syscalls                        |\n");
+        kprintf(" | pread    - Test positioned read/write syscalls         |\n");
+        kprintf(" |________________________________________________________|\n");
         kprintf(" | pwd      - Print current directory                     |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" | goto     - Change directory (usage: goto <path>)       |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" | back  - Go back to previous dir (usage: back [dirname])|\n");
         kprintf(" |_______________________________________________________ |\n");
-        kprintf(" | rex      - Privileged command (like sudo)              |\n");
+        kprintf(" | rex      - Privileged command                            |\n");
         kprintf(" |           Usage: rex <cmd> [args]                      |\n");
         kprintf(" |           Password required once per session           |\n");
         kprintf(" |________________________________________________________|\n");
@@ -1269,6 +1275,21 @@ static void shell_execute_command(void) {
         SHELL_COLOR_OUT();
         kprintf("Galio v1.0\n");
         SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "socket", 6) == 0) {
+        extern u8 shell_socket_command(const char *, const char *);
+        shell_socket_command(input.buffer + 7, current_dir);
+    } else if (strncmp(input.buffer, "semtest", 7) == 0) {
+        extern u8 shell_semtest_command(const char *, const char *);
+        shell_semtest_command(input.buffer + 8, current_dir);
+    } else if (strncmp(input.buffer, "shmtest", 7) == 0) {
+        extern u8 shell_shmtest_command(const char *, const char *);
+        shell_shmtest_command(input.buffer + 8, current_dir);
+    } else if (strncmp(input.buffer, "sigtest", 7) == 0) {
+        extern u8 shell_sigtest_command(const char *, const char *);
+        shell_sigtest_command(input.buffer + 8, current_dir);
+    } else if (strncmp(input.buffer, "pread", 5) == 0) {
+        extern u8 shell_pread_command(const char *, const char *);
+        shell_pread_command(input.buffer + 6, current_dir);
     } else if (input.len > 0) {
         SHELL_COLOR_ERR();
         kprintf("Unknown command: %s\nType 'help' for available commands\n", input.buffer);

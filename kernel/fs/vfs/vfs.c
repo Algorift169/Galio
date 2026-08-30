@@ -1,4 +1,4 @@
-/* vfs.c - Virtual Filesystem Layer with Linux-like paths */
+/* vfs.c - Virtual Filesystem Layer with normalized paths */
 #include "vfs.h"
 #include "vfs_core.h"
 #include "kprintf.h"

@@ -450,3 +450,452 @@ u32 syscall_getgid(void) {
     process_t *proc = process_current();
     return proc ? proc->gid : 0;
 }
+
+i32 syscall_geteuid(void) {
+    process_t *proc = process_current();
+    return proc ? (i32)proc->uid : 0;
+}
+
+i32 syscall_getegid(void) {
+    process_t *proc = process_current();
+    return proc ? (i32)proc->gid : 0;
+}
+
+i32 syscall_getppid(void) {
+    return (i32)process_getppid();
+}
+
+i32 syscall_kill(u32 pid, i32 sig) {
+    (void)sig;
+    if (!pid) {
+        return -1;
+    }
+    return process_kill(pid, (u8)sig) ? 0 : -1;
+}
+
+i32 syscall_uname(struct utsname *buf) {
+    if (!buf || !validate_user_buffer(buf, sizeof(struct utsname), 1)) {
+        return -1;
+    }
+
+    memset(buf, 0, sizeof(struct utsname));
+    strncpy(buf->sysname, "Galio", sizeof(buf->sysname) - 1);
+    strncpy(buf->nodename, "galio", sizeof(buf->nodename) - 1);
+    strncpy(buf->release, "0.1", sizeof(buf->release) - 1);
+    strncpy(buf->version, "Galio kernel", sizeof(buf->version) - 1);
+    strncpy(buf->machine, "x86_64", sizeof(buf->machine) - 1);
+    strncpy(buf->domainname, "localdomain", sizeof(buf->domainname) - 1);
+    return 0;
+}
+
+i32 syscall_access(const char *path, i32 mode) {
+    if (!path) {
+        return -1;
+    }
+
+    char kpath[PROCESS_PATH_MAX];
+    if (!copy_user_string(kpath, path, sizeof(kpath))) {
+        return -1;
+    }
+
+    process_t *proc = process_current();
+    if (!proc) {
+        return -1;
+    }
+
+    char resolved[PROCESS_PATH_MAX];
+    if (!process_resolve_path(proc->cwd, kpath, resolved, sizeof(resolved))) {
+        return -1;
+    }
+
+    if (mode & 2) {
+        if (!vfs_find(resolved)) {
+            return -1;
+        }
+    }
+
+    if (vfs_find(resolved) == NULL) {
+        return -1;
+    }
+
+    return 0;
+}
+
+i32 syscall_fstat(int fd, struct stat *statbuf) {
+    if (!statbuf || !validate_user_buffer(statbuf, sizeof(struct stat), 1)) {
+        return -1;
+    }
+
+    process_t *proc = process_current();
+    if (!proc || fd < 0 || (u32)fd >= PROCESS_MAX_FDS) {
+        return -1;
+    }
+
+    u32 handle = proc->fd_table[fd];
+    if (handle == VFS_INVALID_FD) {
+        return -1;
+    }
+
+    memset(statbuf, 0, sizeof(struct stat));
+    statbuf->st_mode = 0644u;
+    statbuf->st_uid = proc->uid;
+    statbuf->st_gid = proc->gid;
+    statbuf->st_size = 0;
+    statbuf->st_blksize = 4096;
+    statbuf->st_blocks = 1;
+    return 0;
+}
+
+i32 syscall_readlink(const char *path, char *buf, u32 bufsize) {
+    if (!path || !buf || bufsize == 0 || !validate_user_buffer(buf, bufsize, 1)) {
+        return -1;
+    }
+
+    char kpath[PROCESS_PATH_MAX];
+    if (!copy_user_string(kpath, path, sizeof(kpath))) {
+        return -1;
+    }
+
+    process_t *proc = process_current();
+    if (!proc) {
+        return -1;
+    }
+
+    char resolved[PROCESS_PATH_MAX];
+    if (!process_resolve_path(proc->cwd, kpath, resolved, sizeof(resolved))) {
+        return -1;
+    }
+
+    u32 len = vfs_readlink(resolved, buf, bufsize);
+    if (len == 0 || len >= bufsize) {
+        return -1;
+    }
+    buf[len] = 0;
+    return (i32)len;
+}
+
+i64 syscall_clock_gettime(i32 clk_id, void *tp) {
+    if (!tp || !validate_user_buffer(tp, sizeof(struct timespec), 1)) {
+        return -1;
+    }
+
+    struct timespec *ts = (struct timespec *)tp;
+    u32 sec = kernel_time_get_seconds();
+    u32 usec = kernel_time_get_microseconds();
+    ts->tv_sec = (long)sec;
+    ts->tv_nsec = (long)usec * 1000L;
+
+    (void)clk_id;
+    return 0;
+}
+
+i32 syscall_nanosleep(const struct timespec *req, struct timespec *rem) {
+    if (!req) {
+        return -1;
+    }
+
+    if (rem && validate_user_buffer(rem, sizeof(struct timespec), 1)) {
+        memset(rem, 0, sizeof(struct timespec));
+    }
+
+    u64 total_ns = (u64)(req->tv_sec * 1000000000ULL + (unsigned long)req->tv_nsec);
+    u64 start = (u64)kernel_time_get_seconds() * 1000000000ULL + (u64)kernel_time_get_microseconds() * 1000ULL;
+    while ((u64)kernel_time_get_seconds() * 1000000000ULL + (u64)kernel_time_get_microseconds() * 1000ULL - start < total_ns) {
+        process_yield();
+    }
+    return 0;
+}
+
+i64 syscall_ioctl(u32 fd, u32 cmd, void *arg) {
+    (void)fd;
+    (void)cmd;
+    (void)arg;
+    return 0;
+}
+
+i64 syscall_poll(void *fds, u32 nfds, i32 timeout) {
+    (void)fds;
+    (void)nfds;
+    (void)timeout;
+    return 0;
+}
+
+/* Stub implementations for additional syscalls */
+
+i32 syscall_lstat(const char *path, struct stat *statbuf) {
+    (void)path;
+    (void)statbuf;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_mprotect(void *addr, u32 len, i32 prot) {
+    (void)addr;
+    (void)len;
+    (void)prot;
+    return -38; /* ENOSYS */
+}
+
+i64 syscall_pread64(u32 fd, void *buf, u32 count, u64 offset) {
+    (void)fd;
+    (void)buf;
+    (void)count;
+    (void)offset;
+    return -38; /* ENOSYS */
+}
+
+i64 syscall_pwrite64(u32 fd, const void *buf, u32 count, u64 offset) {
+    (void)fd;
+    (void)buf;
+    (void)count;
+    (void)offset;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_readv(u32 fd, void *iov, i32 iovcnt) {
+    (void)fd;
+    (void)iov;
+    (void)iovcnt;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_writev(u32 fd, const void *iov, i32 iovcnt) {
+    (void)fd;
+    (void)iov;
+    (void)iovcnt;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_select(i32 nfds, void *readfds, void *writefds, void *exceptfds, struct timespec *timeout) {
+    (void)nfds;
+    (void)readfds;
+    (void)writefds;
+    (void)exceptfds;
+    (void)timeout;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_sched_yield(void) {
+    process_yield();
+    return 0;
+}
+
+i32 syscall_pause(void) {
+    process_yield();
+    return -1;
+}
+
+/* Socket family stubs */
+i32 syscall_socket(i32 domain, i32 type, i32 protocol) {
+    (void)domain;
+    (void)type;
+    (void)protocol;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_connect(i32 sockfd, const void *addr, u32 addrlen) {
+    (void)sockfd;
+    (void)addr;
+    (void)addrlen;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_accept(i32 sockfd, void *addr, u32 *addrlen) {
+    (void)sockfd;
+    (void)addr;
+    (void)addrlen;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_sendto(i32 sockfd, const void *buf, u32 len, i32 flags, const void *dest_addr, u32 addrlen) {
+    (void)sockfd;
+    (void)buf;
+    (void)len;
+    (void)flags;
+    (void)dest_addr;
+    (void)addrlen;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_recvfrom(i32 sockfd, void *buf, u32 len, i32 flags, void *src_addr, u32 *addrlen) {
+    (void)sockfd;
+    (void)buf;
+    (void)len;
+    (void)flags;
+    (void)src_addr;
+    (void)addrlen;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_sendmsg(i32 sockfd, const void *msg, i32 flags) {
+    (void)sockfd;
+    (void)msg;
+    (void)flags;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_recvmsg(i32 sockfd, void *msg, i32 flags) {
+    (void)sockfd;
+    (void)msg;
+    (void)flags;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_shutdown(i32 sockfd, i32 how) {
+    (void)sockfd;
+    (void)how;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_bind(i32 sockfd, const void *addr, u32 addrlen) {
+    (void)sockfd;
+    (void)addr;
+    (void)addrlen;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_listen(i32 sockfd, i32 backlog) {
+    (void)sockfd;
+    (void)backlog;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_getsockname(i32 sockfd, void *addr, u32 *addrlen) {
+    (void)sockfd;
+    (void)addr;
+    (void)addrlen;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_getpeername(i32 sockfd, void *addr, u32 *addrlen) {
+    (void)sockfd;
+    (void)addr;
+    (void)addrlen;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_socketpair(i32 domain, i32 type, i32 protocol, i32 *sv) {
+    (void)domain;
+    (void)type;
+    (void)protocol;
+    (void)sv;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_setsockopt(i32 sockfd, i32 level, i32 optname, const void *optval, u32 optlen) {
+    (void)sockfd;
+    (void)level;
+    (void)optname;
+    (void)optval;
+    (void)optlen;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_getsockopt(i32 sockfd, i32 level, i32 optname, void *optval, u32 *optlen) {
+    (void)sockfd;
+    (void)level;
+    (void)optname;
+    (void)optval;
+    (void)optlen;
+    return -38; /* ENOSYS */
+}
+
+/* Process stubs */
+u32 syscall_clone(u32 flags, void *stack, i32 *ptid, void *tls, i32 *ctid) {
+    (void)flags;
+    (void)stack;
+    (void)ptid;
+    (void)tls;
+    (void)ctid;
+    return -38; /* ENOSYS */
+}
+
+u32 syscall_vfork(void) {
+    return -38; /* ENOSYS - use fork instead */
+}
+
+i32 syscall_wait4(i32 pid, i32 *wstatus, i32 options, void *rusage) {
+    (void)wstatus;
+    (void)options;
+    (void)rusage;
+    /* Simplified wait - just waits for child to exit */
+    if (pid > 0) {
+        return process_waitpid(pid);
+    }
+    return -1;
+}
+
+/* IPC stubs */
+i32 syscall_semget(u32 key, i32 nsems, i32 semflg) {
+    (void)key;
+    (void)nsems;
+    (void)semflg;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_semop(i32 semid, void *sops, u32 nsops) {
+    (void)semid;
+    (void)sops;
+    (void)nsops;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_semctl(i32 semid, i32 semnum, i32 cmd, void *arg) {
+    (void)semid;
+    (void)semnum;
+    (void)cmd;
+    (void)arg;
+    return -38; /* ENOSYS */
+}
+
+void *syscall_shmat(i32 shmid, const void *shmaddr, i32 shmflg) {
+    (void)shmid;
+    (void)shmaddr;
+    (void)shmflg;
+    return (void *)-38;
+}
+
+i32 syscall_shmdt(const void *shmaddr) {
+    (void)shmaddr;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_shmget(u32 key, u32 size, i32 shmflg) {
+    (void)key;
+    (void)size;
+    (void)shmflg;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_shmctl(i32 shmid, i32 cmd, void *buf) {
+    (void)shmid;
+    (void)cmd;
+    (void)buf;
+    return -38; /* ENOSYS */
+}
+
+/* Signal handling stubs */
+i32 syscall_rt_sigaction(i32 sig, const void *act, void *oldact, u32 sigsetsize) {
+    (void)sig;
+    (void)act;
+    (void)oldact;
+    (void)sigsetsize;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_rt_sigprocmask(i32 how, const void *set, void *oldset, u32 sigsetsize) {
+    (void)how;
+    (void)set;
+    (void)oldset;
+    (void)sigsetsize;
+    return -38; /* ENOSYS */
+}
+
+i32 syscall_rt_sigreturn(void) {
+    return -38; /* ENOSYS */
+}
+
+/* System info stub */
+i32 syscall_sysinfo(void *info) {
+    (void)info;
+    return -38; /* ENOSYS */
+}
