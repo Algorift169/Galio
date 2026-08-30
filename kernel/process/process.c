@@ -543,6 +543,19 @@ process_t *process_get(u32 pid) {
     return NULL;
 }
 
+process_t *process_get_by_index(u32 index) {
+    if (index >= MAX_PROCESSES) {
+        return NULL;
+    }
+
+    process_t *proc = &processes[index];
+    if (proc->pid == 0 || proc->pid == 0xFFFFFFFFu || proc->state == PROCESS_ZOMBIE) {
+        return NULL;
+    }
+
+    return proc;
+}
+
 process_t *process_get_any(u32 pid) {
     for (u32 i = 0; i < MAX_PROCESSES; i++) {
         if (processes[i].pid == pid) {

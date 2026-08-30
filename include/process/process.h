@@ -106,6 +106,7 @@ void process_switch(process_t *from, process_t *to);
 void process_exit(i32 code);
 process_t *process_get(u32 pid);
 process_t *process_get_any(u32 pid);
+process_t *process_get_by_index(u32 index);
 process_t *process_find_child(u32 parent_pid, i32 pid);
 process_t *process_find_any_child(u32 parent_pid);
 void process_free_address_space(process_t *proc);

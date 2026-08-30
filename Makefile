@@ -121,6 +121,8 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/delete.c \
        tools/shell/commands/net.c \
        tools/shell/commands/pkg.c \
+       tools/shell/commands/syscall.c \
+       tools/shell/commands/top.c \
 	tools/shell/commands/where.c \
        tools/shell/editor/editor.c
 

@@ -9,44 +9,8 @@
 #include "elf.h"
 #include "heap.h"
 #include "paging.h"
+#include "pmem.h"
 #include "string.h"
-
-#ifndef SYS_EXIT
-#define SYS_EXIT         1
-#define SYS_WRITE        2
-#define SYS_GETPID       3
-#define SYS_FORK         4
-#define SYS_EXEC         5
-#define SYS_SLEEP        6
-#define SYS_WAITPID      7
-#define SYS_OPEN         8
-#define SYS_READ         9
-#define SYS_CLOSE        10
-#define SYS_LSEEK        11
-#define SYS_STAT         12
-#define SYS_MMAP         13
-#define SYS_MUNMAP       14
-#define SYS_BRK          15
-#define SYS_EXECVE       16
-#define SYS_PIPE         17
-#define SYS_DUP          18
-#define SYS_DUP2         19
-#define SYS_CHDIR        20
-#define SYS_GETCWD       21
-#define SYS_TIME         22
-#define SYS_GETTIMEOFDAY 23
-#define SYS_GETUID       24
-#define SYS_GETGID       25
-#endif
-
-#ifndef PIPE_FD_FLAG
-#define PIPE_FD_FLAG     0x80000000u
-#define PIPE_READ_FLAG   0x40000000u
-#define PIPE_WRITE_FLAG  0x20000000u
-#define PIPE_ID_MASK     0x0000000Fu
-#define PIPE_MAX         16u
-#define PIPE_BUFFER_SIZE 1024u
-#endif
 
 /* Forward declarations for syscall implementations */
 static u32 syscall_fork(void);
@@ -126,6 +90,37 @@ static void syscall_handler(registers_t *regs) {
     u64 arg4 = regs->rsi;
     u64 arg5 = regs->rdi;
     u64 arg6 = 0;  /* Would need to come from stack if needed */
+
+#if SYSCALL_TRACE
+    const char *name = "unknown";
+    switch (syscall_num) {
+        case SYS_EXIT: name = "exit"; break;
+        case SYS_WRITE: name = "write"; break;
+        case SYS_GETPID: name = "getpid"; break;
+        case SYS_FORK: name = "fork"; break;
+        case SYS_EXEC: name = "exec"; break;
+        case SYS_WAITPID: name = "waitpid"; break;
+        case SYS_OPEN: name = "open"; break;
+        case SYS_READ: name = "read"; break;
+        case SYS_CLOSE: name = "close"; break;
+        case SYS_LSEEK: name = "lseek"; break;
+        case SYS_STAT: name = "stat"; break;
+        case SYS_MMAP: name = "mmap"; break;
+        case SYS_MUNMAP: name = "munmap"; break;
+        case SYS_BRK: name = "brk"; break;
+        case SYS_EXECVE: name = "execve"; break;
+        case SYS_PIPE: name = "pipe"; break;
+        case SYS_DUP: name = "dup"; break;
+        case SYS_DUP2: name = "dup2"; break;
+        case SYS_CHDIR: name = "chdir"; break;
+        case SYS_GETCWD: name = "getcwd"; break;
+        case SYS_TIME: name = "time"; break;
+        case SYS_GETTIMEOFDAY: name = "gettimeofday"; break;
+        case SYS_GETUID: name = "getuid"; break;
+        case SYS_GETGID: name = "getgid"; break;
+    }
+    kprintf("[SYSCALL] pid=%u nr=%llu %s()\n", process_current() ? process_current()->pid : 0, (unsigned long long)syscall_num, name);
+#endif
 
     switch (syscall_num) {
         case SYS_EXIT:
@@ -497,21 +492,129 @@ static u32 syscall_stat(const char *path, void *statbuf) {
 }
 
 static void *syscall_mmap(void *addr, u32 length, i32 prot, i32 flags, i32 fd, u32 offset) {
-    (void)addr; (void)length; (void)prot; (void)flags; (void)fd; (void)offset;
-    kprintf("syscall_mmap: not implemented\n");
-    return (void *)-1;
+    (void)fd; (void)offset;
+    process_t *proc = process_current();
+    if (!proc || length == 0) {
+        return (void *)-1;
+    }
+
+    if ((prot & 0x3) == 0) {
+        prot = 3;
+    }
+
+    uintptr_t desired = (uintptr_t)addr;
+    uintptr_t map_base = desired;
+    if (!addr) {
+        map_base = proc->brk;
+        if (map_base < USER_HEAP_START) map_base = USER_HEAP_START;
+    }
+
+    if (map_base < USER_HEAP_START || map_base > USER_HEAP_END) {
+        return (void *)-1;
+    }
+
+    u32 aligned_len = PAGE_ALIGN_UP(length);
+    if (map_base + aligned_len > USER_HEAP_END) {
+        return (void *)-1;
+    }
+
+    if (proc->mmap_count >= PROCESS_MAX_MMAPS) {
+        return (void *)-1;
+    }
+
+    for (uintptr_t page = PAGE_ALIGN_DOWN(map_base); page < map_base + aligned_len; page += PAGE_SIZE) {
+        uintptr_t phys = pmem_alloc(1);
+        if (!phys) {
+            for (uintptr_t mpage = PAGE_ALIGN_DOWN(map_base); mpage < page; mpage += PAGE_SIZE) {
+                uintptr_t p = paging_get_physical(proc->pagedir, mpage);
+                if (p) {
+                    paging_unmap(proc->pagedir, mpage);
+                    pmem_free(p & 0xFFFFF000ul, 1);
+                }
+            }
+            return (void *)-1;
+        }
+        paging_map(proc->pagedir, page, phys, PAGE_PRESENT | PAGE_RW | PAGE_USER);
+        memset((void *)page, 0, PAGE_SIZE);
+    }
+
+    proc->mmap_regions[proc->mmap_count].start = (u32)map_base;
+    proc->mmap_regions[proc->mmap_count].length = aligned_len;
+    proc->mmap_regions[proc->mmap_count].prot = (u32)prot;
+    proc->mmap_regions[proc->mmap_count].flags = (u32)flags;
+    proc->mmap_regions[proc->mmap_count].fd = (u32)(fd < 0 ? 0xFFFFFFFFu : (u32)fd);
+    proc->mmap_regions[proc->mmap_count].offset = offset;
+    proc->mmap_regions[proc->mmap_count].anonymous = 1;
+    proc->mmap_count++;
+
+    if (!addr) {
+        proc->brk = map_base + aligned_len;
+    }
+    return (void *)map_base;
 }
 
 static i32 syscall_munmap(void *addr, u32 length) {
-    (void)addr; (void)length;
-    kprintf("syscall_munmap: not implemented\n");
-    return -1;
+    process_t *proc = process_current();
+    if (!proc || !addr || length == 0) {
+        return -1;
+    }
+
+    uintptr_t start = PAGE_ALIGN_DOWN((uintptr_t)addr);
+    uintptr_t end = PAGE_ALIGN_UP((uintptr_t)addr + length);
+    if (start < USER_HEAP_START || end > USER_HEAP_END) {
+        return -1;
+    }
+
+    for (uintptr_t page = start; page < end; page += PAGE_SIZE) {
+        uintptr_t phys = paging_get_physical(proc->pagedir, page);
+        if (!phys) {
+            continue;
+        }
+        paging_unmap(proc->pagedir, page);
+        pmem_free(phys & 0xFFFFF000ul, 1);
+    }
+
+    for (u32 i = 0; i < proc->mmap_count; i++) {
+        if (proc->mmap_regions[i].start == (u32)start) {
+            proc->mmap_regions[i].start = 0;
+            proc->mmap_regions[i].length = 0;
+            proc->mmap_regions[i].fd = 0;
+            proc->mmap_regions[i].offset = 0;
+            break;
+        }
+    }
+    return 0;
 }
 
 static void *syscall_brk(void *addr) {
-    (void)addr;
-    kprintf("syscall_brk: not implemented\n");
-    return (void *)-1;
+    process_t *proc = process_current();
+    if (!proc) {
+        return (void *)-1;
+    }
+
+    if (!addr) {
+        return (void *)proc->brk;
+    }
+
+    uintptr_t new_brk = (uintptr_t)addr;
+    if (new_brk < USER_HEAP_START || new_brk > USER_HEAP_END) {
+        return (void *)-1;
+    }
+
+    uintptr_t cur = PAGE_ALIGN_UP(proc->brk);
+    uintptr_t target = PAGE_ALIGN_UP(new_brk);
+    if (target > cur) {
+        for (uintptr_t page = cur; page < target; page += PAGE_SIZE) {
+            uintptr_t phys = pmem_alloc(1);
+            if (!phys) {
+                return (void *)-1;
+            }
+            paging_map(proc->pagedir, page, phys, PAGE_PRESENT | PAGE_RW | PAGE_USER);
+            memset((void *)page, 0, PAGE_SIZE);
+        }
+    }
+    proc->brk = new_brk;
+    return (void *)proc->brk;
 }
 
 /* Syscall wrappers for internal use */

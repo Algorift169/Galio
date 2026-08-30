@@ -4,7 +4,9 @@
 #include "common.h"
 #include "cpu.h"
 
-/* Syscall numbers */
+#define SYSCALL_TRACE 1
+
+/* Canonical Galio syscall numbers. Keep these stable for the current ABI. */
 #define SYS_EXIT         1
 #define SYS_WRITE        2
 #define SYS_GETPID       3
@@ -41,10 +43,16 @@
 #define PIPE_MAX         16u
 #define PIPE_BUFFER_SIZE 1024u
 
+#ifndef __timeval_defined
+#ifndef _STRUCT_TIMEVAL
+#define _STRUCT_TIMEVAL
 struct timeval {
     u32 tv_sec;
     u32 tv_usec;
 };
+#endif
+#define __timeval_defined 1
+#endif
 #define SYS_TIMEVAL_STRUCT_DEFINED
 
 /* Initialize syscall interface (register INT 0x80 handler) */

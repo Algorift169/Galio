@@ -26,6 +26,10 @@
 #include "pkg.h"
 #include "where.h"
 #include "editor.h"
+#include "process.h"
+#include "syscall_cmd.h"
+#include "top.h"
+#include "user_syscall.h"
 
 u8 shell_net_command(const char *args, const char *current_dir);
 u8 shell_pkg_command(const char *args, const char *current_dir);
@@ -424,13 +428,6 @@ static shell_job_t bg_jobs[MAX_BG_JOBS];
 static int next_job_id = 1;
 
 /* Syscall helpers (inline int $0x80 wrappers) */
-#define SYS_FORK 4
-#define SYS_WAITPID 7
-#define SYS_EXECVE 16
-#define SYS_PIPE 17
-#define SYS_DUP2 19
-#define SYS_CLOSE 10
-#define SYS_EXIT 1
 
 static inline int sc_syscall1(int num, int a1) {
     int ret;
@@ -995,6 +992,22 @@ static void shell_execute_command(void) {
         SHELL_COLOR_CMD();
         kprintf("Usage: net <stat|scan|list|devices>\n");
         SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "syscall ", 8) == 0) {
+        SHELL_COLOR_OUT();
+        shell_syscall_command(input.buffer + 8, current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "syscall") == 0) {
+        SHELL_COLOR_CMD();
+        kprintf("Usage: syscall <pid|uid|gid|time|fork|pipe|dup|mmap|brk|wait|open|read|close|seek|stat|exec>\n");
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "top ", 4) == 0) {
+        SHELL_COLOR_OUT();
+        shell_top_command(input.buffer + 4, current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "top") == 0) {
+        SHELL_COLOR_OUT();
+        shell_top_command("", current_dir);
+        SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "pkg ", 4) == 0) {
         SHELL_COLOR_OUT();
         shell_pkg_command(input.buffer + 4, current_dir);
@@ -1052,6 +1065,10 @@ static void shell_execute_command(void) {
         kprintf(" | clean    - Clean recycle bin (usage: clean rbin)                 |\n");
         kprintf(" |__________________________________________________________________|\n");
         kprintf(" |  net      - Networking commands (usage: net stat|scan|list|devices)     |\n");
+        kprintf(" |________________________________________________________|\n");
+        kprintf(" |  syscall  - Expose syscall ABI commands (pid, uid, gid, time, fork, pipe, mmap, brk, etc.) |\n");
+        kprintf(" |________________________________________________________|\n");
+        kprintf(" |  top      - Live process monitor (Ctrl+C to stop)      |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" | delete   - Permanently delete (usage: delete <path1> [path2])|\n");
         kprintf(" |________________________________________________________|\n");

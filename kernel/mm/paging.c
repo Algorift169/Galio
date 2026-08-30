@@ -208,7 +208,6 @@ page_directory_t *paging_create_user_directory(void) {
 
 void paging_map(page_directory_t *pd, uintptr_t vaddr, uintptr_t paddr, u32 flags) {
     if (!pd) return;
-    if (vaddr < 0x100000000ULL) return; /* Lower 4GB is identity mapped */
 
     uintptr_t *table = get_page_table(pd, vaddr, PAGE_PRESENT | PAGE_RW | (flags & PAGE_USER), true);
     if (!table) {
