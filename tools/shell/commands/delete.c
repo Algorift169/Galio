@@ -3,6 +3,7 @@
 #include "string.h"
 #include "path.h"
 #include "vfs.h"
+#include "auth.h"
 
 static const char *skip_spaces(const char *str) {
     while (*str == ' ' || *str == '\t') str++;
@@ -38,7 +39,7 @@ static u8 delete_single_path(const char *fullpath, u8 privileged) {
         return 0;
     }
 
-    if (!privileged && is_root_child_path(fullpath)) {
+    if (!privileged && !auth_is_authorized() && is_root_child_path(fullpath)) {
         kprintf("[DELETE] Permission denied: use 'rex delete %s' to delete root-level items\n", fullpath);
         return 0;
     }

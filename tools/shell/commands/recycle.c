@@ -4,6 +4,7 @@
 #include "path.h"
 #include "vfs.h"
 #include "heap.h"
+#include "auth.h"
 
 #define RECYCLE_BIN_DIR "./usr/home/desktop/recycle"
 #define RECYCLE_DIR_PARENT "./usr/home/desktop"
@@ -121,7 +122,7 @@ static u8 recycle_single_path(const char *fullpath, u8 privileged) {
         return 0;
     }
 
-    if (!privileged && is_root_child_path(fullpath)) {
+    if (!privileged && !auth_is_authorized() && is_root_child_path(fullpath)) {
         kprintf("[RECYCLE] Permission denied: use 'rex recycle %s' to move root-level files\n", fullpath);
         return 0;
     }

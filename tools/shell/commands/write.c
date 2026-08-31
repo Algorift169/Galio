@@ -4,6 +4,7 @@
 #include "string.h"
 #include "path.h"
 #include "vfs.h"
+#include "auth.h"
 
 static void safe_strcat(char *dest, const char *src, u32 max_len) {
     if (!dest || !src || max_len == 0) return;
@@ -106,7 +107,7 @@ u8 shell_write_command(const char *args, const char *current_dir, u8 privileged)
         return 0;
     }
     
-    if (!privileged && (is_root_child_path(fullpath) || is_auth_data_path(fullpath))) {
+    if (!privileged && !auth_is_authorized() && (is_root_child_path(fullpath) || is_auth_data_path(fullpath))) {
         kprintf("[WRITE] Permission denied: use 'rex write %s' to edit protected files\n", fullpath);
         return 0;
     }

@@ -3,6 +3,7 @@
 #include "string.h"
 #include "path.h"
 #include "vfs.h"
+#include "auth.h"
 
 static const char *skip_spaces(const char *str) {
     while (*str == ' ') str++;
@@ -155,7 +156,7 @@ u8 shell_file_command(const char *args, const char *current_dir, u8 replace, u8 
             continue;
         }
 
-        if (!privileged && is_root_child_path(fullpath)) {
+        if (!privileged && !auth_is_authorized() && is_root_child_path(fullpath)) {
             kprintf("[FILE] Permission denied: use 'rex file %s' to create or replace root-level files\n", fullpath);
             *end = saved_char;
             ptr = end + 1;

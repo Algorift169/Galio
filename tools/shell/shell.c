@@ -344,6 +344,10 @@ static u8 shell_is_direct_root_child(const char *path) {
 }
 
 static u8 shell_requires_rex_for_root_access(const char *path) {
+    if (auth_is_authorized()) {
+        return 0;
+    }
+
     if (!path || *path == 0) return 0;
     char normalized[DIR_PATH_SIZE];
     if (!path_normalize(path, normalized, sizeof(normalized))) return 0;
@@ -731,7 +735,7 @@ u8 shell_dir_command(const char *args, const char *current_dir, u8 replace, u8 p
         char parent[DIR_PATH_SIZE];
         path_parent(fullpath, parent, sizeof(parent));
 
-        if (!privileged && is_root_child_path(fullpath)) {
+        if (!privileged && !auth_is_authorized() && is_root_child_path(fullpath)) {
             SHELL_COLOR_ERR();
             kprintf("[DIR] Permission denied: use 'rex dir %s' to create root-level directories\n", fullpath);
             SHELL_COLOR_RESET();
