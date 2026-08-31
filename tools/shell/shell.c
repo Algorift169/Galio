@@ -842,15 +842,63 @@ static void shell_execute_command(void) {
         if (strlen(cmd) == 0) {
             SHELL_COLOR_ERR();
             kprintf("[REX] Usage: rex <command> [args...]\n");
-            kprintf("[REX] Available commands: goto, where, file, new file, dir, new dir, mkdir, top, syscall, write, recycle, delete, clean\n");
+            kprintf("[REX] Available commands: goto, back, where, file, new file, dir, new dir, mkdir, top, syscall, write, recycle, delete, clean\n");
             SHELL_COLOR_RESET();
         } else if (strncmp(cmd, "goto ", 5) == 0) {
             const char *path = cmd + 5;
             while (*path == ' ') path++;
-            shell_resolve_path(current_dir, path, current_dir);
+            char fullpath[DIR_PATH_SIZE];
+            shell_resolve_path(current_dir, path, fullpath);
+            if (!fullpath[0]) {
+                SHELL_COLOR_ERR();
+                kprintf("[REX] Invalid path: %s\n", path);
+                SHELL_COLOR_RESET();
+            } else if (strcmp(fullpath, ROOT_DIR) == 0 || strcmp(fullpath, ".") == 0 || shell_requires_rex_for_root_access(fullpath)) {
+                strncpy(current_dir, ROOT_DIR, 255);
+                current_dir[255] = 0;
+                SHELL_COLOR_CMD();
+                kprintf("[REX] Changed to: %s\n", current_dir);
+                SHELL_COLOR_RESET();
+            } else if (vfs_is_dir(fullpath)) {
+                if (dir_history.sp < DIR_HISTORY_SIZE) {
+                    strncpy(dir_history.stack[dir_history.sp], current_dir, DIR_PATH_SIZE - 1);
+                    dir_history.stack[dir_history.sp][DIR_PATH_SIZE - 1] = 0;
+                    dir_history.sp++;
+                }
+                strncpy(current_dir, fullpath, 255);
+                current_dir[255] = 0;
+                SHELL_COLOR_CMD();
+                kprintf("[REX] Changed to: %s\n", current_dir);
+                SHELL_COLOR_RESET();
+            } else {
+                SHELL_COLOR_ERR();
+                kprintf("[REX] Directory not found: %s\n", fullpath);
+                SHELL_COLOR_RESET();
+            }
+        } else if (strcmp(cmd, "goto") == 0) {
+            strncpy(current_dir, ROOT_DIR, 255);
             current_dir[255] = 0;
             SHELL_COLOR_CMD();
             kprintf("[REX] Changed to: %s\n", current_dir);
+            SHELL_COLOR_RESET();
+        } else if (strcmp(cmd, "back") == 0) {
+            if (dir_history.sp > 0) {
+                dir_history.sp--;
+                strncpy(current_dir, dir_history.stack[dir_history.sp], 255);
+                current_dir[255] = 0;
+            } else {
+                char parent[DIR_PATH_SIZE];
+                path_parent(current_dir, parent, DIR_PATH_SIZE);
+                if (strcmp(parent, current_dir) != 0 && strcmp(current_dir, ROOT_DIR) != 0) {
+                    strncpy(current_dir, parent, 255);
+                    current_dir[255] = 0;
+                } else {
+                    strncpy(current_dir, ROOT_DIR, 255);
+                    current_dir[255] = 0;
+                }
+            }
+            SHELL_COLOR_CMD();
+            kprintf("[REX] Returned to: %s\n", current_dir);
             SHELL_COLOR_RESET();
         } else if (strncmp(cmd, "where ", 6) == 0) {
             SHELL_COLOR_OUT();
@@ -929,7 +977,7 @@ static void shell_execute_command(void) {
         } else {
             SHELL_COLOR_ERR();
             kprintf("[REX] Unknown privileged command: %s\n", cmd);
-            kprintf("[REX] Available: goto, where, file, new file, dir, new dir, mkdir, top, syscall, write, recycle, delete, clean\n");
+            kprintf("[REX] Available: goto, back, where, file, new file, dir, new dir, mkdir, top, syscall, write, recycle, delete, clean\n");
             SHELL_COLOR_RESET();
         }
     } else if (strcmp(input.buffer, "jobs") == 0) {
