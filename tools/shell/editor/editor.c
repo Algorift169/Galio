@@ -69,8 +69,22 @@ static u32 editor_line_end(const editor_buffer_t *buf, u32 line_index) {
     return end;
 }
 
+static void editor_move_cursor_left(editor_buffer_t *buf) {
+    if (buf->cursor > 0) {
+        buf->cursor--;
+    }
+}
+
+static void editor_move_cursor_right(editor_buffer_t *buf) {
+    if (buf->cursor < buf->size) {
+        buf->cursor++;
+    }
+}
+
 static void editor_move_vertical(editor_buffer_t *buf, int delta) {
-    if (buf->size == 0) return;
+    if (buf->size == 0) {
+        return;
+    }
 
     u32 current_line = 0;
     for (u32 i = 0; i < buf->cursor; i++) {
@@ -102,41 +116,68 @@ static void editor_move_vertical(editor_buffer_t *buf, int delta) {
     buf->cursor = target_line_start + target_col;
 }
 
+static void editor_put_text_at(int x, int y, const char *text, unsigned char color) {
+    int cx = x;
+    int cy = y;
+    while (*text) {
+        if (*text == '\n') {
+            cx = x;
+            cy++;
+        } else {
+            vga_write_cell(cx, cy, *text, color);
+            cx++;
+        }
+        text++;
+    }
+}
+
 static void editor_redraw(editor_buffer_t *buf, const char *filepath, u8 save_status) {
     vga_clear();
-    kprintf("^X Exit | ^S Save | Arrows Move Cursor\n");
-    kprintf("File: %s\n", filepath);
-    kprintf("=====================\n");
+    vga_disable_hardware_cursor();
 
-    if (save_status == 1) kprintf(">>> SAVING... <<<\n");
-    else if (save_status == 2) kprintf(">>> SAVED! <<<\n");
-    else if (save_status == 3) kprintf(">>> SAVE FAILED! <<<\n");
+    editor_put_text_at(0, 0, "^X Exit | ^S Save | Arrows Move Cursor", 0x0F);
+    editor_put_text_at(0, 1, "File: ", 0x0F);
+    editor_put_text_at(6, 1, filepath, 0x0F);
+    editor_put_text_at(0, 2, "=====================", 0x0F);
 
-    kprintf("\n");
+    if (save_status == 1) editor_put_text_at(0, 3, ">>> SAVING... <<<", 0x0F);
+    else if (save_status == 2) editor_put_text_at(0, 3, ">>> SAVED! <<<", 0x0F);
+    else if (save_status == 3) editor_put_text_at(0, 3, ">>> SAVE FAILED! <<<", 0x0F);
+
+    int cursor_x = 0;
+    int cursor_y = 5;
 
     if (buf->size == 0) {
-        kprintf("[Empty file - start typing]\n");
+        editor_put_text_at(0, cursor_y, "[Empty file - start typing]", 0x0F);
+        cursor_x = 0;
+        cursor_y += 1;
+        vga_write_cell(0, 5, '|', 0x0C);
     } else {
         for (u32 i = 0; i < buf->size; i++) {
+            char ch = buf->content[i];
+            if (ch == '\n') {
+                cursor_x = 0;
+                cursor_y++;
+                continue;
+            }
+
             if (i == buf->cursor) {
-                kprintf("|");
+                vga_write_cell(cursor_x, cursor_y, ch, 0x0F);
+                vga_write_cell(cursor_x + 1, cursor_y, '|', 0x0C);
+                cursor_x += 2;
+                continue;
             }
-            if (buf->content[i] == '\n') {
-                kprintf("\n");
-            } else {
-                kprintf("%c", buf->content[i]);
-            }
+
+            vga_write_cell(cursor_x, cursor_y, ch, 0x0F);
+            cursor_x++;
         }
+
         if (buf->cursor == buf->size) {
-            kprintf("|");
+            vga_write_cell(cursor_x, cursor_y, '|', 0x0C);
         }
     }
 
-    if (buf->size == 0 && buf->cursor == 0) {
-        kprintf("|");
-    }
-
-    kprintf("\n=====================\n");
+    editor_put_text_at(0, cursor_y + 1, "=====================", 0x0F);
 }
 
 static u8 vfs_write_file(const char *path, const u8 *data, u32 size) {
@@ -164,7 +205,7 @@ static u8 vfs_write_file(const char *path, const u8 *data, u32 size) {
     return (written == size) ? 1 : 0;
 }
 
-static void editor_handle_key(editor_buffer_t *buf, u8 scancode, u8 is_pressed, 
+static void editor_handle_key(editor_buffer_t *buf, u8 scancode, u8 is_pressed, u8 extended,
                                u8 *save_flag, u8 *exit_flag, u8 *buffer_changed) {
     *buffer_changed = 0;
     if (!is_pressed) return;
@@ -194,33 +235,27 @@ static void editor_handle_key(editor_buffer_t *buf, u8 scancode, u8 is_pressed,
         return;
     }
 
-    if (scancode == 0xE0 || scancode == 0xE0 + 0x80) {
-        return;
-    }
-
-    if (raw == 0x4B) {
-        if (buf->cursor > 0) {
-            buf->cursor--;
-            *buffer_changed = 1;
+    if (extended) {
+        switch (raw) {
+            case 0x4B:
+                editor_move_cursor_left(buf);
+                *buffer_changed = 1;
+                return;
+            case 0x4D:
+                editor_move_cursor_right(buf);
+                *buffer_changed = 1;
+                return;
+            case 0x48:
+                editor_move_vertical(buf, -1);
+                *buffer_changed = 1;
+                return;
+            case 0x50:
+                editor_move_vertical(buf, 1);
+                *buffer_changed = 1;
+                return;
+            default:
+                return;
         }
-        return;
-    }
-    if (raw == 0x4D) {
-        if (buf->cursor < buf->size) {
-            buf->cursor++;
-            *buffer_changed = 1;
-        }
-        return;
-    }
-    if (raw == 0x48) {
-        editor_move_vertical(buf, -1);
-        *buffer_changed = 1;
-        return;
-    }
-    if (raw == 0x50) {
-        editor_move_vertical(buf, 1);
-        *buffer_changed = 1;
-        return;
     }
     
     if (raw >= sizeof(ascii_table)) return;
@@ -273,11 +308,7 @@ static void editor_poll_keyboard(editor_buffer_t *buf, u8 *save_flag, u8 *exit_f
         return;
     }
 
-    if (extended) {
-        return;
-    }
-
-    editor_handle_key(buf, scancode, is_pressed, save_flag, exit_flag, buffer_changed);
+    editor_handle_key(buf, scancode, is_pressed, extended, save_flag, exit_flag, buffer_changed);
 }
 
 u8 shell_editor(const char *filepath) {
@@ -302,6 +333,7 @@ u8 shell_editor(const char *filepath) {
     kprintf("[EDITOR] Opening %s\n", filepath);
     kprintf("[EDITOR] Press Ctrl+S to save, Ctrl+X to exit\n");
     keyboard_reset_state();
+    vga_disable_hardware_cursor();
     
     /* Small delay to show message */
     for (volatile int i = 0; i < 200000; i++);
@@ -334,6 +366,7 @@ u8 shell_editor(const char *filepath) {
     }
     
     keyboard_reset_state();
+    vga_enable_hardware_cursor();
     vga_clear();
     kprintf("[EDITOR] Exited\n");
     return 1;

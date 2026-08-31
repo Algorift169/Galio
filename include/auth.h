@@ -25,6 +25,8 @@ void session_login(const char *username, u32 uid);
 void session_logout(void);
 user_session_t *session_current(void);
 u8 auth_verify_password(const char *username, const char *password);
+i32 auth_change_password(const char *old_password, const char *new_password);
+i32 auth_change_username(const char *new_username, u8 require_root);
 void auth_show_login_prompt(void);
 
 #endif /* AUTH_H */

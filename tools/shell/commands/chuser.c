@@ -2,8 +2,11 @@
 #include "kprintf.h"
 #include "auth.h"
 #include "common.h"
+#include "process.h"
 #include "vga.h"
 #include "string.h"
+
+extern void shell_refresh_prompt(void);
 
 u8 shell_chuser_command(const char *args, const char *current_dir) {
     (void)current_dir;
@@ -53,6 +56,7 @@ u8 shell_chuser_command(const char *args, const char *current_dir) {
         vga_set_color(0x0A);
         kprintf("[CHUSER] Username changed to '%s'\n", new_username);
         vga_set_color(0x0A);
+        shell_refresh_prompt();
         return 1;
     } else if (result == -1) {
         vga_set_color(0x0C);

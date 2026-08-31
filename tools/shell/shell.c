@@ -35,6 +35,8 @@
 
 u8 shell_net_command(const char *args, const char *current_dir);
 u8 shell_pkg_command(const char *args, const char *current_dir);
+u8 shell_chuser_command(const char *args, const char *current_dir);
+u8 shell_passwd_command(const char *args, const char *current_dir);
 
 static char *shell_strchr(const char *s, int c) {
     while (*s) {
@@ -164,9 +166,24 @@ static void shell_print_prompt(void) {
         host = session_current()->username;
     }
     SHELL_COLOR_CMD();
-    kprintf("[ %s @ galio ]: <%s> ", host, dir);
+    kprintf("[ %s @ galio ]:~ %s> ", host, dir);
     SHELL_COLOR_RESET();
     shell_cursor_draw();
+}
+
+static void shell_refresh_screen_state(void) {
+    shell_cursor_restore();
+    vga_clear();
+    vga_set_color(0x0A);
+    input.len = 0;
+    input.buffer[0] = 0;
+
+    shell_print_prompt();
+    shell_cursor_reset();
+}
+
+void shell_refresh_prompt(void) {
+    shell_refresh_screen_state();
 }
 
 // Returns the index in the circular history buffer for a given logical index (0 = oldest, count-1 = newest)
@@ -833,153 +850,30 @@ static void shell_execute_command(void) {
             SHELL_COLOR_RESET();
         }
         
-        /* Now execute the privileged command (already authorized) */
+        /* Now execute the privileged command (already authorized). Treat rex as a sudo-like
+         * wrapper: any shell command that follows it is re-run through the normal shell parser
+         * with the current user authorized for this session. */
         const char *cmd = input.buffer + 3;
-        
-        /* Skip leading spaces */
         while (*cmd == ' ') cmd++;
-        
+
         if (strlen(cmd) == 0) {
             SHELL_COLOR_ERR();
             kprintf("[REX] Usage: rex <command> [args...]\n");
-            kprintf("[REX] Available commands: goto, back, where, file, new file, dir, new dir, mkdir, top, syscall, write, recycle, delete, clean\n");
             SHELL_COLOR_RESET();
-        } else if (strncmp(cmd, "goto ", 5) == 0) {
-            const char *path = cmd + 5;
-            while (*path == ' ') path++;
-            char fullpath[DIR_PATH_SIZE];
-            shell_resolve_path(current_dir, path, fullpath);
-            if (!fullpath[0]) {
-                SHELL_COLOR_ERR();
-                kprintf("[REX] Invalid path: %s\n", path);
-                SHELL_COLOR_RESET();
-            } else if (strcmp(fullpath, ROOT_DIR) == 0 || strcmp(fullpath, ".") == 0 || shell_requires_rex_for_root_access(fullpath)) {
-                strncpy(current_dir, ROOT_DIR, 255);
-                current_dir[255] = 0;
-                SHELL_COLOR_CMD();
-                kprintf("[REX] Changed to: %s\n", current_dir);
-                SHELL_COLOR_RESET();
-            } else if (vfs_is_dir(fullpath)) {
-                if (dir_history.sp < DIR_HISTORY_SIZE) {
-                    strncpy(dir_history.stack[dir_history.sp], current_dir, DIR_PATH_SIZE - 1);
-                    dir_history.stack[dir_history.sp][DIR_PATH_SIZE - 1] = 0;
-                    dir_history.sp++;
-                }
-                strncpy(current_dir, fullpath, 255);
-                current_dir[255] = 0;
-                SHELL_COLOR_CMD();
-                kprintf("[REX] Changed to: %s\n", current_dir);
-                SHELL_COLOR_RESET();
-            } else {
-                SHELL_COLOR_ERR();
-                kprintf("[REX] Directory not found: %s\n", fullpath);
-                SHELL_COLOR_RESET();
-            }
-        } else if (strcmp(cmd, "goto") == 0) {
-            strncpy(current_dir, ROOT_DIR, 255);
-            current_dir[255] = 0;
-            SHELL_COLOR_CMD();
-            kprintf("[REX] Changed to: %s\n", current_dir);
-            SHELL_COLOR_RESET();
-        } else if (strcmp(cmd, "back") == 0) {
-            if (dir_history.sp > 0) {
-                dir_history.sp--;
-                strncpy(current_dir, dir_history.stack[dir_history.sp], 255);
-                current_dir[255] = 0;
-            } else {
-                char parent[DIR_PATH_SIZE];
-                path_parent(current_dir, parent, DIR_PATH_SIZE);
-                if (strcmp(parent, current_dir) != 0 && strcmp(current_dir, ROOT_DIR) != 0) {
-                    strncpy(current_dir, parent, 255);
-                    current_dir[255] = 0;
-                } else {
-                    strncpy(current_dir, ROOT_DIR, 255);
-                    current_dir[255] = 0;
-                }
-            }
-            SHELL_COLOR_CMD();
-            kprintf("[REX] Returned to: %s\n", current_dir);
-            SHELL_COLOR_RESET();
-        } else if (strncmp(cmd, "where ", 6) == 0) {
-            SHELL_COLOR_OUT();
-            shell_where_command(cmd + 6, current_dir);
-            SHELL_COLOR_RESET();
-        } else if (strcmp(cmd, "where") == 0) {
-            SHELL_COLOR_CMD();
-            shell_where_command("", current_dir);
-            SHELL_COLOR_RESET();
-        } else if (strncmp(cmd, "file", 4) == 0 && (cmd[4] == ' ' || cmd[4] == '\0')) {
-            const char *file_args = cmd + 4;
-            if (*file_args == ' ') file_args++;
-            SHELL_COLOR_OUT();
-            shell_file_command(file_args, current_dir, 1, 1);
-            SHELL_COLOR_RESET();
-        } else if (strncmp(cmd, "new file", 8) == 0) {
-            const char *file_args = cmd + 8;
-            if (*file_args == ' ') file_args++;
-            SHELL_COLOR_OUT();
-            shell_file_command(file_args, current_dir, 1, 1);
-            SHELL_COLOR_RESET();
-        } else if (strncmp(cmd, "dir", 3) == 0 && (cmd[3] == ' ' || cmd[3] == '\0')) {
-            const char *dir_args = cmd + 3;
-            if (*dir_args == ' ') dir_args++;
-            shell_dir_command(dir_args, current_dir, 1, 1);
-        } else if (strncmp(cmd, "new dir", 7) == 0) {
-            const char *dir_args = cmd + 7;
-            if (*dir_args == ' ') dir_args++;
-            shell_dir_command(dir_args, current_dir, 1, 1);
-        } else if (strncmp(cmd, "mkdir", 5) == 0 && (cmd[5] == ' ' || cmd[5] == '\0')) {
-            const char *dir_args = cmd + 5;
-            if (*dir_args == ' ') dir_args++;
-            shell_dir_command(dir_args, current_dir, 1, 1);
-        } else if (strncmp(cmd, "new mkdir", 9) == 0) {
-            const char *dir_args = cmd + 9;
-            if (*dir_args == ' ') dir_args++;
-            shell_dir_command(dir_args, current_dir, 1, 1);
-        } else if (strcmp(cmd, "top") == 0) {
-            SHELL_COLOR_OUT();
-            shell_top_command("", current_dir);
-            SHELL_COLOR_RESET();
-        } else if (strncmp(cmd, "top ", 4) == 0) {
-            SHELL_COLOR_OUT();
-            shell_top_command(cmd + 4, current_dir);
-            SHELL_COLOR_RESET();
-        } else if (strncmp(cmd, "syscall", 7) == 0 && (cmd[7] == ' ' || cmd[7] == '\0')) {
-            const char *sys_args = cmd + 7;
-            if (*sys_args == ' ') sys_args++;
-            SHELL_COLOR_OUT();
-            shell_syscall_command(sys_args, current_dir);
-            SHELL_COLOR_RESET();
-        } else if (strncmp(cmd, "write", 5) == 0 && (cmd[5] == ' ' || cmd[5] == '\0')) {
-            const char *write_args = cmd + 5;
-            if (*write_args == ' ') write_args++;
-            SHELL_COLOR_OUT();
-            shell_write_command(write_args, current_dir, 1);
-            SHELL_COLOR_RESET();
-        } else if (strncmp(cmd, "recycle", 7) == 0 && (cmd[7] == ' ' || cmd[7] == '\0')) {
-            const char *recycle_args = cmd + 7;
-            if (*recycle_args == ' ') recycle_args++;
-            SHELL_COLOR_OUT();
-            shell_recycle_command(recycle_args, current_dir, 1);
-            SHELL_COLOR_RESET();
-        } else if (strncmp(cmd, "delete", 6) == 0 && (cmd[6] == ' ' || cmd[6] == '\0')) {
-            const char *delete_args = cmd + 6;
-            if (*delete_args == ' ') delete_args++;
-            SHELL_COLOR_OUT();
-            shell_delete_command(delete_args, current_dir, 1);
-            SHELL_COLOR_RESET();
-        } else if (strncmp(cmd, "clean", 5) == 0 && (cmd[5] == ' ' || cmd[5] == '\0')) {
-            const char *clean_args = cmd + 5;
-            if (*clean_args == ' ') clean_args++;
-            SHELL_COLOR_OUT();
-            shell_clean_command(clean_args, current_dir);
-            SHELL_COLOR_RESET();
-        } else {
-            SHELL_COLOR_ERR();
-            kprintf("[REX] Unknown privileged command: %s\n", cmd);
-            kprintf("[REX] Available: goto, back, where, file, new file, dir, new dir, mkdir, top, syscall, write, recycle, delete, clean\n");
-            SHELL_COLOR_RESET();
+            shell_print_prompt();
+            input.len = 0;
+            return;
         }
+
+        char privileged_cmd[SHELL_BUFFER_SIZE];
+        strncpy(privileged_cmd, cmd, sizeof(privileged_cmd) - 1);
+        privileged_cmd[sizeof(privileged_cmd) - 1] = 0;
+
+        strncpy(input.buffer, privileged_cmd, SHELL_BUFFER_SIZE - 1);
+        input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
+        input.len = strlen(input.buffer);
+        shell_execute_command();
+        return;
     } else if (strcmp(input.buffer, "jobs") == 0) {
         shell_list_jobs();
     } else if (strncmp(input.buffer, "fg ", 3) == 0) {
@@ -1361,6 +1255,11 @@ static void shell_execute_command(void) {
         SHELL_COLOR_OUT();
         kprintf("Galio v1.0\n");
         SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "refresh") == 0) {
+        SHELL_COLOR_CMD();
+        kprintf("[REFRESH] Reloading shell and VGA state...\n");
+        SHELL_COLOR_RESET();
+        shell_refresh_screen_state();
     } else if (strncmp(input.buffer, "socket", 6) == 0) {
         extern u8 shell_socket_command(const char *, const char *);
         shell_socket_command(input.buffer + 7, current_dir);

@@ -132,6 +132,8 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/show.c \
        tools/shell/commands/tree.c \
        tools/shell/commands/write.c \
+       tools/shell/commands/chuser.c \
+       tools/shell/commands/passwd.c \
        tools/shell/commands/recycle.c \
        tools/shell/commands/clean.c \
        tools/shell/commands/delete.c \

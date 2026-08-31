@@ -461,6 +461,7 @@ i32 auth_change_username(const char *new_username, u8 require_root) {
     strncpy(kernel_auth.username, new_username, sizeof(kernel_auth.username) - 1);
     kernel_auth.username[sizeof(kernel_auth.username) - 1] = 0;
     auth_set_session_uid();
+    session_login(kernel_auth.username, kernel_auth.uid);
 
     /* Save to disk */
     if (auth_save_to_disk() != 0) {
