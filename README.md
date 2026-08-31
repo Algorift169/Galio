@@ -1,157 +1,91 @@
-# Galio — 32-bit Kernel 
+# Galio
 
-**Galio** is a comprehensive 32-bit kernel designed  for a system. It provides a full protected-mode environment with memory management, interrupt handling, device drivers, and basic process support, enabling the development of higher-level OS components.
+Galio is a custom x86_64 kernel and shell environment focused on a compact OS core, privilege-aware filesystem access, syscall experimentation, and power lifecycle hooks.
 
----
-
-### Features Implemented
-
-**Boot and Initialization**
-- Multiboot v1 compliant header for GRUB loading
-- Assembly boot stub with stack setup and early serial output
-- Complete kernel initialization sequence
-
-**Memory Management**
-- Physical Memory Manager (PMM) with bitmap allocation
-- Virtual memory paging with 4MB identity mapping
-- Kernel heap allocator
-- Multiboot memory map parsing
-
-**CPU and Interrupts**
-- GDT setup (null, code, data segments)
-- IDT with ISR and IRQ handlers
-- PIC remapping and interrupt management
-- CPU exception handling with panic on faults
-
-**Device Drivers**
-- VGA text output with scrolling and cursor management
-- Serial port driver (COM1) for debugging output
-- PIT (Programmable Interval Timer) for system timing (100 Hz)
-- PS/2 Keyboard driver with scancode translation
-
-**System Services**
-- Basic process manager with idle process
-- System call interface (INT 0x80) with stubs for exec, fork, etc.
-- Virtual File System (VFS) layer with initrd support
-- Kernel printf with VGA and serial output
-- Interactive shell with polling-based keyboard input
-- Recycle bin support with `recycle`, `clean rbin`, and `delete` shell commands
-- Recycle bin auto-cleanup for files older than 30 days when shell starts
-
-**ELF Loading**
-- ELF binary loader with proper 32-bit struct definitions
-- Page-by-page physical memory allocation for loaded segments
-- Support for PT_LOAD segments with proper error handling
-- Diagnostic output with actual memory addresses and sizes
-
-**Runtime Support**
-- C runtime helpers: memcpy, memset, panic
-- Kernel status reporting with uptime and process info
-- Memory stabilization tests
-- Idle loop with periodic status updates
+The project is currently built as a freestanding x86_64 kernel with a custom GRUB boot flow, a VFS-backed shell environment, and a Linux-inspired compatibility layer adapted to Galio naming and kernel conventions.
 
 ---
 
-### Prerequisites
+## Highlights
 
-Install required packages on Debian/Ubuntu/Kali:
+- x86_64 long-mode kernel build
+- custom boot and linker setup
+- VFS and EXT2-style filesystem layer
+- interactive shell with privileged rex flow
+- syscall compatibility surface for common kernel calls
+- root-only file and directory protection through rex
+- power subsystem scaffolding for reset, shutdown, and suspend
+- desktop-style shell utilities and process view
+
+---
+
+## Current build
+
+Requirements are the standard host toolchain for a bare-metal x86_64 kernel:
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential gcc-multilib libc6-dev-i386 nasm binutils \
-                    grub-pc-bin xorriso mtools qemu-system-i386
+sudo apt install -y build-essential nasm binutils xorriso grub-pc-bin mtools qemu-system-x86
 ```
 
----
-
-### Build and Run
-
-From the project root:
+Build and run:
 
 ```bash
-# Build everything
-make all
-
-# Run in QEMU with serial output
-chmod +x ./run.sh
-./run.sh
-
-# Or run with VGA window
-qemu-system-i386 -cdrom build/galio.iso -m 128M
+make clean && make -j$(nproc)
+./scripts/run.sh
 ```
 
-## OR MAKE ALL IN ONCE AND RUN
+Optional fullscreen:
 
-make clean && make all && ./run.sh
-
----
-
-### Project Layout
-
-**Top Level**
-- `Makefile` — Build rules for compiling and linking
-- `build/` — Generated build artifacts and images
-- `README.md` — This documentation
-- `build/initrd.bin` — Initial RAM disk image
-- `build/disk.img` — Disk image for persistent storage
-
-**Directories**
-
-- `kernel/` — Core kernel sources
-  - `arch/x86/boot/` — Boot code (boot.S, linker.ld)
-  - `arch/x86/cpu/` — CPU management (GDT, IDT, IRQ, ISR)
-  - `drivers/` — Device drivers (ATA, keyboard, serial, timer, VGA)
-  - `fs/` — Filesystem drivers (EXT2, VFS)
-  - `lib/` — Kernel libraries (kprintf, string, mem_test)
-  - `mm/` — Memory management (paging, PMM, heap)
-  - `process/` — Process management and ELF loader
-  - `syscall/` — System call interface
-  - `auth.c` — User authentication
-  - `kmain.c` — Kernel entry point
-
-- `include/` — Public headers
-  - `arch/x86/` — Architecture headers (cpu, gdt, idt, irq)
-  - `drivers/` — Driver headers (ata, keyboard, pit, serial, vga)
-  - `fs/` — Filesystem headers (ext2, vfs, vfs_core)
-  - `lib/` — Library headers (kprintf, string)
-  - `mm/` — Memory management headers (heap, memory, paging, pmem)
-  - `process/` — Process headers (elf, preempt, process, scheduler)
-  - `syscall/` — Syscall header
-  - `auth.h`, `common.h`, `init.h`
-
-- `init/` — Init process
-  - `init.c`
-
-- `tools/` — Build tools
-  - `mkiofs/` — Initrd generator
-  - `shell/` — User shell with commands and editor
-
-- `scripts/` — Utility scripts
-  - `run.sh` — QEMU runner
-  - `run_fullscreen.sh` — QEMU fullscreen runner
-
-  - `test_elf.c` — ELF test binary
-
-### Notes
-
-- The kernel outputs boot progress to both VGA and serial (COM1)
-- Serial output is recommended for debugging as it's more reliable
-- The kernel enters an idle loop after initialization, printing status every second
-- All major subsystems are initialized and functional
-- Ready for extension with filesystem drivers, network stack, and userspace
+```bash
+./scripts/run_fullscreen.sh
+```
 
 ---
 
-### Development Status
+## Main areas
 
-✅ **Complete**: Boot, memory management, interrupts, drivers, processes, ELF loading, shell  
-🔄 **Current**: Fixing paging and heap initialization for ELF segment loading  
-🔄 **Next Steps**: Complete userspace support, filesystem implementation, scheduler enhancements
+- kernel/ — kernel entry, runtime, tests, and subsystem logic
+- include/ — public headers for memory, process, fs, syscall, and power
+- init/ — early init flow
+- tools/shell/ — interactive shell and privileged command layer
+- tools/shell/commands/ — file, dir, write, delete, top, syscall, and other commands
+- kernel/power/ — reboot, shutdown, and suspend scaffolding
+- kernel/syscall/ — syscall dispatch and compatibility handlers
+- ui/ — display/panel primitives for the shell UI
 
-### Recent Updates (May 9, 2026)
+---
 
-- **ELF Loader Overhaul**: Fixed ELF header struct alignment and field types; implemented proper page-by-page physical memory allocation for loaded segments
-- **Interactive Shell**: Replaced IRQ-driven keyboard with polling-based input for stable shell operation
-- **Memory Management**: Enhanced error handling and diagnostic output in PMM and paging subsystems
-- **Struct Definitions**: Corrected alignment issues in `elf_header_t` and `elf_program_header_t` with proper field sizes and removed unnecessary `__attribute__((packed))`
-- **Constants**: Added PT_* segment type constants and PAGE_* flag definitions for better code clarity
+## Shell behavior
+
+The shell includes a privileged rex flow that requires a password once per session. Root-level directory and file modifications are intentionally blocked unless they are done through rex.
+
+Examples:
+
+```bash
+rex goto .
+rex back
+rex file example.txt
+rex dir new_folder
+rex syscall mmap 400
+```
+
+---
+
+## Notes
+
+- This project is not a Linux kernel clone; it borrows Linux-style structure and ideas where useful, but keeps Galio-specific naming and runtime behavior.
+- Some syscall and power paths are compatibility stubs intended for kernel development and testing rather than full hardware-level completion.
+- Current work is focused on the kernel shell, privilege model, VFS operations, power lifecycle hooks, and syscall compatibility.
+
+---
+
+## Development status
+
+- Boot and kernel startup: active and stable
+- Shell and privilege layer: active
+- Filesystem and process layer: active
+- Syscall compatibility: expanding
+- Power lifecycle support: being layered in as kernel scaffolding
+
+This README reflects the current x86_64 project state rather than the older 32-bit kernel layout.
