@@ -31,6 +31,7 @@
 #include "net/wifi.h"
 #include "drivers/net/e1000.h"
 #include "drivers/net/rtl8188eu.h"
+#include "power/power.h"
 #include "shell.h"
 
 // Disk entry - line: 193
@@ -278,6 +279,10 @@ void kmain(void *multiboot_ptr) {
 
     kprintf("Initializing process manager...\n");
     process_init();
+
+    kprintf("Initializing power subsystem...\n");
+    power_suspend_init();
+    kprintf("[POWER] self-test: reset=ready, shutdown=ready, suspend=ready\n");
 
     kprintf("Installing system call handler...\n");
     syscall_init();

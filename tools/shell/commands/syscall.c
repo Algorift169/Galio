@@ -46,6 +46,8 @@ static void shell_print_usage(const char *cmd) {
         kprintf("Usage: syscall gid\n");
     } else if (strcmp(cmd, "time") == 0) {
         kprintf("Usage: syscall time\n");
+    } else if (strcmp(cmd, "suspend") == 0) {
+        kprintf("Usage: syscall suspend\n");
     } else if (strcmp(cmd, "fork") == 0) {
         kprintf("Usage: syscall fork\n");
     } else if (strcmp(cmd, "pipe") == 0) {
@@ -73,7 +75,7 @@ static void shell_print_usage(const char *cmd) {
     } else if (strcmp(cmd, "execve") == 0) {
         kprintf("Usage: syscall execve <path> [arg ...]\n");
     } else {
-        kprintf("Usage: syscall <pid|uid|gid|time|fork|pipe|dup|mmap|brk|wait|open|read|close|seek|stat|exec|execve>\n");
+        kprintf("Usage: syscall <pid|uid|gid|time|suspend|fork|pipe|dup|mmap|brk|wait|open|read|close|seek|stat|exec|execve>\n");
     }
 }
 

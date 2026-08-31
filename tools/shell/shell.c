@@ -31,6 +31,7 @@
 #include "top.h"
 #include "user_syscall.h"
 #include "kernel_time.h"
+#include "power/power.h"
 
 u8 shell_net_command(const char *args, const char *current_dir);
 u8 shell_pkg_command(const char *args, const char *current_dir);
@@ -323,6 +324,13 @@ static u8 shell_is_direct_root_child(const char *path) {
     char parent[DIR_PATH_SIZE];
     path_parent(normalized, parent, sizeof(parent));
     return strcmp(parent, ".") == 0;
+}
+
+static u8 shell_requires_rex_for_root_access(const char *path) {
+    if (!path || *path == 0) return 0;
+    char normalized[DIR_PATH_SIZE];
+    if (!path_normalize(path, normalized, sizeof(normalized))) return 0;
+    return strcmp(normalized, ".") == 0 || shell_is_direct_root_child(normalized);
 }
 
 static u8 shell_find_ancestor_dir(const char *path, const char *target, char *out_match) {
@@ -834,7 +842,7 @@ static void shell_execute_command(void) {
         if (strlen(cmd) == 0) {
             SHELL_COLOR_ERR();
             kprintf("[REX] Usage: rex <command> [args...]\n");
-            kprintf("[REX] Available commands: goto, where, file, new file, dir, new dir, mkdir, write, recycle, delete, clean\n");
+            kprintf("[REX] Available commands: goto, where, file, new file, dir, new dir, mkdir, top, syscall, write, recycle, delete, clean\n");
             SHELL_COLOR_RESET();
         } else if (strncmp(cmd, "goto ", 5) == 0) {
             const char *path = cmd + 5;
@@ -880,6 +888,20 @@ static void shell_execute_command(void) {
             const char *dir_args = cmd + 9;
             if (*dir_args == ' ') dir_args++;
             shell_dir_command(dir_args, current_dir, 1, 1);
+        } else if (strcmp(cmd, "top") == 0) {
+            SHELL_COLOR_OUT();
+            shell_top_command("", current_dir);
+            SHELL_COLOR_RESET();
+        } else if (strncmp(cmd, "top ", 4) == 0) {
+            SHELL_COLOR_OUT();
+            shell_top_command(cmd + 4, current_dir);
+            SHELL_COLOR_RESET();
+        } else if (strncmp(cmd, "syscall", 7) == 0 && (cmd[7] == ' ' || cmd[7] == '\0')) {
+            const char *sys_args = cmd + 7;
+            if (*sys_args == ' ') sys_args++;
+            SHELL_COLOR_OUT();
+            shell_syscall_command(sys_args, current_dir);
+            SHELL_COLOR_RESET();
         } else if (strncmp(cmd, "write", 5) == 0 && (cmd[5] == ' ' || cmd[5] == '\0')) {
             const char *write_args = cmd + 5;
             if (*write_args == ' ') write_args++;
@@ -907,7 +929,7 @@ static void shell_execute_command(void) {
         } else {
             SHELL_COLOR_ERR();
             kprintf("[REX] Unknown privileged command: %s\n", cmd);
-            kprintf("[REX] Available: goto, where, file, new file, dir, new dir, mkdir, write, recycle, delete, clean\n");
+            kprintf("[REX] Available: goto, where, file, new file, dir, new dir, mkdir, top, syscall, write, recycle, delete, clean\n");
             SHELL_COLOR_RESET();
         }
     } else if (strcmp(input.buffer, "jobs") == 0) {
@@ -1176,9 +1198,15 @@ static void shell_execute_command(void) {
         const char *dirname = input.buffer + 6;
         char fullpath[DIR_PATH_SIZE];
         shell_resolve_path(current_dir, dirname, fullpath);
-        SHELL_COLOR_OUT();
-        vfs_rmdir(fullpath);
-        SHELL_COLOR_RESET();
+        if (shell_requires_rex_for_root_access(fullpath)) {
+            SHELL_COLOR_ERR();
+            kprintf("Permission denied: use 'rex rmdir %s' to modify root-level directories\n", dirname);
+            SHELL_COLOR_RESET();
+        } else {
+            SHELL_COLOR_OUT();
+            vfs_rmdir(fullpath);
+            SHELL_COLOR_RESET();
+        }
     } else if (strncmp(input.buffer, "pwd", 3) == 0) {
         SHELL_COLOR_OUT();
         kprintf("%s\n", current_dir);
@@ -1188,7 +1216,7 @@ static void shell_execute_command(void) {
         char fullpath[DIR_PATH_SIZE];
         shell_resolve_path(current_dir, dirname, fullpath);
 
-        if (strcmp(fullpath, ROOT_DIR) == 0) {
+        if (shell_requires_rex_for_root_access(fullpath)) {
             SHELL_COLOR_ERR();
             kprintf("Permission denied: use 'rex goto .' to access root\n");
             SHELL_COLOR_RESET();
@@ -1270,6 +1298,16 @@ static void shell_execute_command(void) {
     } else if (strncmp(input.buffer, "echo ", 5) == 0) {
         SHELL_COLOR_OUT();
         kprintf("%s\n", input.buffer + 5);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "reboot", 6) == 0 || strncmp(input.buffer, "restart", 7) == 0) {
+        SHELL_COLOR_OUT();
+        kprintf("[POWER] Reboot command issued\n");
+        power_system_reset();
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "shutdown", 8) == 0 || strncmp(input.buffer, "shut-down", 9) == 0 || strncmp(input.buffer, "poweroff", 8) == 0) {
+        SHELL_COLOR_OUT();
+        kprintf("[POWER] Shutdown command issued\n");
+        power_system_shutdown();
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "uname", 5) == 0) {
         SHELL_COLOR_OUT();

@@ -88,6 +88,13 @@ SRCS = kernel/kmain.c \
        kernel/time/sched_clock.c \
        kernel/time/timeconv.c \
        kernel/time/sleep_timeout.c \
+       kernel/power/power_main.c \
+       kernel/power/power_suspend.c \
+       kernel/power/power_process.c \
+       kernel/power/power_console.c \
+       kernel/power/power_qos.c \
+       kernel/power/power_autosleep.c \
+       kernel/power/power_wakelock.c \
        kernel/drivers/video/vga.c \
        kernel/drivers/video/fb.c \
        kernel/drivers/usb/usb.c \

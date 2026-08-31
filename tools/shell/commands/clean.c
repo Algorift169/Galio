@@ -36,6 +36,20 @@ u8 shell_clean_command(const char *args, const char *current_dir) {
         return 0;
     }
 
+    char normalized[VFS_MAX_PATH];
+    if (path_normalize(fullpath, normalized, sizeof(normalized))) {
+        if (strcmp(normalized, ".") == 0) {
+            kprintf("[CLEAN] Permission denied: use 'rex clean %s' to clean root-level directories\n", args);
+            return 0;
+        }
+        char parent[VFS_MAX_PATH];
+        path_parent(normalized, parent, sizeof(parent));
+        if (strcmp(parent, ".") == 0) {
+            kprintf("[CLEAN] Permission denied: use 'rex clean %s' to clean root-level directories\n", args);
+            return 0;
+        }
+    }
+
     // Allow "rbin" as alias for recycle bin
     char target[VFS_MAX_PATH];
     strncpy(target, skip_spaces(args), VFS_MAX_PATH - 1);
