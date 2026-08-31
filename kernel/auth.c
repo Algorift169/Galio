@@ -45,9 +45,9 @@ user_session_t *session_current(void) {
 }
 
 
-static const char *auth_user_path = "./root/usr/usr.txt";
-static const char *auth_pass_path = "./root/usr/pass.txt";
-static const char *auth_directory_path = "./root/usr";
+/* Unified account data file path */
+static const char *auth_data_path = "./var/account/udata.galio";
+static const char *auth_data_dir = "./var/account";
 
 static i32 auth_ensure_home_directory(void) {
     if (!vfs_core_is_disk_mode()) return -1;
@@ -68,36 +68,62 @@ static i32 auth_ensure_home_directory(void) {
     return 0;
 }
 
+static char *auth_find_key_line(char *buffer, const char *key) {
+    char *cursor = buffer;
+    u32 key_len = strlen(key);
+
+    while (*cursor != 0) {
+        if (strncmp(cursor, key, key_len) == 0) {
+            return cursor;
+        }
+
+        if (*cursor == '\n' || *cursor == '\r') {
+            cursor++;
+            continue;
+        }
+
+        cursor++;
+    }
+
+    return NULL;
+}
+
+static char *auth_line_end(char *text) {
+    char *cursor = text;
+    while (*cursor != 0 && *cursor != '\n' && *cursor != '\r') {
+        cursor++;
+    }
+    return cursor;
+}
+
 static i32 auth_save_to_disk(void) {
     if (!vfs_core_is_disk_mode()) return -1;
 
+    if (!vfs_mkdir("./var", 1)) return -1;
+    if (!vfs_mkdir(auth_data_dir, 1)) return -1;
     if (!vfs_mkdir("./root", 1)) return -1;
-    if (!vfs_mkdir(auth_directory_path, 1)) return -1;
     if (!vfs_mkdir("./root/home", 1)) return -1;
 
-    if (!vfs_create(auth_user_path, 1)) return -1;
-    if (!vfs_create(auth_pass_path, 1)) return -1;
+    /* Create or overwrite unified account data file */
+    if (!vfs_create(auth_data_path, 1)) return -1;
 
-    u32 user_fd = vfs_open(auth_user_path);
-    if (user_fd == VFS_INVALID_FD) return -1;
-    u32 pass_fd = vfs_open(auth_pass_path);
-    if (pass_fd == VFS_INVALID_FD) {
-        vfs_close(user_fd);
-        return -1;
-    }
+    u32 data_fd = vfs_open(auth_data_path);
+    if (data_fd == VFS_INVALID_FD) return -1;
 
-    u32 username_len = strlen(kernel_auth.username);
-    u32 written = vfs_write(user_fd, kernel_auth.username, username_len);
-    vfs_close(user_fd);
-    if (written != username_len) {
-        vfs_close(pass_fd);
-        return -1;
-    }
+    char payload[256];
+    payload[0] = 0;
 
-    u32 password_len = strlen(kernel_auth.password);
-    written = vfs_write(pass_fd, kernel_auth.password, password_len);
-    vfs_close(pass_fd);
-    if (written != password_len) return -1;
+    strncat(payload, "usr = ", sizeof(payload) - 1);
+    strncat(payload, kernel_auth.username, sizeof(payload) - strlen(payload) - 1);
+    strncat(payload, "\n", sizeof(payload) - strlen(payload) - 1);
+    strncat(payload, "pass = ", sizeof(payload) - 1);
+    strncat(payload, kernel_auth.password, sizeof(payload) - strlen(payload) - 1);
+    strncat(payload, "\n", sizeof(payload) - strlen(payload) - 1);
+
+    u32 payload_len = strlen(payload);
+    u32 written = vfs_write(data_fd, payload, payload_len);
+    vfs_close(data_fd);
+    if (written != payload_len) return -1;
 
     if (!vfs_fsync()) return -1;
     if (auth_ensure_home_directory() != 0) return -1;
@@ -107,24 +133,72 @@ static i32 auth_save_to_disk(void) {
 static i32 auth_load_from_disk(void) {
     if (!vfs_core_is_disk_mode()) return -1;
 
-    if (ext2_find_inode(auth_user_path) == 0 || ext2_find_inode(auth_pass_path) == 0) {
+    if (ext2_find_inode(auth_data_path) == 0) {
         return 0;
     }
 
-    char user_buffer[sizeof(kernel_auth.username)];
-    char pass_buffer[sizeof(kernel_auth.password)];
+    char data_buffer[256];
+    u32 data_len = vfs_read(auth_data_path, data_buffer, sizeof(data_buffer) - 1);
+    if (data_len == 0) return 0;
 
-    u32 user_len = vfs_read(auth_user_path, user_buffer, sizeof(user_buffer) - 1);
-    u32 pass_len = vfs_read(auth_pass_path, pass_buffer, sizeof(pass_buffer) - 1);
-    if (user_len == 0 || pass_len == 0) return 0;
+    data_buffer[data_len] = 0;
 
-    user_buffer[user_len] = 0;
-    pass_buffer[pass_len] = 0;
+    char username[INPUT_BUFFER_SIZE];
+    char password[INPUT_BUFFER_SIZE];
+    username[0] = 0;
+    password[0] = 0;
 
-    strncpy(kernel_auth.username, user_buffer, sizeof(kernel_auth.username) - 1);
+    char *usr_line = auth_find_key_line(data_buffer, "usr = ");
+    char *pass_line = auth_find_key_line(data_buffer, "pass = ");
+
+    if (usr_line && pass_line) {
+        char *usr_value = usr_line + strlen("usr = ");
+        char *usr_end = auth_line_end(usr_value);
+        u32 user_len = (u32)(usr_end - usr_value);
+        if (user_len >= sizeof(username)) return 0;
+        strncpy(username, usr_value, user_len);
+        username[user_len] = 0;
+
+        char *pass_value = pass_line + strlen("pass = ");
+        char *pass_end = auth_line_end(pass_value);
+        u32 pass_len = (u32)(pass_end - pass_value);
+        if (pass_len >= sizeof(password)) return 0;
+        strncpy(password, pass_value, pass_len);
+        password[pass_len] = 0;
+    } else {
+        /* Legacy format: username:password */
+        char *delimiter = NULL;
+        char *cursor = data_buffer;
+        while (*cursor != 0) {
+            if (*cursor == ':') {
+                delimiter = cursor;
+                break;
+            }
+            cursor++;
+        }
+        if (!delimiter) return 0;
+
+        u32 user_len = (u32)(delimiter - data_buffer);
+        if (user_len >= sizeof(username)) return 0;
+        strncpy(username, data_buffer, user_len);
+        username[user_len] = 0;
+
+        const char *pass_start = delimiter + 1;
+        u32 pass_len = data_len - user_len - 1;
+        if (pass_len >= sizeof(password)) return 0;
+        strncpy(password, pass_start, pass_len);
+        password[pass_len] = 0;
+    }
+
+    if (username[0] == 0 || password[0] == 0) {
+        return 0;
+    }
+
+    strncpy(kernel_auth.username, username, sizeof(kernel_auth.username) - 1);
     kernel_auth.username[sizeof(kernel_auth.username) - 1] = 0;
-    strncpy(kernel_auth.password, pass_buffer, sizeof(kernel_auth.password) - 1);
+    strncpy(kernel_auth.password, password, sizeof(kernel_auth.password) - 1);
     kernel_auth.password[sizeof(kernel_auth.password) - 1] = 0;
+
     kernel_auth.registered = 1;
     kernel_auth.authenticated = 0;
     auth_set_session_uid();
@@ -335,4 +409,63 @@ u8 auth_is_authorized(void) {
 
 void auth_authorize(void) {
     kernel_auth.authorized = 1;
+}
+
+/* Change password - requires old password verification */
+i32 auth_change_password(const char *old_password, const char *new_password) {
+    if (!kernel_auth.authenticated) {
+        return -1;  /* Not authenticated */
+    }
+    if (!old_password || !new_password) {
+        return -1;
+    }
+    if (old_password[0] == 0 || new_password[0] == 0) {
+        return -1;
+    }
+
+    /* Verify old password */
+    if (!auth_verify_password(kernel_auth.username, old_password)) {
+        return -2;  /* Password verification failed */
+    }
+
+    /* Update password */
+    strncpy(kernel_auth.password, new_password, sizeof(kernel_auth.password) - 1);
+    kernel_auth.password[sizeof(kernel_auth.password) - 1] = 0;
+
+    /* Save to disk */
+    if (auth_save_to_disk() != 0) {
+        return -3;  /* Disk write failed */
+    }
+
+    return 0;  /* Success */
+}
+
+/* Change username - requires root privilege (rex) */
+i32 auth_change_username(const char *new_username, u8 require_root) {
+    if (!kernel_auth.authenticated) {
+        return -1;  /* Not authenticated */
+    }
+    if (require_root && kernel_auth.uid != UID_ROOT) {
+        return -2;  /* Root privilege required */
+    }
+    if (!new_username || new_username[0] == 0) {
+        return -3;  /* Invalid username */
+    }
+
+    /* Verify new username is not too long */
+    if (strlen(new_username) >= sizeof(kernel_auth.username)) {
+        return -4;  /* Username too long */
+    }
+
+    /* Update username */
+    strncpy(kernel_auth.username, new_username, sizeof(kernel_auth.username) - 1);
+    kernel_auth.username[sizeof(kernel_auth.username) - 1] = 0;
+    auth_set_session_uid();
+
+    /* Save to disk */
+    if (auth_save_to_disk() != 0) {
+        return -5;  /* Disk write failed */
+    }
+
+    return 0;  /* Success */
 }

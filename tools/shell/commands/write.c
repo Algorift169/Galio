@@ -29,6 +29,17 @@ static u8 is_root_child_path(const char *path) {
     return strcmp(parent, ".") == 0;
 }
 
+static u8 is_auth_data_path(const char *path) {
+    char normalized[VFS_MAX_PATH];
+    if (!path_normalize(path, normalized, VFS_MAX_PATH)) {
+        return 0;
+    }
+
+    return strcmp(normalized, "./var/account/udata.galio") == 0 ||
+           strcmp(normalized, "var/account/udata.galio") == 0 ||
+           strcmp(normalized, "/var/account/udata.galio") == 0;
+}
+
 static void build_filepath(const char *args, const char *current_dir, char *out_path) {
     char filename[256];
     char *path_token = NULL;
@@ -95,8 +106,8 @@ u8 shell_write_command(const char *args, const char *current_dir, u8 privileged)
         return 0;
     }
     
-    if (!privileged && is_root_child_path(fullpath)) {
-        kprintf("[WRITE] Permission denied: use 'rex write %s' to write root-level files\n", fullpath);
+    if (!privileged && (is_root_child_path(fullpath) || is_auth_data_path(fullpath))) {
+        kprintf("[WRITE] Permission denied: use 'rex write %s' to edit protected files\n", fullpath);
         return 0;
     }
 

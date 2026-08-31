@@ -11,6 +11,7 @@
 typedef struct {
     char content[EDITOR_BUFFER_SIZE];
     u32 size;
+    u32 cursor;
 } editor_buffer_t;
 
 /* ASCII tables */
@@ -28,29 +29,113 @@ static const u8 ascii_table_shift[] = {
     'B','N','M','<','>','?',0,'*',0,' ',0,0,0,0,0,0,
 };
 
-static void editor_display(editor_buffer_t *buf, const char *filepath, u8 save_status) {
-    /* Don't clear full screen when bounds are active - just clear bounded region */
+static u32 editor_line_count(const editor_buffer_t *buf) {
+    if (buf->size == 0) return 1;
+
+    u32 count = 1;
+    for (u32 i = 0; i < buf->size; i++) {
+        if (buf->content[i] == '\n') {
+            count++;
+        }
+    }
+    return count;
+}
+
+static u32 editor_line_start(const editor_buffer_t *buf, u32 line_index) {
+    u32 current_line = 0;
+    u32 start = 0;
+
+    for (u32 i = 0; i < buf->size; i++) {
+        if (current_line == line_index) {
+            return start;
+        }
+        if (buf->content[i] == '\n') {
+            current_line++;
+            start = i + 1;
+        }
+    }
+
+    return start;
+}
+
+static u32 editor_line_end(const editor_buffer_t *buf, u32 line_index) {
+    u32 start = editor_line_start(buf, line_index);
+    u32 end = start;
+
+    while (end < buf->size && buf->content[end] != '\n') {
+        end++;
+    }
+
+    return end;
+}
+
+static void editor_move_vertical(editor_buffer_t *buf, int delta) {
+    if (buf->size == 0) return;
+
+    u32 current_line = 0;
+    for (u32 i = 0; i < buf->cursor; i++) {
+        if (buf->content[i] == '\n') {
+            current_line++;
+        }
+    }
+
+    int target_line = (int)current_line + delta;
+    if (target_line < 0) {
+        target_line = 0;
+    }
+
+    u32 total_lines = editor_line_count(buf);
+    if ((u32)target_line >= total_lines) {
+        target_line = (int)total_lines - 1;
+    }
+
+    u32 current_line_start = editor_line_start(buf, (u32)current_line);
+    u32 current_col = buf->cursor - current_line_start;
+    u32 target_line_start = editor_line_start(buf, (u32)target_line);
+    u32 target_line_end = editor_line_end(buf, (u32)target_line);
+    u32 target_col = current_col;
+    u32 target_line_len = target_line_end - target_line_start;
+    if (target_col > target_line_len) {
+        target_col = target_line_len;
+    }
+
+    buf->cursor = target_line_start + target_col;
+}
+
+static void editor_redraw(editor_buffer_t *buf, const char *filepath, u8 save_status) {
     vga_clear();
-    kprintf("^X Exit | ^S Save\n");
+    kprintf("^X Exit | ^S Save | Arrows Move Cursor\n");
     kprintf("File: %s\n", filepath);
     kprintf("=====================\n");
-    
+
     if (save_status == 1) kprintf(">>> SAVING... <<<\n");
     else if (save_status == 2) kprintf(">>> SAVED! <<<\n");
     else if (save_status == 3) kprintf(">>> SAVE FAILED! <<<\n");
-    
+
     kprintf("\n");
-    
-    /* Display buffer content */
+
     if (buf->size == 0) {
         kprintf("[Empty file - start typing]\n");
     } else {
         for (u32 i = 0; i < buf->size; i++) {
-            if (buf->content[i] == '\n') kprintf("\n");
-            else kprintf("%c", buf->content[i]);
+            if (i == buf->cursor) {
+                kprintf("|");
+            }
+            if (buf->content[i] == '\n') {
+                kprintf("\n");
+            } else {
+                kprintf("%c", buf->content[i]);
+            }
+        }
+        if (buf->cursor == buf->size) {
+            kprintf("|");
         }
     }
-    
+
+    if (buf->size == 0 && buf->cursor == 0) {
+        kprintf("|");
+    }
+
     kprintf("\n=====================\n");
 }
 
@@ -108,6 +193,35 @@ static void editor_handle_key(editor_buffer_t *buf, u8 scancode, u8 is_pressed,
     if (keyboard_ctrl_pressed()) {
         return;
     }
+
+    if (scancode == 0xE0 || scancode == 0xE0 + 0x80) {
+        return;
+    }
+
+    if (raw == 0x4B) {
+        if (buf->cursor > 0) {
+            buf->cursor--;
+            *buffer_changed = 1;
+        }
+        return;
+    }
+    if (raw == 0x4D) {
+        if (buf->cursor < buf->size) {
+            buf->cursor++;
+            *buffer_changed = 1;
+        }
+        return;
+    }
+    if (raw == 0x48) {
+        editor_move_vertical(buf, -1);
+        *buffer_changed = 1;
+        return;
+    }
+    if (raw == 0x50) {
+        editor_move_vertical(buf, 1);
+        *buffer_changed = 1;
+        return;
+    }
     
     if (raw >= sizeof(ascii_table)) return;
     
@@ -115,21 +229,32 @@ static void editor_handle_key(editor_buffer_t *buf, u8 scancode, u8 is_pressed,
     if (c == 0) return;
     
     if (c == '\b') {
-        if (buf->size > 0) {
+        if (buf->cursor > 0) {
+            for (u32 i = buf->cursor; i < buf->size; i++) {
+                buf->content[i - 1] = buf->content[i];
+            }
             buf->size--;
-            kprintf("\b \b");
+            buf->cursor--;
             *buffer_changed = 1;
         }
     } else if (c == '\n') {
         if (buf->size < EDITOR_BUFFER_SIZE - 1) {
-            buf->content[buf->size++] = '\n';
-            kprintf("\n");
+            for (u32 i = buf->size; i > buf->cursor; i--) {
+                buf->content[i] = buf->content[i - 1];
+            }
+            buf->content[buf->cursor] = '\n';
+            buf->size++;
+            buf->cursor++;
             *buffer_changed = 1;
         }
     } else if (c >= 32 && c < 127) {
         if (buf->size < EDITOR_BUFFER_SIZE - 1) {
-            buf->content[buf->size++] = c;
-            kprintf("%c", c);
+            for (u32 i = buf->size; i > buf->cursor; i--) {
+                buf->content[i] = buf->content[i - 1];
+            }
+            buf->content[buf->cursor] = c;
+            buf->size++;
+            buf->cursor++;
             *buffer_changed = 1;
         }
     }
@@ -171,6 +296,7 @@ u8 shell_editor(const char *filepath) {
         u32 to_read = (entry->size < EDITOR_BUFFER_SIZE) ? entry->size : EDITOR_BUFFER_SIZE;
         vfs_read(filepath, buf.content, to_read);
         buf.size = to_read;
+        buf.cursor = buf.size;
     }
     
     kprintf("[EDITOR] Opening %s\n", filepath);
@@ -180,43 +306,26 @@ u8 shell_editor(const char *filepath) {
     /* Small delay to show message */
     for (volatile int i = 0; i < 200000; i++);
     
-    /* Display header and initial content */
-    vga_clear();
-    kprintf("__________________________________________________________\n");
-    kprintf("                                                             \n");
-    kprintf("                     Galio Text Editor                       \n");
-    kprintf("                                                             \n");
-    kprintf("                   [File: %s]                                \n", filepath);
-    kprintf("__________________________________________________________\n");
-    kprintf("cntrl +X Exit | ^S Save | (Make sure to save before exiting!)\n");
-    kprintf("----------------------------------------------------------\n");
-    
-    if (buf.size == 0) {
-        kprintf("[Empty file - start typing]\n");
-        kprintf("__________________________________________________________\n");
-    } else {
-        for (u32 i = 0; i < buf.size; i++) {
-            if (buf.content[i] == '\n') kprintf("\n");
-            else kprintf("%c", buf.content[i]);
-        }
-    }
-    
-    //kprintf("_____________________________________________________________\n");
-    //kprintf("Cursor position: %u chars\n", buf.size);
+    editor_redraw(&buf, filepath, 0);
 
     while (!exit_flag) {
         editor_poll_keyboard(&buf, &save_flag, &exit_flag, &buffer_changed);
+
+        if (buffer_changed) {
+            editor_redraw(&buf, filepath, 0);
+            buffer_changed = 0;
+        }
         
         if (save_flag) {
             save_flag = 0;
-            kprintf("\n>>> SAVING... <<<\n");
+            editor_redraw(&buf, filepath, 1);
             
             if (vfs_write_file(filepath, (u8*)buf.content, buf.size)) {
                 /* Force filesystem sync to ensure data is written to disk */
                 vfs_fsync();
-                kprintf(">>> SAVED! <<<\n");
+                editor_redraw(&buf, filepath, 2);
             } else {
-                kprintf(">>> SAVE FAILED! <<<\n");
+                editor_redraw(&buf, filepath, 3);
             }
         }
         
