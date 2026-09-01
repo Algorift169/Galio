@@ -9,6 +9,7 @@ void cpu_scheduler_tick(registers_t *regs) {
         return;
     }
 
+    process_accounting_tick();
     current->ticks++;
     if (current->time_slice > 0) {
         current->time_slice--;

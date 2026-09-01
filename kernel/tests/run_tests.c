@@ -8,6 +8,7 @@ extern void vfs_test(void);
 extern void signal_test(void);
 extern void heap_test(void);
 extern void security_test(void);
+extern void cpufreq_test(void);
 
 void run_kernel_tests(void) {
     kprintf("\n========================================\n");
@@ -21,6 +22,7 @@ void run_kernel_tests(void) {
     signal_test();
     heap_test();
     security_test();
+    cpufreq_test();
 
     kprintf("========================================\n");
     kprintf("[KTEST] Kernel self-tests completed\n");

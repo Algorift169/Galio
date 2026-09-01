@@ -22,6 +22,7 @@
 #include "init.h"
 #include "cpu/cpu.h"
 #include "cpu/scheduler.h"
+#include "cpufreq/cpufreq.h"
 #include "auth.h"
 #include "string.h"
 #include <string.h>
@@ -294,6 +295,7 @@ void kmain(void *multiboot_ptr) {
 
     kprintf("Initializing CPU subsystem...\n");
     cpu_init();
+    cpufreq_init();
 
     kprintf("Initializing scheduler...\n");
     cpu_scheduler_init();

@@ -4,6 +4,19 @@
 #include "pit.h"
 #include "kprintf.h"
 
+static volatile u64 accounting_total_ticks;
+static volatile u64 accounting_idle_ticks;
+static volatile u8 accounting_idle_active;
+
+void process_accounting_tick(void) {
+    accounting_total_ticks++;
+    if (accounting_idle_active) accounting_idle_ticks++;
+}
+
+void process_accounting_set_idle(u8 idle) {
+    accounting_idle_active = idle ? 1 : 0;
+}
+
 /* Scheduler tick handler - called by PIT and performs preemption */
 void scheduler_tick(registers_t *regs) {
     process_t *current = process_current();
@@ -31,50 +44,36 @@ void scheduler_init(void) {
 }
 
 /* CPU statistics - calculate from all processes via process_t accessors */
-u32 process_get_total_ticks(void) {
-    u32 total = 0;
-    
-    for (u32 index = 0; index < MAX_PROCESSES; index++) {
-        process_t *proc = process_get_by_index(index);
-        if (proc) {
-            total += proc->ticks;
-        }
-    }
-    return total;
+u64 process_get_total_ticks(void) {
+    return accounting_total_ticks;
 }
 
-u32 process_get_idle_ticks(void) {
-    process_t *idle = process_get(1);
-    if (idle) {
-        return idle->ticks;
-    }
-    return 0;
+u64 process_get_idle_ticks(void) {
+    return accounting_idle_ticks;
 }
 
 u8 process_get_cpu_usage(void) {
     extern u32 pit_get_ticks(void);
     static u32 last_update_ticks = 0;
     static u8 cached_usage = 0;
-    static u32 last_total = 0;
-    static u32 last_idle = 0;
+    static u64 last_total = 0;
+    static u64 last_idle = 0;
 
     u32 now = pit_get_ticks();
     if (last_update_ticks == 0 || (now - last_update_ticks) >= 100) {
         u32 total = process_get_total_ticks();
         u32 idle = process_get_idle_ticks();
         
-        if (total > 0) {
-            u32 delta_total = total - last_total;
-            u32 delta_idle = idle - last_idle;
-            
-            last_total = total;
-            last_idle = idle;
-            last_update_ticks = now;
-            
-            if (delta_total > 0) {
-                if (delta_idle > delta_total) delta_idle = delta_total;
-                cached_usage = (u8)(((delta_total - delta_idle) * 100) / delta_total);
-            }
+        u64 delta_total = total - last_total;
+        u64 delta_idle = idle - last_idle;
+
+        last_total = total;
+        last_idle = idle;
+        last_update_ticks = now;
+
+        if (delta_total > 0) {
+            if (delta_idle > delta_total) delta_idle = delta_total;
+            cached_usage = (u8)(((delta_total - delta_idle) * 100) / delta_total);
         }
     }
     return cached_usage;

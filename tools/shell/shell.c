@@ -29,10 +29,12 @@
 #include "process.h"
 #include "syscall_cmd.h"
 #include "top.h"
+#include "spike.h"
 #include "user_syscall.h"
 #include "kernel_time.h"
 #include "power/power.h"
 #include "options.h"
+#include "cpufreq_cmd.h"
 
 u8 shell_net_command(const char *args, const char *current_dir);
 u8 shell_pkg_command(const char *args, const char *current_dir);
@@ -895,6 +897,10 @@ static void shell_execute_command(void) {
         input.len = strlen(input.buffer);
         shell_execute_command();
         return;
+    } else if (strcmp(input.buffer, "cpufreq") == 0 || strncmp(input.buffer, "cpufreq ", 8) == 0) {
+        SHELL_COLOR_OUT();
+        shell_cpufreq_command(input.buffer + 7);
+        SHELL_COLOR_RESET();
     } else if (strcmp(input.buffer, "jobs") == 0) {
         shell_list_jobs();
     } else if (strncmp(input.buffer, "fg ", 3) == 0) {
@@ -985,6 +991,11 @@ static void shell_execute_command(void) {
     } else if (strcmp(input.buffer, "syscall") == 0) {
         SHELL_COLOR_CMD();
         kprintf("Usage: syscall <pid|uid|gid|time|fork|pipe|dup|mmap|brk|wait|open|read|close|seek|stat|exec>\n");
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "cpu-spike", 9) == 0 &&
+               (input.buffer[9] == ' ' || input.buffer[9] == '\0')) {
+        SHELL_COLOR_OUT();
+        shell_spike_command(input.buffer + 9, current_dir);
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "top ", 4) == 0) {
         SHELL_COLOR_OUT();
@@ -1099,8 +1110,10 @@ static void shell_execute_command(void) {
         kprintf(" |  syscall stat <path>            - Show file metadata                     |\n");
         kprintf(" |  syscall exec <path>            - Replace process image                  |\n");
         kprintf(" |  syscall execve <path> [...]    - Execute program with argv/env          |\n");
+        kprintf(" |  cpufreq  - CPU frequency policy and statistics                 |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" |  top      - Live process monitor (Ctrl+C to stop)      |\n");
+        kprintf(" |  cpu-spike - Live CPU usage graph (Ctrl+C to stop)     |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" | delete   - Permanently delete (usage: delete <path1> [path2])|\n");
         kprintf(" |________________________________________________________|\n");
@@ -1440,6 +1453,7 @@ static void shell_poll_keyboard(void) {
 }
 
 void shell_run(void) {
+    process_accounting_set_idle(0);
     input.len = 0;
     input.buffer[0] = 0;
     shell_should_exit = 0;

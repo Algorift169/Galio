@@ -63,6 +63,12 @@ SRCS = kernel/kmain.c \
        kernel/process/process.c \
        kernel/process/scheduler.c \
        kernel/cpu/cpu.c \
+       kernel/drivers/msr.c \
+       kernel/cpufreq/cpufreq.c \
+       kernel/cpufreq/policy.c \
+       kernel/cpufreq/governor.c \
+       kernel/cpufreq/stats.c \
+       kernel/drivers/cpufreq_x86.c \
        kernel/cpu/scheduler.c \
        kernel/process/elf.c \
        kernel/syscall/syscall.c \
@@ -125,8 +131,10 @@ SRCS = kernel/kmain.c \
        kernel/tests/signal_test.c \
        kernel/tests/heap_test.c \
        kernel/tests/security_test.c \
+       kernel/tests/cpufreq_test.c \
        init/init.c \
        tools/shell/shell.c \
+       tools/shell/commands/cpufreq.c \
        tools/shell/options.c \
        kernel/shell/cmd_net.c \
        tools/shell/commands/file.c \
@@ -143,6 +151,7 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/pkg.c \
        tools/shell/commands/syscall.c \
        tools/shell/commands/top.c \
+       tools/shell/commands/spike.c \
 	tools/shell/commands/where.c \
        tools/shell/commands/socket.c \
        tools/shell/commands/semtest.c \

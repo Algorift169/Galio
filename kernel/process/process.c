@@ -72,6 +72,7 @@ u8 process_is_superuser(process_t *proc) {
 
 /* Idle process main function */
 void idle_main(void) {
+    process_accounting_set_idle(1);
     kprintf("Idle process running\n");
     for (;;) {
         __asm__ volatile("hlt");
@@ -409,8 +410,9 @@ void process_yield(void) {
     }
 
     if (!next) {
-        /* If current process is WAITING, look for idle process (PID 1) */
-        if (current_process && current_process->state == PROCESS_WAITING) {
+        /* A waiting or exited process must not continue running itself. */
+        if (current_process && (current_process->state == PROCESS_WAITING ||
+                    current_process->state == PROCESS_ZOMBIE)) {
             process_t *idle = process_get(1);
             if (idle && idle->state == PROCESS_READY) {
                 next = idle;
@@ -424,6 +426,7 @@ void process_yield(void) {
 
     if (next != current_process) {
         process_t *old = current_process;
+        process_accounting_set_idle(0);
         current_process = next;
         next->state = PROCESS_RUNNING;
         next->time_slice = PROCESS_TIME_SLICE;
@@ -508,6 +511,7 @@ void process_preempt(registers_t *regs) {
     }
 
     process_t *old = current_process;
+    process_accounting_set_idle(0);
     current_process = next;
     next->state = PROCESS_RUNNING;
     next->time_slice = PROCESS_TIME_SLICE;
@@ -562,6 +566,13 @@ void process_exit(i32 code) {
     }
     process_send_signal(current_process->parent_pid, SIGCHLD);
     process_yield();
+
+    /* An exited process must never return through the syscall frame. If no
+     * runnable process was available, let the timer interrupt retry scheduling
+     * while this zombie remains stopped. */
+    for (;;) {
+        __asm__ volatile("sti; hlt" ::: "memory");
+    }
 }
 
 process_t *process_get(u32 pid) {

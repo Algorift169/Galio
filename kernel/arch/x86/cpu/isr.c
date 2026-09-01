@@ -6,6 +6,7 @@
 #include "vga.h"
 #include "common.h"
 #include "kprintf.h"
+#include "drivers/msr.h"
 #include <stddef.h>
 
 /* Handlers for each interrupt - initialized to NULL */
@@ -55,6 +56,11 @@ static void print_registers(registers_t *regs) {
 /* Main ISR handler - called from assembly */
 void isr_handler(registers_t *regs) {
     u32 int_no = regs->interrupt_number;
+
+    if (int_no == 13) {
+        if (msr_handle_general_protection(regs))
+            return;
+    }
 
     if (int_no == 0x80) {
         if (handlers[int_no] != NULL)

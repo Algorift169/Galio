@@ -19,6 +19,20 @@ QEMU_BIN="qemu-system-x86_64"
 EXTRA_ARGS=""
 NOGRAPHIC=false
 
+# Use the host CPU feature set and a safe share of host memory by default.
+# Override GALIO_RAM_MB when a different guest size is desired.
+HOST_RAM_MB=$(awk '/MemTotal:/ { printf "%d", $2 / 1024 }' /proc/meminfo)
+GALIO_RAM_MB="${GALIO_RAM_MB:-$((HOST_RAM_MB / 2))}"
+if [ "${GALIO_RAM_MB}" -lt 128 ]; then GALIO_RAM_MB=128; fi
+QEMU_ACCEL_ARGS=""
+QEMU_CPU_ARGS="-cpu max"
+if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+    QEMU_ACCEL_ARGS="-enable-kvm"
+    QEMU_CPU_ARGS="-cpu host"
+else
+    echo "KVM unavailable; using QEMU's maximum CPU model instead of host passthrough"
+fi
+
 # Prefer GUI when a display is available; otherwise fall back to headless serial mode.
 if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
     NOGRAPHIC=true
@@ -90,8 +104,10 @@ if [ ! -f "${DISK}" ]; then
     echo "Disk image created and formatted."
 fi
 
-# Common QEMU arguments
-COMMON_ARGS="-cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m 128M -netdev user,id=net0 -device e1000,netdev=net0"
+# Common QEMU arguments. The disk remains Galio's image; attaching a raw host
+# disk here would expose and potentially corrupt the host filesystem.
+COMMON_ARGS="${QEMU_ACCEL_ARGS} ${QEMU_CPU_ARGS} -smp 1 -cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m ${GALIO_RAM_MB}M -netdev user,id=net0 -device e1000,netdev=net0"
+echo "Using ${QEMU_CPU_ARGS}, ${GALIO_RAM_MB} MB guest RAM, and Galio disk image ${DISK}"
 
 # Run QEMU
 if [ "${NOGRAPHIC}" = true ]; then
