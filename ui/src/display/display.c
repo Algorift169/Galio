@@ -7,6 +7,7 @@
 #include "arch/x86/cpu.h"
 #include "vga.h"
 #include "common.h"
+#include "display/terminal_layer.h"
 
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
@@ -64,7 +65,7 @@ void display_enter_shell_mode(void) {
     keyboard_reset_state();
     keyboard_clear_pending_input();
     irq_unmask(1);
-    vga_clear();
+    terminal_layer_enter();
     vga_disable_hardware_cursor();
 }
 

@@ -99,6 +99,7 @@ SRCS = kernel/kmain.c \
        kernel/drivers/video/fb.c \
        kernel/drivers/usb/usb.c \
        ui/src/display/display.c \
+       ui/src/display/terminal_layer.c \
        ui/src/display/pk.c \
        ui/src/mouse/mouse.c \
        ui/src/mouse/cursor.c \
