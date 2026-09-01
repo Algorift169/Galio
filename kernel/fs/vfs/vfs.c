@@ -92,7 +92,7 @@ const char *vfs_basename(const char *path) {
     return buf;
 }
 
-void vfs_listdir(const char *path) {
+void vfs_listdir_options(const char *path, u8 show_all, u8 human_readable) {
     if (!vfs_root) {
         kprintf("[VFS] ERROR: Filesystem not mounted\n");
         return;
@@ -113,14 +113,19 @@ void vfs_listdir(const char *path) {
 
     for (u32 i = 0; i < dentry->inode->dirent_count; i++) {
         vfs_core_dirent_t *dent = &dentry->inode->dirents[i];
-        if (strcmp(dent->name, ".") == 0 || strcmp(dent->name, "..") == 0) continue;
+        if (!show_all && dent->name[0] == '.') continue;
         vfs_inode_t *child = vfs_core_inode_by_number(dent->inode_number);
         if (!child) continue;
         if (child->mode == VFS_TYPE_DIR) {
             kprintf("    [DIR]  %s/\n", dent->name);
             dir_count++;
         } else {
-            kprintf("    [FILE] %s (%u bytes)\n", dent->name, child->size);
+            if (human_readable && child->size >= 1024) {
+                kprintf("    [FILE] %s (%u.%uK)\n", dent->name,
+                        child->size / 1024, (child->size % 1024) * 10 / 1024);
+            } else {
+                kprintf("    [FILE] %s (%u bytes)\n", dent->name, child->size);
+            }
             file_count++;
             total_dir_size += child->size;
         }
@@ -129,6 +134,10 @@ void vfs_listdir(const char *path) {
     kprintf("    ─────────────────────────────────────────────\n");
     kprintf("    Dirs: %u | Files: %u | Total size: %u bytes\n",
             dir_count, file_count, total_dir_size);
+}
+
+void vfs_listdir(const char *path) {
+    vfs_listdir_options(path, 0, 0);
 }
 
 static void vfs_print_tree_recursive(vfs_dentry_t *node, u32 depth) {

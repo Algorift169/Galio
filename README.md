@@ -12,6 +12,7 @@ The project is currently built as a freestanding x86_64 kernel with a custom GRU
 - custom boot and linker setup
 - VFS and EXT2-style filesystem layer
 - interactive shell with privileged rex flow
+- reusable GSH option parsing for declared command options
 - syscall compatibility surface for common kernel calls
 - root-only file and directory protection through rex
 - power subsystem scaffolding for reset, shutdown, and suspend
@@ -59,6 +60,8 @@ Optional fullscreen:
 ## Shell behavior
 
 The shell includes a privileged rex flow that requires a password once per session. Root-level directory and file modifications are intentionally blocked unless they are done through rex.
+
+GSH command options use bounded, command-declared parsing. Options must appear before positional arguments; short options may be combined, long options support `--name=value` and required values, and `--` terminates option parsing. A single `-` remains a positional argument.
 
 Examples:
 

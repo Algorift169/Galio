@@ -78,6 +78,7 @@ u32 vfs_stat(const char *path, void *statbuf);
 
 /* List directory */
 void vfs_listdir(const char *path);
+void vfs_listdir_options(const char *path, u8 show_all, u8 human_readable);
 
 /* List all files in filesystem */
 void vfs_listall(void);

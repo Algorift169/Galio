@@ -37,8 +37,11 @@ static u8 is_auth_data_path(const char *path) {
     }
 
     return strcmp(normalized, "./var/account/udata.galio") == 0 ||
+            strcmp(normalized, "./var/account/.udata.galio") == 0 ||
            strcmp(normalized, "var/account/udata.galio") == 0 ||
-           strcmp(normalized, "/var/account/udata.galio") == 0;
+            strcmp(normalized, "var/account/.udata.galio") == 0 ||
+            strcmp(normalized, "/var/account/udata.galio") == 0 ||
+            strcmp(normalized, "/var/account/.udata.galio") == 0;
 }
 
 static void build_filepath(const char *args, const char *current_dir, char *out_path) {

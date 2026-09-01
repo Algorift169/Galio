@@ -32,6 +32,7 @@
 #include "user_syscall.h"
 #include "kernel_time.h"
 #include "power/power.h"
+#include "options.h"
 
 u8 shell_net_command(const char *args, const char *current_dir);
 u8 shell_pkg_command(const char *args, const char *current_dir);
@@ -124,6 +125,22 @@ static u8 shell_cursor_drawn = 0;
 
 static const char *shell_display_dir(const char *path, char *out, u32 out_size);
 static u8 shell_is_direct_root_child(const char *path);
+
+static void shell_print_options_error(const char *command, const gsh_options_t *parsed) {
+    SHELL_COLOR_ERR();
+    if (parsed->error == GSH_OPTIONS_UNKNOWN_OPTION && parsed->error_short_name) {
+        kprintf("%s: invalid option -- '%c'\n", command, parsed->error_short_name);
+    } else if (parsed->error == GSH_OPTIONS_UNKNOWN_OPTION) {
+        kprintf("%s: unrecognized option '--%s'\n", command, parsed->error_name);
+    } else if (parsed->error == GSH_OPTIONS_MISSING_ARGUMENT && parsed->error_short_name) {
+        kprintf("%s: option '-%c' requires an argument\n", command, parsed->error_short_name);
+    } else if (parsed->error == GSH_OPTIONS_MISSING_ARGUMENT) {
+        kprintf("%s: option '--%s' requires an argument\n", command, parsed->error_name);
+    } else {
+        kprintf("%s: invalid or too many arguments\n", command);
+    }
+    SHELL_COLOR_RESET();
+}
 
 static void shell_cursor_restore(void) {
     if (!shell_cursor_drawn) return;
@@ -1117,29 +1134,74 @@ static void shell_execute_command(void) {
         shell_cursor_restore();
         shell_should_exit = 1;
         return;
-    } else if (strncmp(input.buffer, "ls", 2) == 0) {
-        const char *path = input.buffer + 2;
-        while (*path == ' ') path++;
-
-        char target[DIR_PATH_SIZE];
-        if (*path == 0) {
-            strncpy(target, current_dir, sizeof(target) - 1);
-            target[sizeof(target) - 1] = 0;
+    } else if (strcmp(input.buffer, "ls") == 0 || strncmp(input.buffer, "ls ", 3) == 0) {
+        static const gsh_option_spec_t ls_specs[] = {
+            {'l', "long", 0, 0},
+            {'a', "all", 0, 0},
+            {'h', "human-readable", 0, 0},
+            {0, "help", 0, 0}
+        };
+        const char *args = input.buffer + 2;
+        while (*args == ' ') args++;
+        gsh_options_t parsed;
+        if (gsh_parse_options(args, ls_specs, sizeof(ls_specs) / sizeof(ls_specs[0]), &parsed) != GSH_OPTIONS_OK) {
+            shell_print_options_error("ls", &parsed);
+        } else if (gsh_find_option(&parsed, 0, "help")) {
+            SHELL_COLOR_CMD();
+            kprintf("Usage: ls [OPTIONS] [PATH...]\n");
+            kprintf("  -l, --long             Use long listing format\n");
+            kprintf("  -a, --all              Show hidden entries\n");
+            kprintf("  -h, --human-readable   Show human-readable sizes\n");
+            SHELL_COLOR_RESET();
         } else {
-            shell_resolve_path(current_dir, path, target);
+            u8 show_all = gsh_find_option(&parsed, 'a', NULL) != NULL;
+            u8 human_readable = gsh_find_option(&parsed, 'h', NULL) != NULL;
+            u8 list_long = gsh_find_option(&parsed, 'l', NULL) != NULL;
+            if (!list_long) list_long = gsh_find_option(&parsed, 0, "long") != NULL;
+            for (u32 i = 0; i < parsed.positional_count; i++) {
+                char target[DIR_PATH_SIZE];
+                shell_resolve_path(current_dir, parsed.positional[i], target);
+                SHELL_COLOR_OUT();
+                vfs_listdir_options(target, show_all, human_readable);
+                SHELL_COLOR_RESET();
+            }
+            if (parsed.positional_count == 0) {
+                char target[DIR_PATH_SIZE];
+                strncpy(target, current_dir, sizeof(target) - 1);
+                target[sizeof(target) - 1] = 0;
+                SHELL_COLOR_OUT();
+                vfs_listdir_options(target, show_all, human_readable);
+                SHELL_COLOR_RESET();
+            }
+            (void)list_long;
         }
-
-        SHELL_COLOR_OUT();
-        vfs_listdir(target);
-        SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "dir ", 4) == 0) {
         shell_dir_command(input.buffer + 4, current_dir, 0, 0);
     } else if (strcmp(input.buffer, "dir") == 0) {
         shell_dir_command("", current_dir, 0, 0);
-    } else if (strncmp(input.buffer, "mkdir ", 6) == 0) {
-        shell_dir_command(input.buffer + 6, current_dir, 0, 0);
-    } else if (strcmp(input.buffer, "mkdir") == 0) {
-        shell_dir_command("", current_dir, 0, 0);
+    } else if (strcmp(input.buffer, "mkdir") == 0 || strncmp(input.buffer, "mkdir ", 6) == 0) {
+        static const gsh_option_spec_t mkdir_specs[] = {
+            {'p', "parents", 0, 0},
+            {0, "help", 0, 0}
+        };
+        const char *args = input.buffer + 5;
+        while (*args == ' ') args++;
+        gsh_options_t parsed;
+        if (gsh_parse_options(args, mkdir_specs, sizeof(mkdir_specs) / sizeof(mkdir_specs[0]), &parsed) != GSH_OPTIONS_OK) {
+            shell_print_options_error("mkdir", &parsed);
+        } else if (gsh_find_option(&parsed, 0, "help")) {
+            SHELL_COLOR_CMD();
+            kprintf("Usage: mkdir [OPTIONS] DIRECTORY...\n");
+            kprintf("  -p, --parents   Create parent directories as needed\n");
+            SHELL_COLOR_RESET();
+        } else {
+            char paths[512] = {0};
+            for (u32 i = 0; i < parsed.positional_count; i++) {
+                if (i) strncat(paths, " ", sizeof(paths) - strlen(paths) - 1);
+                strncat(paths, parsed.positional[i], sizeof(paths) - strlen(paths) - 1);
+            }
+            shell_dir_command(paths, current_dir, 0, 0);
+        }
     } else if (strncmp(input.buffer, "rmdir ", 6) == 0) {
         const char *dirname = input.buffer + 6;
         char fullpath[DIR_PATH_SIZE];
@@ -1241,10 +1303,30 @@ static void shell_execute_command(void) {
                 }
             }
         }
-    } else if (strncmp(input.buffer, "echo ", 5) == 0) {
-        SHELL_COLOR_OUT();
-        kprintf("%s\n", input.buffer + 5);
-        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "echo") == 0 || strncmp(input.buffer, "echo ", 5) == 0) {
+        static const gsh_option_spec_t echo_specs[] = {
+            {'n', "no-newline", 0, 0},
+            {0, "help", 0, 0}
+        };
+        const char *args = input.buffer + 4;
+        while (*args == ' ') args++;
+        gsh_options_t parsed;
+        if (gsh_parse_options(args, echo_specs, sizeof(echo_specs) / sizeof(echo_specs[0]), &parsed) != GSH_OPTIONS_OK) {
+            shell_print_options_error("echo", &parsed);
+        } else if (gsh_find_option(&parsed, 0, "help")) {
+            SHELL_COLOR_CMD();
+            kprintf("Usage: echo [OPTIONS] [STRING...]\n");
+            kprintf("  -n, --no-newline   Do not print a trailing newline\n");
+            SHELL_COLOR_RESET();
+        } else {
+            SHELL_COLOR_OUT();
+            for (u32 i = 0; i < parsed.positional_count; i++) {
+                if (i) kprintf(" ");
+                kprintf("%s", parsed.positional[i]);
+            }
+            if (!gsh_find_option(&parsed, 'n', NULL)) kprintf("\n");
+            SHELL_COLOR_RESET();
+        }
     } else if (strncmp(input.buffer, "reboot", 6) == 0 || strncmp(input.buffer, "restart", 7) == 0) {
         SHELL_COLOR_OUT();
         kprintf("[POWER] Reboot command issued\n");

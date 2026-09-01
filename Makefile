@@ -127,6 +127,7 @@ SRCS = kernel/kmain.c \
        kernel/tests/security_test.c \
        init/init.c \
        tools/shell/shell.c \
+       tools/shell/options.c \
        kernel/shell/cmd_net.c \
        tools/shell/commands/file.c \
        tools/shell/commands/new.c \

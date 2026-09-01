@@ -175,20 +175,20 @@ static file_spec_t files[] = {
     {"./usr/home/pictures", NULL, 0, 1},
 
     /* Boot & Config */
-    {"./boot/config.txt",
+    {"./boot/.config.txt",
         boot_config_txt,
         0, 0},
 
-    {"./boot/grub.cfg",
+    {"./boot/.grub.cfg",
         "menuentry 'Galio Kernel' {\n"
         "    multiboot /boot/galio.bin\n"
         "}\n",
         49, 0},
 
     /* System files */
-    {"./etc/hostname", "galio\n", 14, 0},
+    {"./etc/.hostname", "galio\n", 14, 0},
 
-    {"./etc/fstab",
+    {"./etc/.fstab",
         "# Galio Filesystem Table\n"
         "# <filesystem> <mount-point> <type> <options> <dump> <pass>\n"
         "./dev/sda1   /           ext2    defaults    0       1\n"
@@ -200,14 +200,14 @@ static file_spec_t files[] = {
         "tmpfs       /run        tmpfs   defaults    0       0\n",
         250, 0},
 
-    {"./etc/os-release",
+    {"./etc/.os-release",
         "NAME=\"Galio \"\n"
         "VERSION=\"0.1.0\"\n"
         "ID=\"galio\"\n"
         "PRETTY_NAME=\"Galio 0.1.0\"\n",
         79, 0},
 
-    {"./etc/issue",
+    {"./etc/.issue",
         "Welcome to Galio Kernel v0.1.0\n"
         "Built on x86 32-bit architecture\n"
         "=================================\n",
@@ -224,7 +224,7 @@ static file_spec_t files[] = {
         "╚═══════════════════════════════════════════╝\n",
         282, 0},
 
-    {"./etc/profile",
+    {"./etc/.profile",
         "# /etc/profile: system-wide .profile file for the Bourne shell (sh(1))\n"
         "# and Bourne compatible shells (bash(1), ksh(1), pdksh(1), etc.)\n"
         "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/bin\n"
@@ -232,7 +232,7 @@ static file_spec_t files[] = {
         "export TERM=xterm\n",
         220, 0},
 
-    {"./etc/bashrc",
+    {"./etc/.bashrc",
         "# System-wide bashrc file\n"
         "# Executed for non-login shells\n"
         "alias ls='ls --color=auto'\n"
@@ -243,7 +243,7 @@ static file_spec_t files[] = {
         "alias cp='cp -i'\n",
         180, 0},
 
-    {"./etc/sysctl.conf",
+    {"./etc/.sysctl.conf",
         "# /etc/sysctl.conf - kernel runtime parameters\n"
         "# kernel.sysrq = 1\n"
         "# net.ipv4.ip_forward = 0\n"
@@ -251,12 +251,12 @@ static file_spec_t files[] = {
         "# net.ipv4.tcp_syncookies = 1\n",
         180, 0},
 
-    {"./etc/passwd",
+    {"./etc/.passwd",
         "root:x:0:0:root:/root:/bin/sh\n"
         "nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin\n",
         80, 0},
 
-    {"./etc/group",
+    {"./etc/.group",
         "root:x:0:\n"
         "bin:x:1:\n"
         "daemon:x:2:\n"
@@ -290,7 +290,7 @@ static file_spec_t files[] = {
         550, 0},
 
     /* Network configuration */
-    {"./etc/network/interfaces",
+    {"./etc/network/.interfaces",
         "# /etc/network/interfaces - Galio network configuration\n"
         "# This file describes the network interfaces available on this system\n"
         "auto lo\n"
@@ -307,7 +307,7 @@ static file_spec_t files[] = {
         "# TODO: start avahi daemon\n",
         60, 0},
 
-    {"./etc/ssh/sshd_config",
+    {"./etc/ssh/.sshd_config",
         "# Galio SSH Daemon Configuration\n"
         "Port 22\n"
         "Protocol 2\n"
@@ -514,7 +514,7 @@ static file_spec_t files[] = {
         67, 0},
 
     /* Device information */
-    {"./etc/udev/udev.conf",
+    {"./etc/udev/.udev.conf",
         "# /etc/udev/udev.conf - udev configuration\n"
         "# Runs programs to completion by default\n"
         "udev_log=\"info\"\n"
@@ -522,7 +522,7 @@ static file_spec_t files[] = {
         150, 0},
 
     /* Modprobe configuration */
-    {"./etc/modprobe.d/blacklist.conf",
+    {"./etc/modprobe.d/.blacklist.conf",
         "# /etc/modprobe.d/blacklist.conf - blacklisted kernel modules\n"
         "# blacklist floppy\n"
         "# blacklist pcspkr\n",
@@ -563,7 +563,7 @@ int main(int argc, char *argv[]) {
                  "timezone_offset_hours=6\n",
                  boot_time_string);
         for (int i = 0; i < file_count; i++) {
-            if (strcmp(files[i].path, "./boot/config.txt") == 0) {
+            if (strcmp(files[i].path, "./boot/.config.txt") == 0) {
                 files[i].size = (unsigned int)strlen(boot_config_txt);
                 break;
             }

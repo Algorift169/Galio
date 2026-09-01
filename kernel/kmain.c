@@ -308,13 +308,13 @@ void kmain(void *multiboot_ptr) {
     if (device_manager_init() != 0) {
         kprintf("[DEV] ERROR: Device subsystem initialization failed\n");
     }
-    /* Attempt to read boot wall-clock time from ./boot/config.txt and set it */
+    /* Attempt to read boot wall-clock time from the hidden boot config and set it */
     {
         char cfg[128];
         for (u32 i = 0; i < sizeof(cfg); i++) cfg[i] = 0;
-        u32 r = vfs_read("./boot/config.txt", cfg, sizeof(cfg) - 1);
+        u32 r = vfs_read("./boot/.config.txt", cfg, sizeof(cfg) - 1);
         if (r > 0) {
-            kprintf("[TIME] Loaded ./boot/config.txt (%u bytes)\n", r);
+            kprintf("[TIME] Loaded ./boot/.config.txt (%u bytes)\n", r);
             const char *key = "boot_time=";
             char *p = NULL;
             for (u32 i = 0; cfg[i]; i++) {
@@ -383,7 +383,7 @@ void kmain(void *multiboot_ptr) {
                 kprintf("[TIME] No timezone_offset_hours config found; defaulting to +6 hours (Bangladesh)\n");
             }
         } else {
-            kprintf("[TIME] ./boot/config.txt not found or empty; using default timezone offset +6 hours (Bangladesh)\n");
+            kprintf("[TIME] ./boot/.config.txt not found or empty; using default timezone offset +6 hours (Bangladesh)\n");
         }
     }
     vfs_ensure_home_dirs();

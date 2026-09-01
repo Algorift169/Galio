@@ -46,7 +46,7 @@ user_session_t *session_current(void) {
 
 
 /* Unified account data file path */
-static const char *auth_data_path = "./var/account/udata.galio";
+static const char *auth_data_path = "./var/account/.udata.galio";
 static const char *auth_data_dir = "./var/account";
 
 static i32 auth_ensure_home_directory(void) {

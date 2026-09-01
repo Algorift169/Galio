@@ -189,7 +189,7 @@ static void vfs_listdir_disk(const char *path) {
             dir_count, file_count, total_dir_size);
 }
 
-void vfs_listdir(const char *path) {
+void vfs_listdir_options(const char *path, u8 show_all, u8 human_readable) {
     if (!vfs_root) {
         kprintf("[VFS] ERROR: Filesystem not mounted\n");
         return;
@@ -251,14 +251,20 @@ void vfs_listdir(const char *path) {
                 memcpy(name, dent->name, name_len);
                 name[name_len] = 0;
                 
-                if (strcmp(name, ".") != 0 && strcmp(name, "..") != 0) {
+                if (show_all || name[0] != '.') {
                     ext2_inode_t child_inode;
                     if (ext2_read_inode(dent->inode, &child_inode) == 0) {
                         if (child_inode.mode & 0x4000) {
                             kprintf("    [DIR]  %s/\n", name);
                             dir_count++;
                         } else {
-                            kprintf("    [FILE] %s (%u bytes)\n", name, child_inode.size);
+                            if (human_readable && child_inode.size >= 1024) {
+                                kprintf("    [FILE] %s (%u.%uK)\n", name,
+                                        child_inode.size / 1024,
+                                        (child_inode.size % 1024) * 10 / 1024);
+                            } else {
+                                kprintf("    [FILE] %s (%u bytes)\n", name, child_inode.size);
+                            }
                             file_count++;
                             total_dir_size += child_inode.size;
                         }
@@ -313,6 +319,10 @@ void vfs_listdir(const char *path) {
     kprintf("    ─────────────────────────────────────────────\n");
     kprintf("    Dirs: %u | Files: %u | Total size: %u bytes\n",
             dir_count, file_count, total_dir_size);
+}
+
+void vfs_listdir(const char *path) {
+    vfs_listdir_options(path, 0, 0);
 }
 
 static u32 vfs_count_children(vfs_dentry_t *node) {
