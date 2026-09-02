@@ -97,12 +97,18 @@ static void pci_enumerate_bus(void) {
                 /* read BARs */
                 for (int i = 0; i < 6; i++) {
                     u32 bar = pci_read_config_u32(bus, dev, fn, 0x10 + i * 4);
-                    pd->bars[i] = bar;
                     if ((bar & 0x1) == 0) {
                         pd->bar_is_mem[i] = 1;
-                        /* 64-bit addressing simple handling deferred */
+                        if (((bar >> 1) & 0x3) == 0x2 && i < 5) {
+                            u32 high = pci_read_config_u32(bus, dev, fn, 0x14 + i * 4);
+                            pd->bars[i] = ((u64)high << 32) | (bar & ~0xFu);
+                            i++;
+                        } else {
+                            pd->bars[i] = bar & ~0xFu;
+                        }
                     } else {
-                        pd->bar_is_mem[i] = 0; /* I/O space */
+                        pd->bar_is_mem[i] = 0;
+                        pd->bars[i] = bar & ~0x3u;
                     }
                 }
                 pci_add_device(pd);

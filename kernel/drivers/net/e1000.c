@@ -39,6 +39,8 @@
 #include "mm/paging.h"
 #include "lib/string.h"
 #include "arch/x86/cpu.h"
+#include "arch/x86/irq.h"
+#include "mm/dma.h"
 
 #define E1000_VENDOR_ID 0x8086
 #define E1000_DEVICE_ID 0x100E
@@ -46,6 +48,8 @@
 /* Registers */
 #define REG_CTRL    0x00000
 #define REG_STATUS  0x00008
+#define REG_ICR     0x000C0
+#define REG_IMS     0x000D0
 
 #define CTRL_ASDE   (1 << 5)
 #define CTRL_SLU    (1 << 6)
@@ -74,6 +78,10 @@
 /* RCTL bits */
 #define RCTL_EN     (1 << 1)
 #define RCTL_BSIZE_2048 (0 << 16)
+
+#define IMS_TXDW    (1u << 0)
+#define IMS_RXT0    (1u << 7)
+#define IMS_RXDMT0  (1u << 4)
 
 /* TCTL bits */
 #define TCTL_EN     (1 << 1)
@@ -107,7 +115,7 @@ struct e1000_rx_desc {
 typedef struct {
     pci_device_t *pci;
     void *mmio; /* virtual MMIO base */
-    u32 mmio_phys;
+    u64 mmio_phys;
 
     /* TX ring */
     struct e1000_tx_desc *tx_ring;
@@ -115,6 +123,8 @@ typedef struct {
     void *tx_buf_virt[E1000_TX_DESC];
     u32 tx_buf_phys[E1000_TX_DESC];
     u32 tx_next;
+    u32 tx_clean;
+    u32 tx_inflight;
 
     /* RX ring */
     struct e1000_rx_desc *rx_ring;
@@ -124,39 +134,39 @@ typedef struct {
     u32 rx_next;
 } e1000_priv_t;
 
-/* Simple virtual MMIO allocator base */
-#define E1000_MMIO_VBASE 0xF0000000
-static u32 e1000_mmio_valloc = E1000_MMIO_VBASE;
+static net_device_t *e1000_irq_device;
+static volatile u8 e1000_rx_pending;
+static volatile u8 e1000_tx_pending;
 
-static void *map_physical_region(u32 phys, u32 size) {
+static void *map_physical_region(u64 phys, u32 size) {
     (void)size;
+    if (phys > 0xFFFFFFFFu) return NULL;
     return (void *)(uintptr_t)phys;
 }
 
 static inline void mmio_write32(void *base, u32 offset, u32 val) {
     volatile u32 *r = (volatile u32 *)((uintptr_t)base + offset);
     *r = val;
+    __asm__ volatile("mfence" ::: "memory");
 }
 
 static inline u32 mmio_read32(void *base, u32 offset) {
     volatile u32 *r = (volatile u32 *)((uintptr_t)base + offset);
-    return *r;
+    u32 value = *r;
+    __asm__ volatile("mfence" ::: "memory");
+    return value;
 }
 
 static int e1000_hw_init(e1000_priv_t *p) {
     void *mmio = p->mmio;
     /* Setup TX ring */
-    p->tx_ring_phys = (u32)dma_alloc(sizeof(struct e1000_tx_desc) * E1000_TX_DESC);
-    if (!p->tx_ring_phys) return -1;
-    p->tx_ring = (struct e1000_tx_desc *)map_physical_region(p->tx_ring_phys, sizeof(struct e1000_tx_desc) * E1000_TX_DESC);
+    p->tx_ring = (struct e1000_tx_desc *)dma_alloc_coherent(sizeof(struct e1000_tx_desc) * E1000_TX_DESC, &p->tx_ring_phys);
     if (!p->tx_ring) return -1;
     memset(p->tx_ring, 0, sizeof(struct e1000_tx_desc) * E1000_TX_DESC);
 
     for (int i = 0; i < E1000_TX_DESC; i++) {
         p->tx_ring[i].status = 1; /* mark TX descriptors free */
-        p->tx_buf_phys[i] = (u32)dma_alloc(E1000_BUF_SIZE);
-        if (!p->tx_buf_phys[i]) return -1;
-        p->tx_buf_virt[i] = map_physical_region(p->tx_buf_phys[i], E1000_BUF_SIZE);
+        p->tx_buf_virt[i] = dma_alloc_coherent(E1000_BUF_SIZE, &p->tx_buf_phys[i]);
         if (!p->tx_buf_virt[i]) return -1;
     }
 
@@ -171,16 +181,12 @@ static int e1000_hw_init(e1000_priv_t *p) {
     mmio_write32(mmio, REG_TCTL, TCTL_EN | (0x10 << 4) | TCTL_PSP);
 
     /* Setup RX ring */
-    p->rx_ring_phys = (u32)dma_alloc(sizeof(struct e1000_rx_desc) * E1000_RX_DESC);
-    if (!p->rx_ring_phys) return -1;
-    p->rx_ring = (struct e1000_rx_desc *)map_physical_region(p->rx_ring_phys, sizeof(struct e1000_rx_desc) * E1000_RX_DESC);
+    p->rx_ring = (struct e1000_rx_desc *)dma_alloc_coherent(sizeof(struct e1000_rx_desc) * E1000_RX_DESC, &p->rx_ring_phys);
     if (!p->rx_ring) return -1;
     memset(p->rx_ring, 0, sizeof(struct e1000_rx_desc) * E1000_RX_DESC);
 
     for (int i = 0; i < E1000_RX_DESC; i++) {
-        p->rx_buf_phys[i] = (u32)dma_alloc(E1000_BUF_SIZE);
-        if (!p->rx_buf_phys[i]) return -1;
-        p->rx_buf_virt[i] = map_physical_region(p->rx_buf_phys[i], E1000_BUF_SIZE);
+        p->rx_buf_virt[i] = dma_alloc_coherent(E1000_BUF_SIZE, &p->rx_buf_phys[i]);
         if (!p->rx_buf_virt[i]) return -1;
         p->rx_ring[i].addr = p->rx_buf_phys[i];
     }
@@ -193,19 +199,45 @@ static int e1000_hw_init(e1000_priv_t *p) {
 
     /* enable receiver */
     mmio_write32(mmio, REG_RCTL, RCTL_EN | RCTL_BSIZE_2048);
+    mmio_write32(mmio, REG_IMS, IMS_RXT0 | IMS_RXDMT0 | IMS_TXDW);
+    (void)mmio_read32(mmio, REG_ICR);
 
     p->tx_next = 0;
+    p->tx_clean = 0;
+    p->tx_inflight = 0;
     p->rx_next = 0;
     return 0;
 }
 
+static void e1000_irq_handler(registers_t *regs) {
+    (void)regs;
+    if (!e1000_irq_device || !e1000_irq_device->priv) return;
+    e1000_priv_t *p = (e1000_priv_t *)e1000_irq_device->priv;
+    u32 cause = mmio_read32(p->mmio, REG_ICR);
+    if (cause & (IMS_RXT0 | IMS_RXDMT0)) e1000_rx_pending = 1;
+    if (cause & IMS_TXDW) e1000_tx_pending = 1;
+}
+
 static int e1000_poll_rx(net_device_t *dev) {
+    if (!e1000_rx_pending && !e1000_tx_pending) return 0;
     e1000_priv_t *p = (e1000_priv_t *)dev->priv;
     void *mmio = p->mmio;
-    u32 rdh = mmio_read32(mmio, REG_RDH);
-    /* Process receive descriptors starting at the hardware head. */
-    u32 idx = (rdh) % E1000_RX_DESC;
+
+    if (e1000_tx_pending) {
+        e1000_tx_pending = 0;
+        while (p->tx_inflight > 0) {
+            struct e1000_tx_desc *d = &p->tx_ring[p->tx_clean];
+            if (!(d->status & 0x1)) break;
+            d->status = 1;
+            p->tx_clean = (p->tx_clean + 1) % E1000_TX_DESC;
+            p->tx_inflight--;
+        }
+    }
+
+    if (!e1000_rx_pending) return 0;
+    e1000_rx_pending = 0;
     while (1) {
+        u32 idx = p->rx_next;
         struct e1000_rx_desc *d = &p->rx_ring[idx];
         if (!(d->status & 0x01)) break; /* DD */
         u32 len = d->length;
@@ -219,10 +251,10 @@ static int e1000_poll_rx(net_device_t *dev) {
             }
         }
         d->status = 0;
-        /* advance rdh and RDT to hand buffer back to NIC */
-        idx = (idx + 1) % E1000_RX_DESC;
-        rdh = (rdh + 1) % E1000_RX_DESC;
-        mmio_write32(mmio, REG_RDH, rdh);
+        __asm__ volatile("sfence" ::: "memory");
+        /* Return this consumed descriptor to hardware through RDT. */
+        mmio_write32(mmio, REG_RDT, idx);
+        p->rx_next = (idx + 1) % E1000_RX_DESC;
     }
     return 0;
 }
@@ -230,11 +262,14 @@ static int e1000_poll_rx(net_device_t *dev) {
 static int e1000_tx(struct net_device *dev, net_buf_t *buf) {
     e1000_priv_t *p = (e1000_priv_t *)dev->priv;
     void *mmio = p->mmio;
-    u32 tail = mmio_read32(mmio, REG_TDT);
-    u32 idx = tail % E1000_TX_DESC;
+    if (p->tx_inflight >= E1000_TX_DESC - 1) {
+        dev->tx_dropped++;
+        return -1;
+    }
+    u32 idx = p->tx_next;
     struct e1000_tx_desc *d = &p->tx_ring[idx];
     if (!(d->status & 0x1)) {
-        /* descriptor not free */
+        /* A descriptor is occupied until hardware reports DD. */
         dev->tx_dropped++;
         return -1;
     }
@@ -248,10 +283,11 @@ static int e1000_tx(struct net_device *dev, net_buf_t *buf) {
     d->length = buf->len;
     d->cmd = (1 << 0) | (1 << 3); /* EOP | RS */
     d->status = 0;
+    __asm__ volatile("sfence" ::: "memory");
 
-    /* update tail */
-    tail = (tail + 1) % E1000_TX_DESC;
-    mmio_write32(mmio, REG_TDT, tail);
+    p->tx_next = (idx + 1) % E1000_TX_DESC;
+    p->tx_inflight++;
+    mmio_write32(mmio, REG_TDT, p->tx_next);
     return 0;
 }
 
@@ -295,10 +331,10 @@ static int e1000_open(struct net_device *dev) {
     if (!p->mmio) {
         e1000_enable_pci_device(p->pci);
         /* map MMIO */
-        u32 bar = p->pci->bars[0];
-        u32 phys = bar & ~0xF;
+            u64 phys = p->pci->bars[0];
         p->mmio_phys = phys;
         p->mmio = map_physical_region(phys, 0x20000);
+            if (!p->mmio) return -1;
     }
     e1000_configure_ctrl(p->mmio);
     if (e1000_hw_init(p) != 0) {
@@ -374,6 +410,9 @@ static int e1000_probe(pci_device_t *pd) {
         kfree(priv);
         return -1;
     }
+
+    e1000_irq_device = ndev;
+    if (pd->irq_line < 16) irq_register_handler(pd->irq_line, e1000_irq_handler);
 
     kprintf("e1000: registered net device %s\n", ndev->name);
     return 0;

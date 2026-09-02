@@ -257,7 +257,7 @@ $(KERNEL_BIN): $(OBJS)
 MKIOFS = $(BIN_DIR)/mkiofs
 $(MKIOFS): tools/mkiofs/mkiofs.c
 	@mkdir -p $(dir $@)
-	$(CC) -m32 -o $@ $<
+	$(CC) -O2 -Wall -Wextra -o $@ $<
 
 # Initrd image
 $(INITRD_IMAGE): $(MKIOFS)

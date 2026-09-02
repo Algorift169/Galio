@@ -39,7 +39,7 @@ typedef struct pci_device {
     u8 subclass;
     u8 prog_if;
     u8 header_type;
-    u32 bars[6];
+    u64 bars[6];
     u8 bar_is_mem[6];
     u8 irq_line;
     struct pci_device *next;

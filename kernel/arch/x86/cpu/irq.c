@@ -118,3 +118,9 @@ void irq_mask(u8 irq) {
     mask |= (1 << irq);
     outb(port, mask);
 }
+
+void irq_register_handler(u8 irq, interrupt_handler_t handler) {
+    if (irq >= 16 || !handler) return;
+    interrupt_install_handler(32u + irq, handler);
+    irq_unmask(irq);
+}
