@@ -25,6 +25,7 @@
 #include "net/udp.h"
 #include "net/netdev.h"
 #include "net/arp.h"
+#include "net/net.h"
 #include "net/ethernet.h"
 #include "net/packet.h"
 #include "drivers/pit.h"
@@ -217,7 +218,12 @@ int tcp_connect(u32 dest_ip, u16 dest_port) {
     tcp_connection_t *conn = tcp_alloc();
     if (!conn) return -1;
 
-    conn->src_ip = 0;
+    net_device_t *device = netdev_route(dest_ip);
+    if (!device || !device->ip_addr) {
+        conn->used = 0;
+        return -1;
+    }
+    conn->src_ip = device->ip_addr;
     conn->dest_ip = dest_ip;
     conn->dest_port = dest_port;
     conn->src_port = tcp_ephemeral_port++;
@@ -235,7 +241,7 @@ int tcp_connect(u32 dest_ip, u16 dest_port) {
 
     u32 start = pit_get_ticks();
     while (conn->state == TCP_STATE_SYN_SENT && (pit_get_ticks() - start) < TCP_CONNECT_TIMEOUT_TICKS) {
-        /* wait for SYN-ACK */
+        net_poll();
     }
 
     if (conn->state != TCP_STATE_ESTABLISHED) {
@@ -260,7 +266,7 @@ int tcp_receive(u32 conn_id, void *buffer, u32 buffer_len, u32 timeout_ms) {
 
     u32 start = pit_get_ticks();
     while (conn->recv_len == 0 && (pit_get_ticks() - start) < timeout_ms) {
-        /* wait for incoming data */
+        net_poll();
     }
     if (conn->recv_len == 0) return 0;
 
@@ -353,7 +359,7 @@ void tcp_poll(void) {
             if (conn->retries++ >= TCP_MAX_RETRIES) {
                 conn->used = 0;
             } else {
-                tcp_send_segment(conn, NULL, 0, TCP_FLAG_SYN | TCP_FLAG_ACK);
+                tcp_send_segment(conn, NULL, 0, TCP_FLAG_SYN);
                 conn->last_activity = now;
             }
         }

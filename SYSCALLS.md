@@ -38,6 +38,14 @@ User pointers are checked against the user address boundary and the current proc
 
 ## Explicitly unsupported
 
+The current kernel also contains a bounded, fd-backed stream socket layer:
+`socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)` allocates a process-owned socket
+handle, while `connect`, `sendto`, `recvfrom`, `shutdown`, and `close` route
+through the existing TCP transport. User sockaddr/buffer arguments are
+validated before use and process cleanup closes owned handles. UDP sockets,
+bind/listen/accept, nonblocking mode, and complete POSIX error semantics are
+not implemented and remain unsupported.
+
 These numbers remain reserved for ABI compatibility but return `-38` (`ENOSYS`-style unsupported result): `fstat`, `poll`, `ioctl`, `lstat`, `mprotect`, `pread64`, `pwrite64`, `readv`, `writev`, `select`, `pause`, all socket calls, `clone`, `vfork`, semaphore calls, shared-memory calls, and realtime signal disposition/return calls. No socket, semaphore, shared-memory, or signal-handler subsystem exists that can provide their promised semantics. The packet-level TCP/UDP helpers are not a socket subsystem: they lack a configured IP/DHCP path, per-process endpoint ownership, UDP receive queues, and TCP listen/accept support.
 
 `stat` is retained for the legacy VFS stat layout. Its buffer is validated before the VFS operation. `fstat` is intentionally not substituted with fabricated metadata because the legacy descriptor handle does not expose the underlying inode.

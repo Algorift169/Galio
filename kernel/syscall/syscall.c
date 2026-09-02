@@ -33,6 +33,7 @@
 #include "paging.h"
 #include "pmem.h"
 #include "string.h"
+#include "net/socket.h"
 
 /* Forward declarations for syscall implementations */
 static u32 syscall_fork(void);
@@ -47,6 +48,12 @@ static u32 syscall_stat(const char *path, void *statbuf);
 static void *syscall_mmap(void *addr, u32 length, i32 prot, i32 flags, i32 fd, u32 offset);
 static i32 syscall_munmap(void *addr, u32 length);
 static void *syscall_brk(void *addr);
+
+static u32 syscall_socket_handle(process_t *proc, u32 fd) {
+    if (!proc || fd >= PROCESS_MAX_FDS) return VFS_INVALID_FD;
+    u32 handle = proc->fd_table[fd];
+    return socket_is_handle(handle) ? handle : VFS_INVALID_FD;
+}
 
 /* Extended syscall declarations from syscall_extra.c */
 extern i32 syscall_lstat(const char *path, struct stat *statbuf);
@@ -87,6 +94,14 @@ extern i32 syscall_rt_sigaction(i32 sig, const void *act, void *oldact, u32 sigs
 extern i32 syscall_rt_sigprocmask(i32 how, const void *set, void *oldset, u32 sigsetsize);
 extern i32 syscall_rt_sigreturn(void);
 extern i32 syscall_sysinfo(void *info);
+
+extern int socket_create(u32 owner_pid, i32 domain, i32 type, i32 protocol);
+extern int socket_connect_fd(u32 handle, const struct galio_sockaddr_in *address);
+extern i64 socket_send_fd(u32 handle, const void *buffer, u32 length);
+extern i64 socket_recv_fd(u32 handle, void *buffer, u32 length, u32 timeout_ms);
+extern int socket_shutdown_fd(u32 handle, i32 how);
+extern int socket_close_fd(u32 handle);
+extern int socket_is_handle(u32 handle);
 
 #define USER_STRING_MAX PROCESS_PATH_MAX
 #define SIMPLE_STAT_SIZE (sizeof(u32) * 6)
@@ -507,11 +522,34 @@ static void syscall_handler(registers_t *regs) {
             break;
 
         case SYS_SOCKET:
-            regs->rax = syscall_socket((i32)arg1, (i32)arg2, (i32)arg3);
+            {
+                process_t *proc = process_current();
+                int handle = socket_create(proc ? proc->pid : 0,
+                                           (i32)arg1, (i32)arg2, (i32)arg3);
+                regs->rax = -24;
+                if (handle >= 0 && proc) {
+                    for (u32 fd = 0; fd < PROCESS_MAX_FDS; fd++) {
+                        if (proc->fd_table[fd] == VFS_INVALID_FD) {
+                            proc->fd_table[fd] = (u32)handle;
+                            regs->rax = fd;
+                            break;
+                        }
+                    }
+                    if (regs->rax == (u64)-24) socket_close_fd((u32)handle);
+                }
+            }
             break;
 
         case SYS_CONNECT:
-            regs->rax = syscall_connect((i32)arg1, (const void *)arg2, (u32)arg3);
+            if ((u32)arg3 < sizeof(struct galio_sockaddr_in) ||
+                !validate_user_buffer((const void *)arg2, sizeof(struct galio_sockaddr_in), 0)) {
+                regs->rax = -14;
+            } else {
+                struct galio_sockaddr_in address;
+                memcpy(&address, (const void *)arg2, sizeof(address));
+                u32 handle = syscall_socket_handle(process_current(), (u32)arg1);
+                regs->rax = handle == VFS_INVALID_FD ? -9 : socket_connect_fd(handle, &address);
+            }
             break;
 
         case SYS_ACCEPT:
@@ -519,11 +557,21 @@ static void syscall_handler(registers_t *regs) {
             break;
 
         case SYS_SENDTO:
-            regs->rax = syscall_sendto((i32)arg1, (const void *)arg2, (u32)arg3, (i32)arg4, (const void *)arg5, (u32)arg6);
+            if (!validate_user_buffer((const void *)arg2, (u32)arg3, 0)) {
+                regs->rax = -14;
+            } else {
+                u32 handle = syscall_socket_handle(process_current(), (u32)arg1);
+                regs->rax = handle == VFS_INVALID_FD ? -9 : socket_send_fd(handle, (const void *)arg2, (u32)arg3);
+            }
             break;
 
         case SYS_RECVFROM:
-            regs->rax = syscall_recvfrom((i32)arg1, (void *)arg2, (u32)arg3, (i32)arg4, (void *)arg5, (u32 *)arg6);
+            if (!validate_user_buffer((void *)arg2, (u32)arg3, 1)) {
+                regs->rax = -14;
+            } else {
+                u32 handle = syscall_socket_handle(process_current(), (u32)arg1);
+                regs->rax = handle == VFS_INVALID_FD ? -9 : socket_recv_fd(handle, (void *)arg2, (u32)arg3, (u32)arg4);
+            }
             break;
 
         case SYS_SENDMSG:
@@ -535,7 +583,10 @@ static void syscall_handler(registers_t *regs) {
             break;
 
         case SYS_SHUTDOWN:
-            regs->rax = syscall_shutdown((i32)arg1, (i32)arg2);
+            {
+                u32 handle = syscall_socket_handle(process_current(), (u32)arg1);
+                regs->rax = handle == VFS_INVALID_FD ? -9 : socket_shutdown_fd(handle, (i32)arg2);
+            }
             break;
 
         case SYS_BIND:
@@ -842,6 +893,12 @@ static u32 syscall_close(u32 fd) {
     
     u32 handle = proc->fd_table[fd];
     if (handle == VFS_INVALID_FD) return -1;
+
+    if (socket_is_handle(handle)) {
+        int socket_result = socket_close_fd(handle);
+        proc->fd_table[fd] = VFS_INVALID_FD;
+        return (u32)socket_result;
+    }
     
     u32 result;
     if (handle & PIPE_FD_FLAG) {

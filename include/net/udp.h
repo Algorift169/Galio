@@ -41,6 +41,8 @@ int udp_init(void);
 int udp_register_listener(u16 port, udp_receive_callback_t callback);
 int udp_unregister_listener(u16 port);
 int udp_send(u32 dest_ip, u16 dest_port, u16 src_port, const void *payload, u32 length);
+int udp_send_broadcast(net_device_t *dev, u32 src_ip, u32 dest_ip,
+                       u16 src_port, u16 dest_port, const void *payload, u32 length);
 void udp_input(net_buf_t *buf, struct ipv4_hdr *ip);
 
 #endif /* INCLUDE_NET_UDP_H */

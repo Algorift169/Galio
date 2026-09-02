@@ -25,6 +25,7 @@
 #include "lib/kprintf.h"
 #include "lib/string.h"
 #include "mm/heap.h"
+#include "net/route.h"
 
 /* Simple singly-linked list of devices */
 static net_device_t *dev_list = NULL;
@@ -70,6 +71,9 @@ net_device_t *netdev_get_by_name(const char *name) {
 }
 
 net_device_t *netdev_route(u32 dest_ip) {
+    u32 next_hop;
+    net_device_t *routed = route_lookup(dest_ip, &next_hop);
+    if (routed) return routed;
     net_device_t *fallback = NULL;
     net_device_t *it = dev_list;
     while (it) {

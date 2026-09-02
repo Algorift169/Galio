@@ -701,7 +701,8 @@ i32 syscall_pause(void) {
     return -1;
 }
 
-/* Socket family stubs */
+/* Socket operations are implemented in net/socket.c. */
+#if 0
 i32 syscall_socket(i32 domain, i32 type, i32 protocol) {
     (void)domain;
     (void)type;
@@ -817,6 +818,7 @@ i32 syscall_getsockopt(i32 sockfd, i32 level, i32 optname, void *optval, u32 *op
 }
 
 /* Process stubs */
+#endif
 u32 syscall_clone(u32 flags, void *stack, i32 *ptid, void *tls, i32 *ctid) {
     (void)flags;
     (void)stack;

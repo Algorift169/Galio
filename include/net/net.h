@@ -30,5 +30,6 @@ void net_init(void);
 void net_poll(void);
 void net_input(net_buf_t *buf);
 void net_print_devices(void);
+void net_configure_routes(void);
 
 #endif

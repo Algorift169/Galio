@@ -67,6 +67,8 @@ void pit_init(u32 frequency) {
 
     /* Unmask IRQ0 */
     irq_unmask(0);
+
+    __asm__ volatile ("sti");
 }
 
 u32 pit_get_ticks(void) {

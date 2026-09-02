@@ -153,6 +153,39 @@ int udp_send(u32 dest_ip, u16 dest_port, u16 src_port, const void *payload, u32 
     return rc;
 }
 
+int udp_send_broadcast(net_device_t *dev, u32 src_ip, u32 dest_ip,
+                       u16 src_port, u16 dest_port, const void *payload, u32 length) {
+    if (!dev || !payload || !src_port || !dest_port || length > 1472) return -1;
+    u32 packet_len = ETH_HDR_LEN + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr) + length;
+    net_buf_t *buf = net_buf_alloc(packet_len, 0);
+    if (!buf) return -1;
+    buf->dev = dev;
+    buf->len = packet_len;
+    struct eth_hdr *eth = (struct eth_hdr *)buf->data;
+    memset(eth->dest, 0xFF, ETH_ALEN);
+    memcpy(eth->src, dev->mac, ETH_ALEN);
+    eth->type = net_htons(ETH_P_IP);
+    struct ipv4_hdr *ip = (struct ipv4_hdr *)(buf->data + ETH_HDR_LEN);
+    memset(ip, 0, sizeof(*ip));
+    ip->version_ihl = (4 << 4) | (sizeof(*ip) / 4);
+    ip->tot_len = net_htons(sizeof(*ip) + sizeof(struct udp_hdr) + length);
+    ip->frag_off = net_htons(0x4000);
+    ip->ttl = 64;
+    ip->protocol = IPV4_PROTO_UDP;
+    ip->src = net_htonl(src_ip);
+    ip->dest = net_htonl(dest_ip);
+    ip->checksum = net_htons(ipv4_checksum(ip, sizeof(*ip)));
+    struct udp_hdr *udp = (struct udp_hdr *)(buf->data + ETH_HDR_LEN + sizeof(*ip));
+    udp->src_port = net_htons(src_port);
+    udp->dest_port = net_htons(dest_port);
+    udp->len = net_htons(sizeof(*udp) + length);
+    udp->checksum = 0;
+    memcpy((u8 *)udp + sizeof(*udp), payload, length);
+    int rc = netdev_send_skb(dev, buf);
+    net_buf_free(buf);
+    return rc;
+}
+
 void udp_input(net_buf_t *buf, struct ipv4_hdr *ip) {
     if (!buf || !ip || buf->len < ETH_HDR_LEN + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr)) return;
 

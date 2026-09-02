@@ -27,6 +27,8 @@
 #include "net/arp.h"
 #include "net/ethernet.h"
 #include "net/ipv4.h"
+#include "net/route.h"
+#include "net/dhcp.h"
 #include "drivers/pit.h"
 #include "lib/kprintf.h"
 #include "lib/string.h"
@@ -38,6 +40,7 @@ static void net_tick(registers_t *regs) {
 
 void net_init(void) {
     net_core_init();
+    route_init();
     arp_init();
     ipv4_init();
     udp_init();
@@ -79,5 +82,16 @@ void net_print_devices(void) {
             kprintf("%s\tUP\n", it->name);
         }
         it = it->next;
+    }
+}
+
+void net_configure_routes(void) {
+    net_device_t *dev = netdev_first();
+    while (dev) {
+        if (dev->ip_addr && dev->netmask) {
+            route_add(dev->ip_addr & dev->netmask, dev->netmask, 0, dev);
+            if (dev->gateway) route_add(0, 0x00000000u, dev->gateway, dev);
+        }
+        dev = dev->next;
     }
 }

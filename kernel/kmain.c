@@ -54,6 +54,8 @@
 #include "net/wifi.h"
 #include "drivers/net/e1000.h"
 #include "drivers/net/rtl8188eu.h"
+#include "net/dhcp.h"
+#include "net/dns.h"
 #include "power/power.h"
 #include "shell.h"
 
@@ -314,6 +316,12 @@ void kmain(void *multiboot_ptr) {
     pit_init(100);
     /* Initialize wall-clock from CMOS/RTC if available */
     kernel_time_initialize();
+
+    if (dhcp_start() == 0) {
+        kprintf("DHCP: lease acquired\n");
+    } else {
+        kprintf("DHCP: no lease acquired\n");
+    }
 
     kprintf("Initializing CPU subsystem...\n");
     cpu_init();

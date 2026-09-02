@@ -161,7 +161,10 @@ void ipv4_input(net_buf_t *buf) {
 
     if (ipv4_checksum(ip, ihl) != 0) return;
 
-    if (net_ntohl(ip->dest) != buf->dev->ip_addr) return;
+        u32 destination = net_ntohl(ip->dest);
+        if (destination != buf->dev->ip_addr &&
+                !(buf->dev->ip_addr == 0 && destination == 0xFFFFFFFFu &&
+                    ip->protocol == IPV4_PROTO_UDP)) return;
 
     if (ip->protocol == IPV4_PROTO_ICMP) {
             ipv4_send_icmp_echo_reply(buf, ip, eth);

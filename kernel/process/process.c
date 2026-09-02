@@ -24,6 +24,7 @@
 #include "process.h"
 #include "string.h"
 #include "signals.h"
+#include "net/socket.h"
 #include "heap.h"
 #include "paging.h"
 #include "kprintf.h"
@@ -367,6 +368,7 @@ static void process_cleanup(process_t *proc) {
     if (!proc || proc->pid == 0) return;
     /* Protect process table state while cleaning up */
     spin_lock(&process_table_lock);
+    socket_process_cleanup(proc->pid, proc->fd_table, PROCESS_MAX_FDS);
     process_free_address_space(proc);
     if (proc->stack) {
         /* If stack was allocated from physical pages, unmap and free; otherwise kfree */

@@ -41,7 +41,11 @@ SRCS = kernel/kmain.c \
        kernel/net/arp.c \
        kernel/net/ipv4.c \
        kernel/net/udp.c \
+       kernel/net/dhcp.c \
+       kernel/net/dns.c \
        kernel/net/tcp.c \
+       kernel/net/socket.c \
+       kernel/net/route.c \
        kernel/net/http.c \
        kernel/net/80211.c \
        kernel/lib/kernel.c \
