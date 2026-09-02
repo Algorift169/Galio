@@ -1,7 +1,7 @@
 /*
  * Galio Kernel
  *
- * Copyright (C) 2026 Israfil [Your Legal Name]
+ * Copyright (C) 2026 S.M Israfil
  *
  * This file is part of Galio.
  *
