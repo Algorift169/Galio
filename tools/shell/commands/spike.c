@@ -25,10 +25,11 @@ static void spike_draw(const u8 *samples, u32 count) {
     kprintf("100%% ");
 
     for (u32 row = 0; row < SPIKE_HEIGHT; row++) {
-        u32 threshold = 100 - (row * 100 / SPIKE_HEIGHT);
         for (u32 column = 0; column < count; column++) {
             u8 sample = samples[column];
-            if (sample >= threshold) {
+            u32 bar_height = ((u32)sample * SPIKE_HEIGHT + 99) / 100;
+            if (bar_height == 0) bar_height = 1;
+            if (SPIKE_HEIGHT - row <= bar_height) {
                 u8 color = sample >= 80 ? 0x0C : (sample >= 50 ? 0x0E : 0x0B);
                 vga_write_cell((int)(5 + column), (int)(2 + row), '#', color);
             } else {
