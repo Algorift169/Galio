@@ -22,14 +22,12 @@
 
 /* wifi.c - Wi-Fi scan support */
 #include "net/wifi.h"
-#include "drivers/net/rtl8188eu.h"
 #include "net/netdev.h"
 #include "net/packet.h"
 #include "net/80211.h"
 #include "lib/kprintf.h"
 #include "lib/string.h"
 #include "mm/heap.h"
-#include "pci.h"
 #include "drivers/pit.h"
 #include "drivers/usb.h"
 
@@ -46,53 +44,18 @@ static net_device_t *wifi_device = NULL;
 int wifi_parse_beacon(const uint8_t *frame, u32 len, char *ssid_out, int8_t *rssi_out, uint8_t *channel_out);
 uint8_t wifi_build_probe_request(uint8_t *buffer, u32 buffer_len, const char *ssid);
 
-static int wifi_pci_probe(pci_device_t *pdev) {
-    if (!pdev) return -1;
-    /* RTL8188EU is a USB device, not a generic PCI network device. Do not
-       claim E1000 or any other Ethernet controller as Wi-Fi hardware. */
-    return -1;
-}
-
-static pci_driver_t wifi_pci_driver = {
-    .vendor_id = 0xFFFF,
-    .device_id = 0xFFFF,
-    .probe = wifi_pci_probe,
-    .next = NULL,
-};
-
 void wifi_init(void) {
     wifi_device = netdev_get_by_name("wlan0");
     wifi_hw_present = (wifi_device != NULL) ? 1 : 0;
     wifi_scan_count = 0;
     wifi_scan_active = 0;
 
-    /* Always initialize the USB helper path for the driver stack, but do not
-     * block the kernel on a missing physical device. The software-backed wlan0
-     * device is enough for the network stack to work.
-     */
+    /* Initialize the helper, but never create a software-only network device. */
     usb_init();
     if (!wifi_device) {
-        kprintf("wifi: no physical adapter detected, using software-backed wlan0\n");
+        kprintf("wifi: no verified physical adapter detected\n");
     }
     kprintf("wifi: Initialized\n");
-}
-
-static void wifi_fill_fallback_scan(void) {
-    static const char *fallback_ssids[] = {
-        "Galio-Guest",
-        "LabNet",
-        "HomeMesh",
-        "Office-WiFi",
-    };
-
-    wifi_scan_count = 0;
-    for (u32 i = 0; i < sizeof(fallback_ssids) / sizeof(fallback_ssids[0]) && i < WIFI_SCAN_CACHE_MAX; i++) {
-        strncpy(wifi_scan_cache[i].ssid, fallback_ssids[i], 32);
-        wifi_scan_cache[i].ssid[32] = '\0';
-        wifi_scan_cache[i].signal_dbm = (int8_t)(-40 - (int8_t)(i * 7));
-        wifi_scan_cache[i].channel = (uint8_t)(1 + (i % 11));
-        wifi_scan_count++;
-    }
 }
 
 void wifi_scan_start(void) {
@@ -101,12 +64,6 @@ void wifi_scan_start(void) {
 
 void wifi_scan_start_timeout(u32 timeout_seconds) {
     wifi_device = netdev_get_by_name("wlan0");
-    if (!wifi_device) {
-        kprintf("wifi: wlan0 not registered; creating software-backend device\n");
-        rtl8188eu_register_driver();
-        wifi_device = netdev_get_by_name("wlan0");
-    }
-
     wifi_hw_present = (wifi_device != NULL) ? 1 : 0;
     wifi_scan_active = 1;
     wifi_scan_count = 0;
@@ -116,7 +73,7 @@ void wifi_scan_start_timeout(u32 timeout_seconds) {
     net_device_t *ndev = netdev_get_by_name("wlan0");
     if (!ndev) {
         kprintf("wifi: wlan0 not present for scanning\n");
-        wifi_fill_fallback_scan();
+        wifi_scan_active = 0;
         return;
     }
 
@@ -161,10 +118,6 @@ void wifi_scan_start_timeout(u32 timeout_seconds) {
             }
         }
         now = pit_get_ticks();
-    }
-
-    if (wifi_scan_count == 0) {
-        wifi_fill_fallback_scan();
     }
 
     if (scan_polls >= 512) {

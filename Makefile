@@ -76,6 +76,7 @@ SRCS = kernel/kmain.c \
        kernel/process/signals.c \
        kernel/process/paths.c \
        kernel/fs/path.c \
+       kernel/syscall/syscall_process.c \
        kernel/fs/vfs/vfs_core.c \
        kernel/fs/vfs/vfs_wrapper.c \
        kernel/fs/ext2/ext2.c \
@@ -150,14 +151,10 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/net.c \
        tools/shell/commands/pkg.c \
        tools/shell/commands/syscall.c \
+       tools/shell/commands/wifi_list.c \
        tools/shell/commands/top.c \
        tools/shell/commands/spike.c \
 	tools/shell/commands/where.c \
-       tools/shell/commands/socket.c \
-       tools/shell/commands/semtest.c \
-       tools/shell/commands/shmtest.c \
-       tools/shell/commands/sigtest.c \
-       tools/shell/commands/pread.c \
        tools/shell/editor/editor.c
 
 # Object files
@@ -324,7 +321,7 @@ run: $(KERNEL_ISO) $(DISK_IMAGE)
 # Run with network emulation (e1000 + USB for Wi-Fi testing)
 run-net: $(KERNEL_ISO) $(DISK_IMAGE)
 	qemu-system-x86_64 -cdrom $(KERNEL_ISO) -hda $(DISK_IMAGE) \
-		-netdev user,id=net0,hostfwd=udp::7777-:7777,hostfwd=tcp::8888-:8888 \
+		-netdev user,id=net0,restrict=off,hostfwd=udp::7777-:7777,hostfwd=tcp::8888-:8888 \
 		-device e1000,netdev=net0 \
 		-usb -device usb-host,hostbus=1,hostaddr=2 \
 		-serial stdio \
@@ -336,6 +333,8 @@ run-net: $(KERNEL_ISO) $(DISK_IMAGE)
 # Run with USB passthrough for real Wi-Fi dongle
 run-usb: $(KERNEL_ISO) $(DISK_IMAGE)
 	qemu-system-x86_64 -cdrom $(KERNEL_ISO) -hda $(DISK_IMAGE) \
+              -netdev user,id=net0,restrict=off \
+              -device e1000,netdev=net0 \
 		-usb -device usb-host,hostbus=1,hostaddr=2 \
 		-serial stdio \
 		-monitor none \
@@ -350,6 +349,8 @@ debug: all
 
 run-debug: $(KERNEL_ISO) $(DISK_IMAGE)
 	qemu-system-x86_64 -cdrom $(KERNEL_ISO) -hda $(DISK_IMAGE) \
+              -netdev user,id=net0,restrict=off \
+              -device e1000,netdev=net0 \
 		-s -S \
 		-serial stdio \
 		-monitor stdio \

@@ -7,7 +7,7 @@ set -euo pipefail
 
 ISO="build/bin/galio.iso"
 DISK="build/disk.img"
-QEMU_BIN="qemu-system-i386"
+QEMU_BIN="qemu-system-x86_64"
 EXTRA_ARGS=""
 NOGRAPHIC=false
 FULLSCREEN=false
@@ -84,10 +84,12 @@ if [ ! -f "${DISK}" ]; then
     echo "Disk image created and formatted."
 fi
 
-# Base args (always no network)
-COMMON_ARGS="-cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m 128M -net none"
+# QEMU user networking provides outbound NAT through the host's real network.
+# The guest still needs DHCP or static IP configuration before kernel sockets
+# can use the interface.
+COMMON_ARGS="-cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m 128M -netdev user,id=net0,restrict=off -device e1000,netdev=net0"
 
-echo "Note: networking disabled. This script always boots without internet."
+echo "Using QEMU user-mode NAT networking through e1000"
 
 if [ "${NOGRAPHIC}" = true ]; then
     echo "Starting QEMU (headless). Serial output will appear on stdout."

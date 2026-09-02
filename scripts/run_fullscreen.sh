@@ -110,9 +110,10 @@ if [ ! -f "${DISK}" ]; then
     echo "Disk image created and formatted."
 fi
 
-# Common QEMU arguments. The disk remains Galio's image; attaching a raw host
-# disk here would expose and potentially corrupt the host filesystem.
-COMMON_ARGS="${QEMU_ACCEL_ARGS} ${QEMU_CPU_ARGS} -smp 1 -cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m ${GALIO_RAM_MB}M -netdev user,id=net0 -device e1000,netdev=net0"
+# QEMU user networking provides outbound NAT through the host's real network.
+# The guest still needs DHCP or static IP configuration before kernel sockets
+# can use the interface. The disk remains Galio's image; no host disk is used.
+COMMON_ARGS="${QEMU_ACCEL_ARGS} ${QEMU_CPU_ARGS} -smp 1 -cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m ${GALIO_RAM_MB}M -netdev user,id=net0,restrict=off -device e1000,netdev=net0"
 echo "Using ${QEMU_CPU_ARGS}, ${GALIO_RAM_MB} MB guest RAM, and Galio disk image ${DISK}"
 
 # Run QEMU

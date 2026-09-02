@@ -88,8 +88,6 @@ void usb_init(void) {
     kprintf("USB: helper initialized\n");
 }
 
-static u8 simulated_channel = 1;
-
 struct radiotap_hdr {
     u8 it_version;
     u8 it_pad;
@@ -123,31 +121,10 @@ int usb_control_msg(u32 bus, u32 addr, u8 request_type, u8 request,
                     u16 value, u16 index, void *data, u16 size, u32 timeout) {
     (void)bus; (void)addr; (void)request_type; (void)index; (void)timeout;
 
-    if (!usb_initialized) return -1;
-
-    /* Capture RF channel changes (vendor request 0x01 in rtl8188eu driver) */
-    if (request == 0x01) {
-        simulated_channel = (u8)value;
-    }
-
-    /* As a pragmatic approach: attempt to read from root hub port
-     * and copy to/from buffer if device responds. This is best-effort
-     * and intended to be synchronous and blocking for a driver that
-     * only needs to load small firmware blobs and read MAC registers.
-     */
-    u16 portsc = uhci_io_base + UHCI_PORTSC0;
-    u16 st = inw(portsc);
-    (void)st;
-
-    if (data && size > 0) {
-        /* For IN requests: return zeros but allow driver to continue */
-        if ((request_type & 0x80) != 0) {
-            memset(data, 0, size);
-        } else {
-            /* OUT request: pretend it succeeded */
-        }
-    }
-    return size;
+    (void)value; (void)request; (void)data; (void)size;
+    if (!usb_initialized()) return -1;
+    /* UHCI transfer descriptors and USB device enumeration are not complete. */
+    return -1;
 }
 
 /* Bulk transfer helpers: poll-based wrappers that rely on UHCI port
@@ -157,7 +134,7 @@ int usb_control_msg(u32 bus, u32 addr, u8 request_type, u8 request,
  */
 int usb_bulk_read(u32 bus, u32 addr, u8 endpoint, void *buffer, u32 size, u32 timeout) {
     (void)bus; (void)addr; (void)timeout;
-    if (!usb_initialized) return -1;
+    if (!usb_initialized()) return -1;
     if (!buffer || size == 0) return -1;
 
     /* If device is absent, return 0 quickly */
@@ -165,20 +142,16 @@ int usb_bulk_read(u32 bus, u32 addr, u8 endpoint, void *buffer, u32 size, u32 ti
     u16 ps = inw(portsc);
     if ((ps & 0x0003) == 0) return 0;
 
-    /* No fabricated packets: a real USB transfer implementation must provide
-       received bytes before the Wi-Fi scan can produce results. */
-    (void)endpoint;
-    return 0;
+     (void)endpoint;
+     return -1;
 }
 
 int usb_bulk_write(u32 bus, u32 addr, u8 endpoint, void *buffer, u32 size, u32 timeout) {
     (void)bus; (void)addr; (void)endpoint; (void)timeout;
-    if (!usb_initialized) return -1;
+    if (!usb_initialized()) return -1;
     if (!buffer || size == 0) return -1;
 
-    /* Pulse port to indicate activity (best-effort) */
-    u16 portsc = uhci_io_base + UHCI_PORTSC0;
-    inw(portsc);
-    return (int)size;
+    (void)size;
+    return -1;
 }
 

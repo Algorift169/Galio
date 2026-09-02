@@ -50,6 +50,7 @@
 #include "editor.h"
 #include "process.h"
 #include "syscall_cmd.h"
+#include "wifi_list.h"
 #include "top.h"
 #include "spike.h"
 #include "user_syscall.h"
@@ -142,6 +143,7 @@ static dir_history_t dir_history = {0};
 static char current_dir[256] = HOME_DIR;
 static const char shell_hostname[] = "galio";
 static u8 shell_should_exit = 0;
+static u8 shell_rex_command = 0;
 static int shell_cursor_x = 0;
 static int shell_cursor_y = 0;
 static unsigned short shell_cursor_saved_cell = 0;
@@ -917,7 +919,9 @@ static void shell_execute_command(void) {
         strncpy(input.buffer, privileged_cmd, SHELL_BUFFER_SIZE - 1);
         input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
         input.len = strlen(input.buffer);
+        shell_rex_command = 1;
         shell_execute_command();
+        shell_rex_command = 0;
         return;
     } else if (strcmp(input.buffer, "cpufreq") == 0 || strncmp(input.buffer, "cpufreq ", 8) == 0) {
         SHELL_COLOR_OUT();
@@ -1006,13 +1010,21 @@ static void shell_execute_command(void) {
         SHELL_COLOR_CMD();
         kprintf("Usage: net <stat|scan|list|devices>\n");
         SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "wifi-list") == 0) {
+        SHELL_COLOR_OUT();
+        shell_wifi_list_command("", current_dir);
+        SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "syscall ", 8) == 0) {
         SHELL_COLOR_OUT();
-        shell_syscall_command(input.buffer + 8, current_dir);
+        shell_syscall_command(input.buffer + 8, current_dir, shell_rex_command);
         SHELL_COLOR_RESET();
     } else if (strcmp(input.buffer, "syscall") == 0) {
         SHELL_COLOR_CMD();
-        kprintf("Usage: syscall <pid|uid|gid|time|fork|pipe|dup|mmap|brk|wait|open|read|close|seek|stat|exec>\n");
+        shell_syscall_command("", current_dir, shell_rex_command);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "SYS_", 4) == 0) {
+        SHELL_COLOR_OUT();
+        shell_syscall_command(input.buffer, current_dir, shell_rex_command);
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "cpu-spike", 9) == 0 &&
                (input.buffer[9] == ' ' || input.buffer[9] == '\0')) {
@@ -1115,23 +1127,6 @@ static void shell_execute_command(void) {
         kprintf(" |__________________________________________________________________|\n");
         kprintf(" |  net      - Networking commands (usage: net stat|scan|list|devices)     |\n");
         kprintf(" |________________________________________________________|\n");
-        kprintf(" |  syscall pid                    - Get current process ID                 |\n");
-        kprintf(" |  syscall uid                    - Get current user ID                    |\n");
-        kprintf(" |  syscall gid                    - Get current group ID                   |\n");
-        kprintf(" |  syscall time                   - Get system time                        |\n");
-        kprintf(" |  syscall fork                   - Create a child process                 |\n");
-        kprintf(" |  syscall pipe                   - Create an IPC pipe                     |\n");
-        kprintf(" |  syscall dup <fd>               - Duplicate a file descriptor            |\n");
-        kprintf(" |  syscall mmap <length>          - Map anonymous memory                   |\n");
-        kprintf(" |  syscall brk [address]          - Get/set process heap break             |\n");
-        kprintf(" |  syscall wait [pid]             - Wait for child process                 |\n");
-        kprintf(" |  syscall open <path> [flags]    - Open file                              |\n");
-        kprintf(" |  syscall read <fd> <count>      - Read from file descriptor              |\n");
-        kprintf(" |  syscall close <fd>             - Close file descriptor                  |\n");
-        kprintf(" |  syscall seek <fd> <off> <wh>   - Change file offset                     |\n");
-        kprintf(" |  syscall stat <path>            - Show file metadata                     |\n");
-        kprintf(" |  syscall exec <path>            - Replace process image                  |\n");
-        kprintf(" |  syscall execve <path> [...]    - Execute program with argv/env          |\n");
         kprintf(" |  cpufreq  - CPU frequency policy and statistics                 |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" |  top      - Live process monitor (Ctrl+C to stop)      |\n");
@@ -1144,12 +1139,9 @@ static void shell_execute_command(void) {
         kprintf(" | echo     - Echo text (usage: echo <text>)              |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" | uname    - Show system name                            |\n");
+        kprintf(" | syscall  - Invoke a syscall (mutations require rex)   |\n");
+        kprintf(" | wifi-list - Scan and list verified Wi-Fi networks      |\n");
         kprintf(" |___________________________ ____________________________|\n");
-        kprintf(" | socket   - Test socket syscalls                        |\n");
-        kprintf(" | semtest  - Test semaphore syscalls                     |\n");
-        kprintf(" | shmtest  - Test shared memory syscalls                 |\n");
-        kprintf(" | sigtest  - Test signal syscalls                        |\n");
-        kprintf(" | pread    - Test positioned read/write syscalls         |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" | pwd      - Print current directory                     |\n");
         kprintf(" |________________________________________________________|\n");
@@ -1381,21 +1373,6 @@ static void shell_execute_command(void) {
         kprintf("[REFRESH] Reloading shell and VGA state...\n");
         SHELL_COLOR_RESET();
         shell_refresh_screen_state();
-    } else if (strncmp(input.buffer, "socket", 6) == 0) {
-        extern u8 shell_socket_command(const char *, const char *);
-        shell_socket_command(input.buffer + 7, current_dir);
-    } else if (strncmp(input.buffer, "semtest", 7) == 0) {
-        extern u8 shell_semtest_command(const char *, const char *);
-        shell_semtest_command(input.buffer + 8, current_dir);
-    } else if (strncmp(input.buffer, "shmtest", 7) == 0) {
-        extern u8 shell_shmtest_command(const char *, const char *);
-        shell_shmtest_command(input.buffer + 8, current_dir);
-    } else if (strncmp(input.buffer, "sigtest", 7) == 0) {
-        extern u8 shell_sigtest_command(const char *, const char *);
-        shell_sigtest_command(input.buffer + 8, current_dir);
-    } else if (strncmp(input.buffer, "pread", 5) == 0) {
-        extern u8 shell_pread_command(const char *, const char *);
-        shell_pread_command(input.buffer + 6, current_dir);
     } else if (input.len > 0) {
         SHELL_COLOR_ERR();
         kprintf("Unknown command: %s\nType 'help' for available commands\n", input.buffer);

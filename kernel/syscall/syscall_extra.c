@@ -558,14 +558,9 @@ i32 syscall_fstat(int fd, struct stat *statbuf) {
         return -1;
     }
 
-    memset(statbuf, 0, sizeof(struct stat));
-    statbuf->st_mode = 0644u;
-    statbuf->st_uid = proc->uid;
-    statbuf->st_gid = proc->gid;
-    statbuf->st_size = 0;
-    statbuf->st_blksize = 4096;
-    statbuf->st_blocks = 1;
-    return 0;
+    /* The legacy VFS handle does not expose its inode to this ABI yet. */
+    (void)handle;
+    return -38;
 }
 
 i32 syscall_readlink(const char *path, char *buf, u32 bufsize) {
@@ -632,14 +627,14 @@ i64 syscall_ioctl(u32 fd, u32 cmd, void *arg) {
     (void)fd;
     (void)cmd;
     (void)arg;
-    return 0;
+    return -38;
 }
 
 i64 syscall_poll(void *fds, u32 nfds, i32 timeout) {
     (void)fds;
     (void)nfds;
     (void)timeout;
-    return 0;
+    return -38;
 }
 
 /* Stub implementations for additional syscalls */

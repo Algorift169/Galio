@@ -141,7 +141,70 @@ static u8 copy_user_string(char *dst, const char *src, u32 dst_size) {
     return 0;
 }
 
-/* Syscall handler - called from INT 0x80 */
+/*
+ * Syscall ABI and usage
+ * ---------------------
+ *
+ * User code invokes a syscall with INT 0x80.  The assembly entry preserves
+ * the registers and calls this function with a pointer to that register
+ * frame.  The dispatcher reads and writes the frame, so the value assigned to
+ * regs->rax is returned to the caller when the interrupt returns.
+ *
+ * Register convention:
+ *   rax = syscall number
+ *   rbx = argument 1
+ *   rcx = argument 2
+ *   rdx = argument 3
+ *   rsi = argument 4
+ *   rdi = argument 5
+ *
+ * Negative return values report failure.  This kernel does not maintain a
+ * separate errno value.  Pointer arguments must refer to mapped user memory;
+ * pointer-taking implementations validate them before reading or writing.
+ *
+ * Supported syscall usage:
+ *   SYS_READ(fd, buffer, count)       Read from a process FD or pipe.
+ *   SYS_WRITE(fd, buffer, count)      Write to a process FD, pipe, or stdout.
+ *   SYS_OPEN(path, flags)             Open a VFS path and return a process FD.
+ *   SYS_CLOSE(fd)                     Close a process FD.
+ *   SYS_LSEEK(fd, offset, whence)     Change the position of an open VFS file.
+ *   SYS_STAT(path, statbuf)            Get VFS metadata using the legacy layout.
+ *   SYS_MMAP(addr, len, prot, flags)   Map anonymous user pages.
+ *   SYS_MUNMAP(addr, len)              Release pages in the user heap range.
+ *   SYS_BRK(addr)                     Read or grow the process heap break.
+ *   SYS_SCHED_YIELD()                 Yield to the process scheduler.
+ *   SYS_GETPID()                      Return the current process ID.
+ *   SYS_FORK()                        Clone process state and its page tables.
+ *   SYS_EXEC(path)                    Load an ELF image from the VFS.
+ *   SYS_EXECVE(path, argv, envp)      Load an ELF image with argument vectors.
+ *   SYS_EXIT(status)                  Terminate the current process.
+ *   SYS_WAITPID(pid) / SYS_WAIT(pid) Wait for an existing child process.
+ *   SYS_WAIT4(pid, status, options, rusage)
+ *                                     Use the currently supported wait path.
+ *   SYS_KILL(pid, signal)             Deliver a signal through process_kill.
+ *   SYS_GETPPID()                     Return the current parent process ID.
+ *   SYS_GETUID()/SYS_GETGID()         Return process credentials.
+ *   SYS_GETEUID()/SYS_GETEGID()       Return effective process credentials.
+ *   SYS_CHDIR(path)                   Change the process working directory.
+ *   SYS_GETCWD(buffer, size)          Copy the working directory to user space.
+ *   SYS_TIME()                        Return wall-clock seconds since the epoch.
+ *   SYS_GETTIMEOFDAY(tv, tz)          Return wall-clock seconds and microseconds.
+ *   SYS_CLOCK_GETTIME(clock, tp)      Return the kernel wall-clock timespec.
+ *   SYS_NANOSLEEP(req, rem)           Delay using the kernel time source.
+ *   SYS_SLEEP(milliseconds)           Delay using the PIT-backed timer helper.
+ *   SYS_UNAME(buffer)                 Copy Galio and architecture identity data.
+ *   SYS_ACCESS(path, mode)            Check that a VFS path exists.
+ *   SYS_READLINK(path, buffer, size)  Read a VFS symbolic link.
+ *   SYS_PIPE(pipefd[2])               Create a process pipe pair.
+ *   SYS_DUP(oldfd) / SYS_DUP2(old,new)
+ *                                     Duplicate process FD entries.
+ *
+ * Reserved but unsupported calls (socket, semaphore, shared memory, signal
+ * disposition, poll/ioctl, vector I/O, positioned I/O, mprotect, lstat,
+ * clone, and vfork) return an ENOSYS-style negative result from their real
+ * implementation.  They are dispatched only to preserve stable syscall
+ * numbers; they must not be documented or treated as working capabilities.
+ */
 static void syscall_handler(registers_t *regs) {
     /* For INT 0x80, we need to distinguish syscall number from interrupt_number */
     /* The actual syscall number is in EAX */
@@ -155,6 +218,12 @@ static void syscall_handler(registers_t *regs) {
 
 #if SYSCALL_TRACE
     const char *name = "unknown";
+    /*
+     * Each case below is the kernel side of the corresponding user wrapper.
+     * Scalar arguments are copied from the saved register frame.  Pointer
+     * arguments are passed to a syscall implementation, which owns the
+     * required user-range validation and VFS/process permission checks.
+     */
     switch (syscall_num) {
         case SYS_EXIT: name = "exit"; break;
         case SYS_WRITE: name = "write"; break;
@@ -277,7 +346,7 @@ static void syscall_handler(registers_t *regs) {
             break;
 
         case SYS_SLEEP:
-            kprintf("SYS_SLEEP not yet implemented\n");
+            syscall_sleep((u32)arg1);
             regs->rax = 0;
             break;
 
@@ -948,11 +1017,6 @@ u32 syscall_getpid(void) {
     u32 pid;
     __asm__ volatile("int $0x80" : "=a"(pid) : "a"(SYS_GETPID));
     return pid;
-}
-
-void syscall_sleep(u32 ms) {
-    (void)ms;
-    /* Not implemented yet */
 }
 
 void syscall_init(void) {

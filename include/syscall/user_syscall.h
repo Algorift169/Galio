@@ -39,6 +39,8 @@ static inline long galio_syscall(long nr, long a1, long a2, long a3, long a4, lo
 static inline int sys_exit(int status) { return (int)galio_syscall(SYS_EXIT, status, 0, 0, 0, 0); }
 static inline int sys_write(int fd, const void *buf, unsigned long size) { return (int)galio_syscall(SYS_WRITE, fd, (long)buf, (long)size, 0, 0); }
 static inline int sys_getpid(void) { return (int)galio_syscall(SYS_GETPID, 0, 0, 0, 0, 0); }
+static inline int sys_sleep(unsigned int milliseconds) { return (int)galio_syscall(SYS_SLEEP, milliseconds, 0, 0, 0, 0); }
+static inline int sys_sched_yield(void) { return (int)galio_syscall(SYS_SCHED_YIELD, 0, 0, 0, 0, 0); }
 static inline int sys_fork(void) { return (int)galio_syscall(SYS_FORK, 0, 0, 0, 0, 0); }
 static inline int sys_exec(const char *path) { return (int)galio_syscall(SYS_EXEC, (long)path, 0, 0, 0, 0); }
 static inline int sys_execve(const char *path, char *const argv[], char *const envp[]) { return (int)galio_syscall(SYS_EXECVE, (long)path, (long)argv, (long)envp, 0, 0); }
