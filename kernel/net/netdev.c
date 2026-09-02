@@ -26,6 +26,7 @@
 #include "lib/string.h"
 #include "mm/heap.h"
 #include "net/route.h"
+#include "net/arp.h"
 
 /* Simple singly-linked list of devices */
 static net_device_t *dev_list = NULL;
@@ -127,7 +128,23 @@ void netdev_set_ipv4(net_device_t *dev, u32 addr, u32 netmask, u32 gateway) {
     if (!dev) return;
     dev->ip_addr = addr;
     dev->netmask = netmask;
+    dev->broadcast = addr | ~netmask;
     dev->gateway = gateway;
+    arp_cache_flush();
+    net_configure_routes();
+}
+
+void netdev_clear_ipv4(net_device_t *dev) {
+    if (!dev) return;
+    dev->ip_addr = 0;
+    dev->netmask = 0;
+    dev->broadcast = 0;
+    dev->gateway = 0;
+    dev->dns_servers[0] = 0;
+    dev->dns_servers[1] = 0;
+    arp_cache_flush();
+    route_clear();
+    net_configure_routes();
 }
 
 int netdev_get_link(net_device_t *dev) {

@@ -1,9 +1,14 @@
 #include "net/route.h"
 #include "lib/string.h"
+#include "kprintf.h"
 
 static net_route_t routes[NET_ROUTE_MAX];
 
 void route_init(void) {
+    memset(routes, 0, sizeof(routes));
+}
+
+void route_clear(void) {
     memset(routes, 0, sizeof(routes));
 }
 
@@ -56,4 +61,23 @@ net_device_t *route_lookup(u32 destination, u32 *next_hop) {
     if (!best) return NULL;
     if (next_hop) *next_hop = best->gateway ? best->gateway : destination;
     return best->device;
+}
+
+static void route_print_ip(u32 value) {
+    kprintf("%u.%u.%u.%u", (value >> 24) & 255, (value >> 16) & 255,
+            (value >> 8) & 255, value & 255);
+}
+
+void route_print(void) {
+    for (u32 i = 0; i < NET_ROUTE_MAX; i++) {
+        if (!routes[i].used) continue;
+        route_print_ip(routes[i].network);
+        kprintf("/");
+        u32 prefix = 0;
+        for (u32 mask = routes[i].netmask; mask; mask >>= 1) prefix += mask & 1u;
+        kprintf("%u via ", prefix);
+        if (routes[i].gateway) route_print_ip(routes[i].gateway);
+        else kprintf("direct");
+        kprintf(" dev %s\n", routes[i].device ? routes[i].device->name : "none");
+    }
 }

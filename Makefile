@@ -153,6 +153,7 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/clean.c \
        tools/shell/commands/delete.c \
        tools/shell/commands/net.c \
+       tools/shell/commands/ip.c \
        tools/shell/commands/pkg.c \
        tools/shell/commands/syscall.c \
        tools/shell/commands/wifi_list.c \

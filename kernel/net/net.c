@@ -86,6 +86,7 @@ void net_print_devices(void) {
 }
 
 void net_configure_routes(void) {
+    route_clear();
     net_device_t *dev = netdev_first();
     while (dev) {
         if (dev->ip_addr && dev->netmask) {
@@ -94,4 +95,8 @@ void net_configure_routes(void) {
         }
         dev = dev->next;
     }
+}
+
+u32 netdev_ipv4_broadcast(u32 addr, u32 netmask) {
+    return addr | ~netmask;
 }

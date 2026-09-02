@@ -30,6 +30,17 @@
 #define NETIF_UP        0x1
 #define NETIF_RUNNING   0x2
 
+typedef enum {
+    NET_DHCP_INIT = 0,
+    NET_DHCP_SELECTING,
+    NET_DHCP_REQUESTING,
+    NET_DHCP_BOUND,
+    NET_DHCP_RENEWING,
+    NET_DHCP_REBINDING,
+    NET_DHCP_EXPIRED,
+    NET_DHCP_ERROR
+} net_dhcp_state_t;
+
 typedef struct net_device {
     char name[NET_NAME_LEN];
     uint8_t mac[6];
@@ -45,7 +56,16 @@ typedef struct net_device {
     int (*set_channel)(struct net_device *dev, u8 channel);
     u32 ip_addr;
     u32 netmask;
+    u32 broadcast;
     u32 gateway;
+    u32 dns_servers[2];
+    u32 dhcp_server;
+    u32 lease_duration;
+    u32 lease_start_ticks;
+    u32 lease_t1_ticks;
+    u32 lease_t2_ticks;
+    u32 lease_expiry_ticks;
+    net_dhcp_state_t dhcp_state;
     struct net_device *next;
     u32 rx_packets;
     u32 tx_packets;
@@ -64,6 +84,7 @@ net_device_t *netdev_route(u32 dest_ip);
 int netdev_send_skb(net_device_t *dev, net_buf_t *buf);
 int netdev_receive_skb(net_device_t *dev, net_buf_t *buf);
 void netdev_set_ipv4(net_device_t *dev, u32 addr, u32 netmask, u32 gateway);
+void netdev_clear_ipv4(net_device_t *dev);
 int netdev_get_link(net_device_t *dev);
 net_device_t *netdev_first(void);
 net_device_t *netdev_next(net_device_t *cur);

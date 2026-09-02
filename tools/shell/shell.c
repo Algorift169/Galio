@@ -45,6 +45,7 @@
 #include "delete.h"
 #include "tree.h"
 #include "net.h"
+#include "ip.h"
 #include "pkg.h"
 #include "where.h"
 #include "editor.h"
@@ -1009,6 +1010,19 @@ static void shell_execute_command(void) {
     } else if (strcmp(input.buffer, "net") == 0) {
         SHELL_COLOR_CMD();
         kprintf("Usage: net <stat|scan|list|devices>\n");
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "ifconfig", 8) == 0 &&
+               (input.buffer[8] == ' ' || input.buffer[8] == '\0')) {
+        SHELL_COLOR_OUT();
+        shell_ifconfig_command(input.buffer + 8, current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "ip ", 3) == 0) {
+        SHELL_COLOR_OUT();
+        shell_ip_command(input.buffer + 3, current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "ip") == 0) {
+        SHELL_COLOR_CMD();
+        kprintf("Usage: ip <addr|route|renew|release> [interface]\n");
         SHELL_COLOR_RESET();
     } else if (strcmp(input.buffer, "wifi-list") == 0) {
         SHELL_COLOR_OUT();

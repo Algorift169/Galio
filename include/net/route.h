@@ -15,8 +15,10 @@ typedef struct {
 } net_route_t;
 
 void route_init(void);
+void route_clear(void);
 int route_add(u32 network, u32 netmask, u32 gateway, net_device_t *device);
 int route_remove(u32 network, u32 netmask);
 net_device_t *route_lookup(u32 destination, u32 *next_hop);
+void route_print(void);
 
 #endif
