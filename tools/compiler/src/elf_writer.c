@@ -25,7 +25,7 @@ int elf_write(const char *path, const u8 *code, u32 code_size, const u8 *data, u
     hdr.type = 2; hdr.machine = 3; hdr.version = 1; hdr.entry = entry_point;
     hdr.phoff = sizeof(hdr); hdr.ehsize = sizeof(hdr); hdr.phentsize = sizeof(phdr); hdr.phnum = 1;
     phdr.type = PT_LOAD; phdr.offset = ELF_FILE_OFFSET; phdr.vaddr = ELF_BASE; phdr.paddr = ELF_BASE;
-    phdr.filesz = total; phdr.memsz = total; phdr.flags = PF_R | PF_W | PF_X; phdr.align = ELF_FILE_OFFSET;
+    phdr.filesz = total; phdr.memsz = total; phdr.flags = PF_R | PF_W | PF_X; phdr.align = 0x1000u;
     memcpy(image, &hdr, sizeof(hdr));
     memcpy(image + sizeof(hdr), &phdr, sizeof(phdr));
     memcpy(image + ELF_FILE_OFFSET, code, code_size);

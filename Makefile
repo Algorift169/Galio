@@ -167,6 +167,7 @@ SRCS = kernel/kmain.c \
           tools/compiler/src/assembler.c \
           tools/compiler/src/elf_writer.c \
           tools/compiler/src/libc_galio.c \
+          tools/compiler/src/types.c \
           tools/shell/commands/gc.c \
 	tools/shell/commands/where.c \
        tools/shell/editor/editor.c
