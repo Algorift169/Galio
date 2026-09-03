@@ -59,20 +59,12 @@
 #include "power/power.h"
 #include "options.h"
 #include "cpufreq_cmd.h"
+#include "gc.h"
 
 u8 shell_net_command(const char *args, const char *current_dir);
 u8 shell_pkg_command(const char *args, const char *current_dir);
 u8 shell_chuser_command(const char *args, const char *current_dir);
 u8 shell_passwd_command(const char *args, const char *current_dir);
-
-static char *shell_strchr(const char *s, int c) {
-    while (*s) {
-        if (*s == (char)c) return (char *)s;
-        s++;
-    }
-    if (c == 0) return (char *)s;
-    return NULL;
-}
 
 static int shell_atoi(const char *s) {
     int v = 0;
@@ -637,6 +629,27 @@ static void shell_run_pipeline(char cmds[][256], int n, int bg) {
         return;
     }
 
+    if (n == 1 && !bg && process_current() &&
+        (process_current()->regs.cs & 3) == 0 &&
+        (cmds[0][0] == '/' || (cmds[0][0] == '.' && cmds[0][1] == '/'))) {
+        char pathbuf[PROCESS_PATH_MAX];
+        char *name = cmds[0];
+        while (*name == ' ') name++;
+        if (name[0] == '/' || (name[0] == '.' && name[1] == '/')) {
+            if (name[0] == '.' && name[1] == '/' && !vfs_find(name))
+                path_resolve(current_dir, name + 2, pathbuf, sizeof(pathbuf));
+            else
+                path_resolve(current_dir, name, pathbuf, sizeof(pathbuf));
+            u32 pid = process_create_user_elf(pathbuf);
+            if (!pid) { SHELL_COLOR_ERR(); kprintf("Failed to execute: %s\n", pathbuf); SHELL_COLOR_RESET(); return; }
+            shell_cursor_restore();
+            vga_clear();
+            SHELL_COLOR_RESET();
+            sc_syscall1(SYS_WAITPID, (int)pid);
+            return;
+        }
+    }
+
     int pipefds[MAX_PIPE_STAGES-1][2];
     for (int i = 0; i < n-1; i++) {
         int r = sc_syscall1(SYS_PIPE, (int)&pipefds[i]);
@@ -697,15 +710,15 @@ static void shell_run_pipeline(char cmds[][256], int n, int bg) {
 
             if (argc == 0) sc_syscall1(SYS_EXIT, 1);
 
-            /* Resolve binary path: if contains '/', use as-is; else prefix /bin/ */
+            /* Resolve user paths against the shell's current directory. */
             char pathbuf[256];
-            if (shell_strchr(argv[0], '/')) {
+            if (argv[0][0] == '/') {
                 strncpy(pathbuf, argv[0], sizeof(pathbuf)-1);
                 pathbuf[sizeof(pathbuf)-1] = 0;
+            } else if (strncmp(argv[0], "./", 2) == 0 && !vfs_find(argv[0])) {
+                path_resolve(current_dir, argv[0] + 2, pathbuf, sizeof(pathbuf));
             } else {
-                strncpy(pathbuf, "/bin/", sizeof(pathbuf)-1);
-                pathbuf[sizeof(pathbuf)-1] = 0;
-                strncat(pathbuf, argv[0], sizeof(pathbuf) - strlen(pathbuf) - 1);
+                path_resolve(current_dir, argv[0], pathbuf, sizeof(pathbuf));
             }
 
             sc_syscall3(SYS_EXECVE, (int)pathbuf, (int)argv, 0);
@@ -1053,6 +1066,38 @@ static void shell_execute_command(void) {
         SHELL_COLOR_OUT();
         shell_top_command("", current_dir);
         SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "gc ", 3) == 0) {
+        SHELL_COLOR_OUT();
+        char *args = input.buffer + 3;
+        while (*args == ' ') args++;
+        char *source = args;
+        while (*args && *args != ' ') args++;
+        if (*args == 0) {
+            kprintf("Usage: gc <source.c> <output>\n");
+        } else {
+            *args++ = 0;
+            while (*args == ' ') args++;
+            if (*args == 0) kprintf("Usage: gc <source.c> <output>\n");
+            else {
+                char source_path[VFS_MAX_PATH];
+                char output_path[VFS_MAX_PATH];
+                char *argv_gc[] = {"gc", source_path, output_path};
+                if (strncmp(source, "./", 2) == 0 && !vfs_find(source))
+                    path_resolve(current_dir, source + 2, source_path, sizeof(source_path));
+                else
+                    path_resolve(current_dir, source, source_path, sizeof(source_path));
+                if (strncmp(args, "./", 2) == 0 && !vfs_find(args))
+                    path_resolve(current_dir, args + 2, output_path, sizeof(output_path));
+                else
+                    path_resolve(current_dir, args, output_path, sizeof(output_path));
+                cmd_gc(3, argv_gc);
+            }
+        }
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "gc") == 0) {
+        SHELL_COLOR_CMD();
+        kprintf("Usage: gc <source.c> <output>\n");
+        SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "pkg ", 4) == 0) {
         SHELL_COLOR_OUT();
         shell_pkg_command(input.buffer + 4, current_dir);
@@ -1387,6 +1432,13 @@ static void shell_execute_command(void) {
         kprintf("[REFRESH] Reloading shell and VGA state...\n");
         SHELL_COLOR_RESET();
         shell_refresh_screen_state();
+    } else if (input.len > 0 &&
+               (input.buffer[0] == '/' ||
+                (input.buffer[0] == '.' && input.buffer[1] == '/'))) {
+        char external_cmds[1][256];
+        strncpy(external_cmds[0], input.buffer, sizeof(external_cmds[0]) - 1);
+        external_cmds[0][sizeof(external_cmds[0]) - 1] = 0;
+        shell_run_pipeline(external_cmds, 1, 0);
     } else if (input.len > 0) {
         SHELL_COLOR_ERR();
         kprintf("Unknown command: %s\nType 'help' for available commands\n", input.buffer);

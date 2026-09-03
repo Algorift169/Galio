@@ -34,6 +34,8 @@
 #include "spinlock.h"
 #include "security/security.h"
 #include "auth.h"
+#include "elf.h"
+#include "vga.h"
 
 #define PAGE_SIZE 4096
 
@@ -47,6 +49,7 @@ u32 process_switch_new_user_ss = 0;
 
 static process_t *find_next_ready_process(void);
 static void save_current_registers(registers_t *regs);
+static void process_user_elf_entry(void);
 
 static process_t processes[MAX_PROCESSES];
 static u32 next_pid = 1;
@@ -114,6 +117,41 @@ u32 process_create_kernel_service(const char *path) {
         process_set_path(process_get(pid), path);
     }
     return pid;
+}
+
+u32 process_create_user_elf(const char *path) {
+    u32 pid;
+    process_t *proc;
+    if (!path) return 0;
+    pid = process_create(process_user_elf_entry, 1);
+    proc = process_get(pid);
+    if (!proc) return 0;
+    process_set_path(proc, path);
+    return pid;
+}
+
+static void process_user_elf_entry(void) {
+    process_t *proc = process_current();
+    u8 *image;
+    u32 size;
+    u32 entry;
+    if (!proc || !proc->pagedir) process_exit(1);
+    image = (u8 *)kmalloc(65536);
+    if (!image) process_exit(1);
+    paging_load_directory(proc->pagedir);
+    size = vfs_read(proc->path, image, 65536);
+    entry = size ? elf_load(image, size) : 0;
+    kfree(image);
+    if (!entry) process_exit(1);
+    proc->regs.eip = entry;
+    proc->regs.esp = USER_STACK_TOP;
+    proc->regs.user_esp = USER_STACK_TOP;
+    proc->regs.user_ss = USER_DS;
+    proc->regs.cs = USER_CS;
+    proc->regs.eflags = 0x202;
+    vga_clear();
+    enter_userspace(entry, USER_STACK_TOP);
+    process_exit(1);
 }
 
 void process_init(void) {
@@ -529,7 +567,8 @@ void process_preempt(registers_t *regs) {
     save_current_registers(regs);
     process_t *next = find_next_ready_process();
     if (!next || next == current_process ||
-        ((next->regs.cs & 3) != (regs->cs & 3))) {
+        (((current_process->state != PROCESS_ZOMBIE && current_process->state != PROCESS_WAITING) &&
+          (next->regs.cs & 3) != (regs->cs & 3)))) {
         current_process->time_slice = PROCESS_TIME_SLICE;
         return;
     }
@@ -585,15 +624,31 @@ void process_exit(i32 code) {
     current_process->pending_signals = 0;
     current_process->waiting_for_pid = -1;
     process_t *parent = process_get_any(current_process->parent_pid);
-    if (parent && parent->state == PROCESS_WAITING) {
+    u8 parent_was_waiting = parent && parent->state == PROCESS_WAITING;
+    if (parent_was_waiting) {
         parent->state = PROCESS_READY;
     }
     process_send_signal(current_process->parent_pid, SIGCHLD);
-    process_yield();
+    if ((current_process->regs.cs & 3) != 0 && parent && parent_was_waiting) {
+        process_t *next = parent;
+        if (next != current_process) {
+            next->state = PROCESS_RUNNING;
+            next->time_slice = PROCESS_TIME_SLICE;
+            process_t *old = current_process;
+            current_process = next;
+            process_accounting_set_idle(0);
+            if (next->pagedir && next->regs.cs != KERNEL_CS) {
+                paging_load_directory(next->pagedir);
+            }
+            tss_set_kernel_stack((uintptr_t)next->stack + next->stack_size - 8);
+            process_switch(old, next);
+        }
+    } else {
+        process_yield();
+    }
 
-    /* An exited process must never return through the syscall frame. If no
-     * runnable process was available, let the timer interrupt retry scheduling
-     * while this zombie remains stopped. */
+    /* A process that was not selected away remains stopped until another
+     * scheduler event can choose a runnable process. */
     for (;;) {
         __asm__ volatile("sti; hlt" ::: "memory");
     }

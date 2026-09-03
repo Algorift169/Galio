@@ -22,8 +22,8 @@
 
 /* test_elf.c - Minimal ELF test binary that writes to VGA via syscall */
 
-#define SYS_WRITE 2
-#define SYS_EXIT  1
+#define SYS_WRITE 1
+#define SYS_EXIT  60
 
 typedef unsigned int u32;
 

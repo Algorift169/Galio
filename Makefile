@@ -22,6 +22,7 @@ INCLUDES = -Iinclude \
            -Itools/shell/include \
            -Itools/shell/commands \
            -Itools/shell/editor \
+           -Itools/compiler/include \
            -Iui/include
 
 CFLAGS = -m64 -mno-sse -mno-sse2 -mno-mmx -mno-3dnow -mno-avx -mcmodel=kernel -mno-red-zone -ffreestanding -fno-pie -no-pie -O2 -Wall -Wextra $(INCLUDES) -Wno-array-bounds -Wno-unused-function
@@ -159,6 +160,14 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/wifi_list.c \
        tools/shell/commands/top.c \
        tools/shell/commands/spike.c \
+          tools/compiler/src/gc.c \
+          tools/compiler/src/lexer.c \
+          tools/compiler/src/parser.c \
+          tools/compiler/src/codegen.c \
+          tools/compiler/src/assembler.c \
+          tools/compiler/src/elf_writer.c \
+          tools/compiler/src/libc_galio.c \
+          tools/shell/commands/gc.c \
 	tools/shell/commands/where.c \
        tools/shell/editor/editor.c
 

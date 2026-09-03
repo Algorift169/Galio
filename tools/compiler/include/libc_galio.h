@@ -1,0 +1,10 @@
+#ifndef GC_LIBC_GALIO_H
+#define GC_LIBC_GALIO_H
+
+#define GALIO_SYS_EXIT 60
+#define GALIO_SYS_WRITE 1
+#define GALIO_SYS_BRK 12
+#define GALIO_SYS_MMAP 9
+#define GALIO_SYS_MUNMAP 11
+
+#endif
