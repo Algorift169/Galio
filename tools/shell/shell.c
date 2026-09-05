@@ -117,6 +117,7 @@ static const u8 ascii_table_shift[] = {
 typedef struct {
     char buffer[SHELL_BUFFER_SIZE];
     u32 len;
+    u32 cursor;
 } shell_input_t;
 
 typedef struct {
@@ -143,6 +144,9 @@ static u8 shell_drift_mode = 0;
 static int shell_last_status = 0;
 static int shell_cursor_x = 0;
 static int shell_cursor_y = 0;
+static int shell_input_origin_x = 0;
+static int shell_input_origin_y = 0;
+static u32 shell_rendered_input_len = 0;
 static unsigned short shell_cursor_saved_cell = 0;
 static u8 shell_cursor_drawn = 0;
 
@@ -190,6 +194,7 @@ static void shell_normalize_input(void) {
         input.len -= start;
     }
     input.buffer[input.len] = 0;
+    if (input.cursor > input.len) input.cursor = input.len;
 }
 
 static u8 shell_is_mutating_command(const char *command)
@@ -355,6 +360,9 @@ static void shell_print_prompt(void) {
     SHELL_COLOR_CMD();
     kprintf("[ %s @ galio ]:~ %s> ", host, dir);
     SHELL_COLOR_RESET();
+    vga_get_hardware_cursor(&shell_input_origin_x, &shell_input_origin_y);
+    input.cursor = 0;
+    shell_rendered_input_len = 0;
     shell_cursor_draw();
 }
 
@@ -363,6 +371,7 @@ static void shell_refresh_screen_state(void) {
     vga_clear();
     vga_set_color(0x0A);
     input.len = 0;
+    input.cursor = 0;
     input.buffer[0] = 0;
 
     shell_print_prompt();
@@ -392,20 +401,36 @@ static void shell_add_history(const char *cmd) {
 
 static void shell_clear_line(void) {
     shell_cursor_restore();
-    for (u32 i = 0; i < input.len; i++) {
-        vga_putch('\b');
-        vga_putch(' ');
-        vga_putch('\b');
+    for (u32 i = 0; i < shell_rendered_input_len; i++) {
+        vga_write_cell(shell_input_origin_x + (int)i, shell_input_origin_y, ' ', 0x0F);
     }
+    shell_rendered_input_len = 0;
+    input.cursor = 0;
+    vga_move_hardware_cursor(shell_input_origin_x, shell_input_origin_y);
     shell_cursor_draw();
 }
 
 static void shell_print_buffer(void);
+static void shell_cancel_input(void)
+{
+    keyboard_clear_pending_input();
+    shell_cursor_restore();
+    vga_move_hardware_cursor(shell_input_origin_x + (int)input.len,
+                             shell_input_origin_y);
+    SHELL_COLOR_ERR();
+    kprintf("^C\n");
+    SHELL_COLOR_RESET();
+    input.len = 0;
+    input.cursor = 0;
+    input.buffer[0] = 0;
+    shell_print_prompt();
+}
 
 static void shell_print_history_entry(void) {
     if (history.index >= history.count) {
         shell_clear_line();
         input.len = 0;
+        input.cursor = 0;
         input.buffer[0] = 0;
         return;
     }
@@ -416,6 +441,7 @@ static void shell_print_history_entry(void) {
     input.buffer[SHELL_BUFFER_SIZE - 1] = 0;
     input.len = strlen(input.buffer);
     if (input.len >= SHELL_BUFFER_SIZE) input.len = SHELL_BUFFER_SIZE - 1;
+    input.cursor = input.len;
     shell_print_buffer();
 }
 
@@ -434,15 +460,22 @@ static void shell_history_next(void) {
         history.index = history.count;
         shell_clear_line();
         input.len = 0;
+        input.cursor = 0;
         input.buffer[0] = 0;
     }
 }
 
 static void shell_print_buffer(void) {
     shell_cursor_restore();
-    for (u32 i = 0; i < input.len; i++) {
-        vga_putch(input.buffer[i]);
+    for (u32 i = input.len; i < shell_rendered_input_len; i++) {
+        vga_write_cell(shell_input_origin_x + (int)i, shell_input_origin_y, ' ', 0x0F);
     }
+    for (u32 i = 0; i < input.len; i++) {
+        vga_write_cell(shell_input_origin_x + (int)i, shell_input_origin_y,
+                       input.buffer[i], 0x0F);
+    }
+    shell_rendered_input_len = input.len;
+    vga_move_hardware_cursor(shell_input_origin_x + (int)input.cursor, shell_input_origin_y);
     shell_cursor_draw();
 }
 
@@ -1696,6 +1729,7 @@ int shell_execute_script_command(const char *command, void *context) {
     memcpy(input.buffer, command, length);
     input.buffer[length] = 0;
     input.len = length;
+    input.cursor = length;
     shell_script_mode = 1;
     shell_execute_command();
     shell_script_mode = previous_mode;
@@ -1707,6 +1741,11 @@ static void shell_poll_keyboard(void) {
     u8 scancode;
     u8 is_pressed;
     u8 extended;
+
+    if (keyboard_take_ctrl_c()) {
+        shell_cancel_input();
+        return;
+    }
 
     if (keyboard_read_shell_event(&scancode, &is_pressed, &extended)) {
         if (!is_pressed) {
@@ -1731,6 +1770,18 @@ static void shell_poll_keyboard(void) {
             } else if (scancode == 0x51) {
                 vga_scrollback_down();
                 return;
+            } else if (scancode == 0x4B) {
+                if (input.cursor > 0) {
+                    input.cursor--;
+                    shell_print_buffer();
+                }
+                return;
+            } else if (scancode == 0x4D) {
+                if (input.cursor < input.len) {
+                    input.cursor++;
+                    shell_print_buffer();
+                }
+                return;
             }
             return;
         }
@@ -1741,14 +1792,15 @@ static void shell_poll_keyboard(void) {
         }
 
         if (c == '\b') {
-            if (input.len > 0) {
+            if (input.cursor > 0) {
                 shell_cursor_restore();
+                for (u32 i = input.cursor; i < input.len; i++) {
+                    input.buffer[i - 1] = input.buffer[i];
+                }
                 input.len--;
+                input.cursor--;
                 input.buffer[input.len] = 0;
-                vga_putch('\b');
-                vga_putch(' ');
-                vga_putch('\b');
-                shell_cursor_draw();
+                shell_print_buffer();
             }
         } else if (c == '\n') {
             shell_cursor_restore();
@@ -1759,11 +1811,14 @@ static void shell_poll_keyboard(void) {
         } else if (c >= 32 && c < 127) {
             if (input.len < SHELL_BUFFER_SIZE - 1) {
                 shell_cursor_restore();
-                input.buffer[input.len] = c;
+                for (u32 i = input.len; i > input.cursor; i--) {
+                    input.buffer[i] = input.buffer[i - 1];
+                }
+                input.buffer[input.cursor] = c;
                 input.len++;
+                input.cursor++;
                 input.buffer[input.len] = 0;
-                vga_putch(c);
-                shell_cursor_draw();
+                shell_print_buffer();
             }
         }
         return;
@@ -1773,6 +1828,7 @@ static void shell_poll_keyboard(void) {
 void shell_run(void) {
     process_accounting_set_idle(0);
     input.len = 0;
+    input.cursor = 0;
     input.buffer[0] = 0;
     shell_should_exit = 0;
 
