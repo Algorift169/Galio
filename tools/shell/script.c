@@ -387,6 +387,24 @@ static int script_is_expression_statement(const char *text) {
     return has_operator;
 }
 
+static int script_starts_known_expression(const char *text, expression_t *expr)
+{
+    const char *cursor = text;
+    char name[GSH_SCRIPT_MAX_NAME];
+    u32 length = 0;
+
+    while (*cursor == ' ' || *cursor == '\t') cursor++;
+    if (*cursor == '(' || (*cursor >= '0' && *cursor <= '9')) return 1;
+    if (!((*cursor >= 'A' && *cursor <= 'Z') || (*cursor >= 'a' && *cursor <= 'z') || *cursor == '_')) return 0;
+    while (((*cursor >= 'A' && *cursor <= 'Z') || (*cursor >= 'a' && *cursor <= 'z') ||
+            (*cursor >= '0' && *cursor <= '9') || *cursor == '_') &&
+           length + 1 < sizeof(name)) {
+        name[length++] = *cursor++;
+    }
+    name[length] = 0;
+    return script_find_variable(expr, name) != NULL;
+}
+
 static int script_handle_drift_line(const char *start, const char *end, expression_t *expr) {
     char text[GSH_SCRIPT_MAX_COMMAND];
     u32 length = (u32)(end - start);
@@ -443,7 +461,7 @@ static int script_handle_drift_line(const char *start, const char *end, expressi
             return 1;
         }
     }
-    if (script_is_expression_statement(text)) {
+    if (script_starts_known_expression(text, expr) && script_is_expression_statement(text)) {
         script_expression(expr, text);
         return 1;
     }
