@@ -451,6 +451,193 @@ static int script_handle_drift_line(const char *start, const char *end, expressi
 }
 
 static void script_expand(const char *source, char *out, u32 size, expression_t *expr);
+static const char *script_find_text(const char *text, const char *needle);
+
+static const char *script_find_colon(const char *text)
+{
+    int in_single_quote = 0;
+    int in_double_quote = 0;
+
+    while (*text) {
+        if (*text == '\'' && !in_double_quote) in_single_quote = !in_single_quote;
+        else if (*text == '"' && !in_single_quote) in_double_quote = !in_double_quote;
+        else if (*text == ':' && !in_single_quote && !in_double_quote) return text;
+        text++;
+    }
+    return NULL;
+}
+
+static char *script_find_character(char *text, char character)
+{
+    while (*text && *text != character) text++;
+    return *text == character ? text : NULL;
+}
+
+static char *script_find_last_character(char *text, char character)
+{
+    char *result = NULL;
+    while (*text) {
+        if (*text == character) result = text;
+        text++;
+    }
+    return result;
+}
+
+static int script_execute_body(const char *body, expression_t *expr,
+                               gsh_script_command_fn execute, void *context)
+{
+    char command[GSH_SCRIPT_MAX_COMMAND];
+    u32 length;
+
+    while (*body == ' ' || *body == '\t') body++;
+    if (*body == '\0') return 0;
+    if (script_handle_drift_line(body, body + strlen(body), expr)) return 1;
+    if (!execute) return 0;
+    length = strlen(body);
+    if (length >= sizeof(command)) length = sizeof(command) - 1;
+    memcpy(command, body, length);
+    command[length] = 0;
+    script_expand(command, command, sizeof(command), expr);
+    return execute(command, context) == 0;
+}
+
+static int script_execute_inline_repeat(const char *line, expression_t *expr,
+                                        gsh_script_command_fn execute, void *context)
+{
+    const char *header = line + 6;
+    const char *colon = script_find_colon(header);
+    const char *body;
+    char header_text[GSH_SCRIPT_MAX_COMMAND];
+    char *open;
+    char *close;
+    char *range;
+    char *end_expression;
+    char *step_expression = NULL;
+    char counter[GSH_SCRIPT_MAX_NAME];
+    i32 start;
+    i32 end;
+    i32 step;
+    i32 value;
+    int exclusive_upper = 0;
+    int exclusive_lower = 0;
+    u32 length;
+
+    if (!colon) return 0;
+    body = colon + 1;
+    while (*header == ' ' || *header == '\t') header++;
+    length = (u32)(colon - header);
+    while (length > 0 && (header[length - 1] == ' ' || header[length - 1] == '\t')) length--;
+    if (length == 0 || length >= sizeof(header_text)) return 0;
+    memcpy(header_text, header, length);
+    header_text[length] = 0;
+
+    /* `repeat 10 : command` is the count form; its counter is not exposed. */
+    if (script_find_character(header_text, '(') == NULL) {
+        i32 count = script_expression(expr, header_text);
+        if (count < 0 || count > 100000) return 0;
+        for (value = 0; value < count; value++) {
+            if (!script_execute_body(body, expr, execute, context)) return 0;
+        }
+        return 1;
+    }
+
+    open = script_find_character(header_text, '(');
+    close = script_find_last_character(header_text, ')');
+    if (!close || close < open) return 0;
+    *open = 0;
+    while (*header_text == ' ' || *header_text == '\t') memmove(header_text, header_text + 1, strlen(header_text));
+    if (strncmp(header_text, "var ", 4) == 0) memmove(header_text, header_text + 4, strlen(header_text + 4) + 1);
+    length = strlen(header_text);
+    while (length > 0 && (header_text[length - 1] == ' ' || header_text[length - 1] == '\t')) header_text[--length] = 0;
+    if (length == 0 || length >= sizeof(counter)) return 0;
+    strcpy(counter, header_text);
+    *close = 0;
+    range = (char *)script_find_text(open + 1, "...");
+    if (range) {
+        if (range[3] == '<') exclusive_upper = 1;
+        else if (range[3] == '>') exclusive_lower = 1;
+    } else {
+        range = (char *)script_find_text(open + 1, "..");
+    }
+    if (!range) return 0;
+    if (range[0] == '.' && range[1] == '.' && range[2] == '.') end_expression = range + 3 + (exclusive_upper || exclusive_lower);
+    else end_expression = range + 2;
+    *range = 0;
+    {
+        char *comma = script_find_character(end_expression, ',');
+        if (comma) {
+            *comma = 0;
+            step_expression = comma + 1;
+        }
+    }
+    start = script_expression(expr, open + 1);
+    end = script_expression(expr, end_expression);
+    if (step_expression) {
+        script_variable_t *variable = script_variable(expr, counter, strlen(counter), 1);
+        if (!variable) return 0;
+        variable->type = SCRIPT_INTEGER;
+        variable->value = start;
+        step = script_expression(expr, step_expression) - start;
+    } else {
+        step = start <= end ? 1 : -1;
+    }
+    if (step == 0) return 0;
+    for (value = start; (step > 0 && (exclusive_upper ? value < end : value <= end)) ||
+                        (step < 0 && (exclusive_lower ? value > end : value >= end)); value += step) {
+        script_variable_t *variable = script_variable(expr, counter, strlen(counter), 1);
+        if (!variable) return 0;
+        variable->type = SCRIPT_INTEGER;
+        variable->value = value;
+        if (!script_execute_body(body, expr, execute, context)) return 0;
+        if (value > 100000000 - step || value < -100000000 - step) return 0;
+    }
+    return 1;
+}
+
+static int script_execute_inline_condition(const char *line, expression_t *expr,
+                                           gsh_script_command_fn execute, void *context)
+{
+    const char *keyword = line;
+    const char *colon;
+    const char *condition_start;
+    char condition[GSH_SCRIPT_MAX_COMMAND];
+    u32 length;
+    int is_unless = 0;
+    int is_while = 0;
+    int condition_value;
+    u32 iterations = 0;
+
+    if (strncmp(keyword, "unless", 6) == 0 && (keyword[6] == ' ' || keyword[6] == '\t')) {
+        condition_start = keyword + 6;
+        is_unless = 1;
+    } else if (strncmp(keyword, "while", 5) == 0 && (keyword[5] == ' ' || keyword[5] == '\t')) {
+        condition_start = keyword + 5;
+        is_while = 1;
+    } else if (strncmp(keyword, "if", 2) == 0 && (keyword[2] == ' ' || keyword[2] == '\t')) {
+        condition_start = keyword + 2;
+    } else {
+        return 0;
+    }
+    colon = script_find_colon(condition_start);
+    if (!colon) return 0;
+    while (*condition_start == ' ' || *condition_start == '\t') condition_start++;
+    length = (u32)(colon - condition_start);
+    while (length > 0 && (condition_start[length - 1] == ' ' || condition_start[length - 1] == '\t')) length--;
+    if (length == 0 || length >= sizeof(condition)) return 0;
+    memcpy(condition, condition_start, length);
+    condition[length] = 0;
+
+    if (is_while) {
+        while (script_expression(expr, condition) != 0 && iterations++ < 100000) {
+            if (!script_execute_body(colon + 1, expr, execute, context)) return 0;
+        }
+        return iterations < 100000;
+    }
+
+    condition_value = script_expression(expr, condition) != 0;
+    if (is_unless) condition_value = !condition_value;
+    return condition_value ? script_execute_body(colon + 1, expr, execute, context) : 1;
+}
 
 static int script_execute_inline_for(const char *line, expression_t *expr,
                                      gsh_script_command_fn execute, void *context) {
@@ -524,6 +711,10 @@ int gsh_script_execute_line_with_command(const char *line,
         memset(&interactive_expression, 0, sizeof(interactive_expression));
         interactive_expression_initialized = 1;
     }
+    if (strncmp(line, "repeat", 6) == 0 && (line[6] == ' ' || line[6] == '\t')) {
+        if (script_execute_inline_repeat(line, &interactive_expression, execute, context)) return 1;
+    }
+    if (script_execute_inline_condition(line, &interactive_expression, execute, context)) return 1;
     if (strncmp(line, "for", 3) == 0 && (line[3] == ' ' || line[3] == '(')) {
         if (script_execute_inline_for(line, &interactive_expression, execute, context)) return 1;
     }
@@ -819,7 +1010,27 @@ static int script_run_range(script_line_t *lines, u32 first, u32 last, expressio
                 if (script_line_is(&lines[j], "end") && --nested == 0) break;
             }
             if (j == last) return -1;
-            if (is_each) {
+            if (!is_each && start[0] == 'r') {
+                const char *count_start = header;
+                const char *count_end = count_start;
+                char count_text[64];
+                u32 count_length;
+                i32 count;
+                while (*count_end && *count_end != ':') count_end++;
+                while (count_start < count_end && (*count_start == ' ' || *count_start == '\t')) count_start++;
+                while (count_end > count_start && (count_end[-1] == ' ' || count_end[-1] == '\t')) count_end--;
+                count_length = (u32)(count_end - count_start);
+                if (count_length == 0 || count_length >= sizeof(count_text)) return -1;
+                memcpy(count_text, count_start, count_length);
+                count_text[count_length] = 0;
+                count = script_expression(expr, count_text);
+                if (count < 0 || count > 100000) return -1;
+                for (u32 iteration = 0; iteration < (u32)count; iteration++) {
+                    int result = script_run_range(lines, i + 1, j, expr, execute, context, depth + 1);
+                    if (result == 1 || result == 2) break;
+                    if (result == 3) continue;
+                }
+            } else if (is_each) {
                 const char *name_start = header;
                 const char *in_word;
                 u32 name_length;
