@@ -168,36 +168,40 @@ static void editor_redraw(editor_buffer_t *buf, const char *filepath, u8 save_st
 
     int cursor_x = 0;
     int cursor_y = 5;
+    int visual_cursor_x = 0;
+    int visual_cursor_y = cursor_y;
 
     if (buf->size == 0) {
         editor_put_text_at(0, cursor_y, "[Empty file - start typing]", 0x0F);
-        cursor_x = 0;
+        visual_cursor_x = 0;
+        visual_cursor_y = cursor_y;
         cursor_y += 1;
-        vga_write_cell(0, 5, '|', 0x0C);
     } else {
         for (u32 i = 0; i < buf->size; i++) {
             char ch = buf->content[i];
+            if (i == buf->cursor) {
+                visual_cursor_x = cursor_x;
+                visual_cursor_y = cursor_y;
+            }
             if (ch == '\n') {
                 cursor_x = 0;
                 cursor_y++;
                 continue;
             }
-
-            if (i == buf->cursor) {
-                vga_write_cell(cursor_x, cursor_y, ch, 0x0F);
-                vga_write_cell(cursor_x + 1, cursor_y, '|', 0x0C);
-                cursor_x += 2;
-                continue;
-            }
-
             vga_write_cell(cursor_x, cursor_y, ch, 0x0F);
             cursor_x++;
         }
 
         if (buf->cursor == buf->size) {
-            vga_write_cell(cursor_x, cursor_y, '|', 0x0C);
+            visual_cursor_x = cursor_x;
+            visual_cursor_y = cursor_y;
         }
     }
+
+    /* Keep the character under the insertion point visible; the hardware cursor
+       marks the position without replacing that character. */
+    vga_move_hardware_cursor(visual_cursor_x, visual_cursor_y);
+    vga_enable_hardware_cursor();
 
     editor_put_text_at(0, cursor_y + 1, "=====================", 0x0F);
 }
