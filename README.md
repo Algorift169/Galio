@@ -63,6 +63,46 @@ The shell includes a privileged rex flow that requires a password once per sessi
 
 GSH command options use bounded, command-declared parsing. Options must appear before positional arguments; short options may be combined, long options support `--name=value` and required values, and `--` terminates option parsing. A single `-` remains a positional argument.
 
+Scripts use the `.gh` extension and can run every existing shell command through `run <file>` or `source <file>`. A `.gh` file can also be executed directly, for example `./file.gh`. One statement is accepted per line. Variables use `let` or `set`, expressions use C-style scalar operators, and control blocks use `if`/`else`/`endif` and `while`/`endwhile`:
+
+Drift syntax is also accepted in `.gh` files: `var`, `say`, `elif`, `unless`, `when`, `repeat`, `for`, `each`, `fun`, `return`, `break`, `continue`, `end`, `and`, `or`, `not`, array literals, array indexing, ranges, and `//` or `/* ... */` comments. Variable declarations may contain multiple bindings:
+
+```drift
+var i = 0, j = 1
+var name = "Galio", active = true
+var values[] = {10, 20, 30}
+```
+
+Expression statements also work directly at the prompt or through `gsh`:
+
+```text
+var x = 10
+x++
+x--
+++x
+x += 2
+say x
+```
+
+Inline Drift loops are also accepted at the prompt:
+
+```text
+for(var i = 0, i < 10, i++): say "hi"
+```
+
+```text
+let count = 1
+while count <= 3
+	echo item-$count
+	count++
+endwhile
+if count == 4
+	echo complete
+else
+	echo failed
+endif
+```
+
 Examples:
 
 ```bash

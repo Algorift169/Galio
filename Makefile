@@ -25,6 +25,47 @@ INCLUDES = -Iinclude \
            -Itools/compiler/include \
            -Iui/include
 
+# Drift is built as a hosted companion executable and packaged into the ISO.
+# The freestanding kernel-side gsh adapter remains tools/shell/script.c.
+DRIFT_SRCS = drift/main.c \
+             drift/token/token.c \
+             drift/lexer/core/lexer.c \
+             drift/lexer/keywords/logical_keywords.c \
+             drift/lexer/keywords/identity_keywords.c \
+             drift/lexer/comments/comments.c \
+             drift/lexer/comments/executable_comments.c \
+             drift/parser/core/parser.c \
+             drift/parser/control_flow/if_parser.c \
+             drift/parser/control_flow/repeat_parser.c \
+             drift/parser/control_flow/for_parser.c \
+             drift/parser/control_flow/while_parser.c \
+             drift/parser/control_flow/each_parser.c \
+             drift/parser/control_flow/unless_parser.c \
+             drift/parser/control_flow/when_parser.c \
+             drift/parser/functions/function_parser.c \
+             drift/parser/arrays/array_parser.c \
+             drift/parser/arrays/select_parser.c \
+             drift/interpreter/core/value.c \
+             drift/interpreter/core/environment.c \
+             drift/interpreter/core/input.c \
+             drift/interpreter/core/intptr.c \
+             drift/interpreter/core/unless.c \
+             drift/interpreter/core/when.c \
+             drift/interpreter/functions/function.c \
+             drift/interpreter/loop/repeat.c \
+             drift/interpreter/loop/for.c \
+             drift/interpreter/loop/while.c \
+             drift/interpreter/loop/break.c \
+             drift/interpreter/loop/continue.c \
+             drift/interpreter/loop/each.c \
+             drift/interpreter/arrays/array_value.c \
+             drift/interpreter/arrays/array.c \
+             drift/interpreter/operators/operator.c \
+             drift/interpreter/operators/operator_identity.c \
+             drift/interpreter/operators/operator_ternary.c
+DRIFT_HEADERS = $(shell find drift/include -type f -name '*.h' -print)
+DRIFT_BIN = $(BIN_DIR)/drift
+
 CFLAGS = -m64 -mno-sse -mno-sse2 -mno-mmx -mno-3dnow -mno-avx -mcmodel=kernel -mno-red-zone -ffreestanding -fno-pie -no-pie -O2 -Wall -Wextra $(INCLUDES) -Wno-array-bounds -Wno-unused-function
 ASFLAGS = -f elf64
 LDFLAGS = -m elf_x86_64 -T kernel/arch/x86/boot/linker.ld
@@ -140,6 +181,7 @@ SRCS = kernel/kmain.c \
        kernel/tests/cpufreq_test.c \
        init/init.c \
        tools/shell/shell.c \
+       tools/shell/script.c \
        tools/shell/commands/cpufreq.c \
        tools/shell/options.c \
        kernel/shell/cmd_net.c \
@@ -193,12 +235,24 @@ DISK_IMAGE = $(BUILD_DIR)/disk.img
 KERNEL_BIN = $(BIN_DIR)/galio.bin
 KERNEL_ISO = $(BIN_DIR)/galio.iso
 
-.PHONY: all clean run disk help
+.PHONY: all clean run disk help drift-source drift-build
 
-all: $(OBJS) $(KERNEL_BIN) $(KERNEL_ISO) $(DISK_IMAGE)
+all: $(OBJS) $(KERNEL_BIN) $(KERNEL_ISO) $(DISK_IMAGE) $(DRIFT_BIN)
 	@echo "Build complete!"
 	@echo "Network stack: Ethernet, ARP, IPv4, ICMP"
 	@echo "Wi-Fi: RTL8188EU driver with real 802.11 scanning"
+
+drift-source:
+	@test -n "$(DRIFT_SRCS)" || { echo "Drift sources missing"; exit 1; }
+	@test -n "$(DRIFT_HEADERS)" || { echo "Drift headers missing"; exit 1; }
+	@echo "Drift source tree: $$(printf '%s\n' $(DRIFT_SRCS) | wc -l) sources, $$(printf '%s\n' $(DRIFT_HEADERS) | wc -l) headers"
+
+drift-build: $(DRIFT_BIN)
+
+$(DRIFT_BIN): $(DRIFT_SRCS) $(DRIFT_HEADERS)
+	@mkdir -p $(dir $@)
+	$(CC) -std=c99 -Wall -Wextra -pedantic -Idrift/include $(DRIFT_SRCS) -o $@ -lm
+	@echo "Drift interpreter built: $@"
 
 # Explicit object rules for nested paths (must come before generic rule)
 $(OBJ_DIR)/tools/shell/.created:
@@ -288,12 +342,13 @@ $(DISK_IMAGE):
 	@echo "Disk image created"
 
 # ISO image
-$(KERNEL_ISO): $(KERNEL_BIN) $(INITRD_IMAGE)
+$(KERNEL_ISO): $(KERNEL_BIN) $(INITRD_IMAGE) $(DRIFT_BIN)
 	@command -v grub-mkrescue >/dev/null 2>&1 || { echo "Error: grub-mkrescue not found"; exit 1; }
 	@rm -rf $(ISO_DIR)
 	@mkdir -p $(ISO_DIR)/boot/grub
 	@cp $(KERNEL_BIN) $(ISO_DIR)/boot/galio.bin
 	@cp $(INITRD_IMAGE) $(ISO_DIR)/boot/initrd.bin
+	@cp $(DRIFT_BIN) $(ISO_DIR)/boot/drift
 	@printf '%s\n' 'set timeout=0' 'set default=0' '' \
 		'menuentry "Galio Kernel" {' \
 		'  multiboot /boot/galio.bin' \
@@ -380,6 +435,8 @@ help:
 	@echo ""
 	@echo "Build targets:"
 	@echo "  make all       - Build everything (kernel, ISO, disk image)"
+	@echo "  make drift-build - Build the Drift interpreter executable"
+	@echo "  make drift-source - Validate the root Drift source tree"
 	@echo "  make clean     - Clean build files"
 	@echo "  make debug     - Build with debug symbols"
 	@echo ""

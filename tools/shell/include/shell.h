@@ -26,5 +26,6 @@
 #include "common.h"
 
 void shell_run(void);
+int shell_execute_script_command(const char *command, void *context);
 
 #endif /* SHELL_H */

@@ -60,6 +60,7 @@
 #include "options.h"
 #include "cpufreq_cmd.h"
 #include "gc.h"
+#include "script.h"
 
 u8 shell_net_command(const char *args, const char *current_dir);
 u8 shell_pkg_command(const char *args, const char *current_dir);
@@ -137,6 +138,9 @@ static char current_dir[256] = HOME_DIR;
 static const char shell_hostname[] = "galio";
 static u8 shell_should_exit = 0;
 static u8 shell_rex_command = 0;
+static u8 shell_script_mode = 0;
+static u8 shell_drift_mode = 0;
+static int shell_last_status = 0;
 static int shell_cursor_x = 0;
 static int shell_cursor_y = 0;
 static unsigned short shell_cursor_saved_cell = 0;
@@ -144,6 +148,104 @@ static u8 shell_cursor_drawn = 0;
 
 static const char *shell_display_dir(const char *path, char *out, u32 out_size);
 static u8 shell_is_direct_root_child(const char *path);
+
+static u8 shell_is_gh_script_command(const char *command, char *path, u32 path_size) {
+    const char *start = command;
+    const char *end;
+    u32 length;
+    if (!command || !path || path_size == 0) return 0;
+    while (*start == ' ' || *start == '\t') start++;
+    end = start;
+    while (*end && *end != ' ' && *end != '\t') end++;
+    length = (u32)(end - start);
+        if (length < 3 || start[length - 3] != '.' ||
+                !((start[length - 2] == 'g' && start[length - 1] == 'h') ||
+                    (start[length - 2] == 'd' && start[length - 1] == 'f'))) return 0;
+    if (length >= path_size) length = path_size - 1;
+    memcpy(path, start, length);
+    path[length] = 0;
+    return 1;
+}
+
+static int shell_has_logical_operator(const char *line) {
+    int in_single_quote = 0;
+    int in_double_quote = 0;
+    u32 i;
+    for (i = 0; line[i]; i++) {
+        if (line[i] == '\'' && !in_double_quote) in_single_quote = !in_single_quote;
+        if (line[i] == '"' && !in_single_quote) in_double_quote = !in_double_quote;
+        if (!in_single_quote && !in_double_quote &&
+            (line[i] == ';' || (line[i] == '&' && line[i + 1] == '&') ||
+             (line[i] == '|' && line[i + 1] == '|'))) return 1;
+    }
+    return 0;
+}
+
+static void shell_normalize_input(void) {
+    u32 start = 0;
+    while (start < input.len && (input.buffer[start] == ' ' || input.buffer[start] == '\t')) start++;
+    while (input.len > start && (input.buffer[input.len - 1] == ' ' || input.buffer[input.len - 1] == '\t')) input.len--;
+    if (start > 0) {
+        memmove(input.buffer, input.buffer + start, input.len - start);
+        input.len -= start;
+    }
+    input.buffer[input.len] = 0;
+}
+
+static int shell_execute_logical_line(const char *line) {
+    char segment[SHELL_BUFFER_SIZE];
+    int length = 0;
+    int operator_kind = 0;
+    int previous_status = 0;
+    int found_operator = 0;
+    int in_single_quote = 0;
+    int in_double_quote = 0;
+    u32 i;
+
+    if (!shell_has_logical_operator(line)) return 0;
+
+    for (i = 0;; i++) {
+        char current = line[i];
+        char next = line[i + 1];
+        int boundary = 0;
+        int next_operator = 0;
+
+        if (current == '\'' && !in_double_quote) in_single_quote = !in_single_quote;
+        if (current == '"' && !in_single_quote) in_double_quote = !in_double_quote;
+        if (!in_single_quote && !in_double_quote) {
+            if (current == ';') { boundary = 1; next_operator = 1; }
+            else if (current == '&' && next == '&') { boundary = 1; next_operator = 2; }
+            else if (current == '|' && next == '|') { boundary = 1; next_operator = 3; }
+            else if (current == 0) boundary = 1;
+        }
+
+        if (boundary) {
+            int should_execute = !found_operator || operator_kind == 1 ||
+                                 (operator_kind == 2 && previous_status == 0) ||
+                                 (operator_kind == 3 && previous_status != 0);
+            int leading = 0;
+            while (length > 0 && (segment[length - 1] == ' ' || segment[length - 1] == '\t')) length--;
+            while (leading < length && (segment[leading] == ' ' || segment[leading] == '\t')) leading++;
+            if (leading > 0) {
+                memmove(segment, segment + leading, (size_t)(length - leading));
+                length -= leading;
+            }
+            segment[length] = 0;
+            if (length > 0 && should_execute) {
+                previous_status = shell_execute_script_command(segment, NULL);
+            }
+            if (current == 0) break;
+            found_operator = 1;
+            operator_kind = next_operator;
+            length = 0;
+            if (next_operator == 2 || next_operator == 3) i++;
+            continue;
+        }
+
+        if (length < (int)sizeof(segment) - 1) segment[length++] = current;
+    }
+    return found_operator;
+}
 
 static void shell_print_options_error(const char *command, const gsh_options_t *parsed) {
     SHELL_COLOR_ERR();
@@ -843,8 +945,37 @@ static void shell_execute_command(void) {
         input.len = SHELL_BUFFER_SIZE - 1;
     }
     input.buffer[input.len] = 0;
-    shell_add_history(input.buffer);
+    shell_normalize_input();
+    shell_last_status = 0;
+    if (!shell_script_mode) shell_add_history(input.buffer);
     kprintf("\n");
+
+    if (shell_drift_mode && strcmp(input.buffer, "exit") != 0 && strcmp(input.buffer, "quit") != 0) {
+        if (!gsh_script_execute_line(input.buffer)) {
+            shell_last_status = 1;
+            SHELL_COLOR_ERR();
+            kprintf("Drift: invalid statement\n");
+            SHELL_COLOR_RESET();
+        }
+        if (!shell_script_mode) shell_print_prompt();
+        input.len = 0;
+        return;
+    }
+    if (shell_drift_mode && (strcmp(input.buffer, "exit") == 0 || strcmp(input.buffer, "quit") == 0)) {
+        shell_drift_mode = 0;
+        SHELL_COLOR_CMD();
+        kprintf("Leaving Drift interpreter\n");
+        SHELL_COLOR_RESET();
+        if (!shell_script_mode) shell_print_prompt();
+        input.len = 0;
+        return;
+    }
+
+    if (shell_execute_logical_line(input.buffer)) {
+        if (!shell_script_mode) shell_print_prompt();
+        input.len = 0;
+        return;
+    }
 
     /* Parse for pipes and background '&' */
     {
@@ -857,19 +988,19 @@ static void shell_execute_command(void) {
             for (int i = 0; i < stages; i++) {
                 if (strncmp(cmds[i], "rex", 3) == 0 && (cmds[i][3] == ' ' || cmds[i][3] == '\0')) {
                     SHELL_COLOR_ERR(); kprintf("rex inside pipelines is not supported\n"); SHELL_COLOR_RESET();
-                    shell_print_prompt();
+                    if (!shell_script_mode) shell_print_prompt();
                     input.len = 0;
                     return;
                 }
             }
             shell_run_pipeline(cmds, stages, bg);
-            shell_print_prompt();
+            if (!shell_script_mode) shell_print_prompt();
             input.len = 0;
             return;
         } else if (stages == 1 && bg) {
             /* background single command: run as external */
             shell_run_pipeline(cmds, stages, bg);
-            shell_print_prompt();
+            if (!shell_script_mode) shell_print_prompt();
             input.len = 0;
             return;
         }
@@ -889,7 +1020,7 @@ static void shell_execute_command(void) {
                 SHELL_COLOR_ERR();
                 kprintf("[REX] Authentication cancelled\n");
                 SHELL_COLOR_RESET();
-                shell_print_prompt();
+                if (!shell_script_mode) shell_print_prompt();
                 input.len = 0;
                 return;
             }
@@ -899,7 +1030,7 @@ static void shell_execute_command(void) {
                 SHELL_COLOR_ERR();
                 kprintf("[REX] Access denied: Invalid password\n");
                 SHELL_COLOR_RESET();
-                shell_print_prompt();
+                if (!shell_script_mode) shell_print_prompt();
                 input.len = 0;
                 return;
             }
@@ -921,7 +1052,7 @@ static void shell_execute_command(void) {
             SHELL_COLOR_ERR();
             kprintf("[REX] Usage: rex <command> [args...]\n");
             SHELL_COLOR_RESET();
-            shell_print_prompt();
+            if (!shell_script_mode) shell_print_prompt();
             input.len = 0;
             return;
         }
@@ -937,6 +1068,16 @@ static void shell_execute_command(void) {
         shell_execute_command();
         shell_rex_command = 0;
         return;
+    } else if (strncmp(input.buffer, "run ", 4) == 0 || strncmp(input.buffer, "source ", 7) == 0) {
+        const char *script_path = input.buffer + (input.buffer[0] == 'r' ? 4 : 7);
+        while (*script_path == ' ') script_path++;
+        if (*script_path == 0) {
+            SHELL_COLOR_ERR();
+            kprintf("Usage: run <script>\n");
+            SHELL_COLOR_RESET();
+        } else {
+            shell_last_status = gsh_script_run_file(script_path, current_dir, shell_execute_script_command, NULL);
+        }
     } else if (strcmp(input.buffer, "cpufreq") == 0 || strncmp(input.buffer, "cpufreq ", 8) == 0) {
         SHELL_COLOR_OUT();
         shell_cpufreq_command(input.buffer + 7);
@@ -1196,6 +1337,7 @@ static void shell_execute_command(void) {
         kprintf(" | clear    - Clear the screen                            |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" | echo     - Echo text (usage: echo <text>)              |\n");
+        kprintf(" | run      - Execute a script (run <file>)               |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" | uname    - Show system name                            |\n");
         kprintf(" | syscall  - Invoke a syscall (mutations require rex)   |\n");
@@ -1435,18 +1577,69 @@ static void shell_execute_command(void) {
     } else if (input.len > 0 &&
                (input.buffer[0] == '/' ||
                 (input.buffer[0] == '.' && input.buffer[1] == '/'))) {
-        char external_cmds[1][256];
-        strncpy(external_cmds[0], input.buffer, sizeof(external_cmds[0]) - 1);
-        external_cmds[0][sizeof(external_cmds[0]) - 1] = 0;
-        shell_run_pipeline(external_cmds, 1, 0);
-    } else if (input.len > 0) {
-        SHELL_COLOR_ERR();
-        kprintf("Unknown command: %s\nType 'help' for available commands\n", input.buffer);
+        char script_path[DIR_PATH_SIZE];
+        if (shell_is_gh_script_command(input.buffer, script_path, sizeof(script_path))) {
+            shell_last_status = gsh_script_run_file(script_path, current_dir, shell_execute_script_command, NULL);
+        } else {
+            char external_cmds[1][256];
+            strncpy(external_cmds[0], input.buffer, sizeof(external_cmds[0]) - 1);
+            external_cmds[0][sizeof(external_cmds[0]) - 1] = 0;
+            shell_run_pipeline(external_cmds, 1, 0);
+        }
+    } else if (strncmp(input.buffer, "drift ", 6) == 0) {
+        const char *script_path = input.buffer + 6;
+        while (*script_path == ' ' || *script_path == '\t') script_path++;
+        if (*script_path == 0) {
+            SHELL_COLOR_CMD();
+            kprintf("Drift interpreter: use drift <script.df>\n");
+            SHELL_COLOR_RESET();
+        } else {
+            shell_last_status = gsh_script_run_file(script_path, current_dir, shell_execute_script_command, NULL);
+        }
+    } else if (strcmp(input.buffer, "drift") == 0) {
+        shell_drift_mode = 1;
+        SHELL_COLOR_CMD();
+        kprintf("Entering Drift interpreter. Type exit or quit to return.\n");
         SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "gsh ", 4) == 0) {
+        if (!gsh_script_execute_line(input.buffer + 4)) {
+            shell_last_status = 1;
+            SHELL_COLOR_ERR();
+            kprintf("gsh: invalid Drift statement\n");
+            SHELL_COLOR_RESET();
+        }
+    } else if (strcmp(input.buffer, "gsh") == 0) {
+        SHELL_COLOR_CMD();
+        kprintf("GSH interpreter: use gsh <Drift statement>\n");
+        SHELL_COLOR_RESET();
+    } else if (input.len > 0) {
+        if (!gsh_script_execute_line(input.buffer)) {
+            shell_last_status = 1;
+            SHELL_COLOR_ERR();
+            kprintf("Unknown command: %s\nType 'help' for available commands\n", input.buffer);
+            SHELL_COLOR_RESET();
+        }
     }
 
-    shell_print_prompt();
+    if (!shell_script_mode) shell_print_prompt();
     input.len = 0;
+}
+
+int shell_execute_script_command(const char *command, void *context) {
+    u8 previous_mode = shell_script_mode;
+    u32 length;
+    (void)context;
+    if (!command) return -1;
+    length = strlen(command);
+    if (length == 0) return 0;
+    if (length >= SHELL_BUFFER_SIZE) length = SHELL_BUFFER_SIZE - 1;
+    memcpy(input.buffer, command, length);
+    input.buffer[length] = 0;
+    input.len = length;
+    shell_script_mode = 1;
+    shell_execute_command();
+    shell_script_mode = previous_mode;
+    return shell_should_exit ? 1 : shell_last_status;
 }
 
 /* Poll keyboard for input (no IRQs) */
