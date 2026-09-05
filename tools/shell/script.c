@@ -450,7 +450,10 @@ static int script_handle_drift_line(const char *start, const char *end, expressi
     return 0;
 }
 
-static int script_execute_inline_for(const char *line, expression_t *expr) {
+static void script_expand(const char *source, char *out, u32 size, expression_t *expr);
+
+static int script_execute_inline_for(const char *line, expression_t *expr,
+                                     gsh_script_command_fn execute, void *context) {
     const char *header = line + 3;
     const char *colon = header;
     const char *body;
@@ -498,13 +501,23 @@ static int script_execute_inline_for(const char *line, expression_t *expr) {
     if (strncmp(clauses[0], "var ", 4) == 0) script_handle_drift_line(clauses[0], clauses[0] + strlen(clauses[0]), expr);
     else script_expression(expr, clauses[0]);
     while (script_expression(expr, clauses[1]) != 0 && iterations++ < 100000) {
-        if (!script_handle_drift_line(body, body + strlen(body), expr)) return 0;
+        if (!script_handle_drift_line(body, body + strlen(body), expr)) {
+            char command[GSH_SCRIPT_MAX_COMMAND];
+            u32 length = strlen(body);
+            if (length >= sizeof(command)) length = sizeof(command) - 1;
+            memcpy(command, body, length);
+            command[length] = 0;
+            script_expand(command, command, sizeof(command), expr);
+            if (!execute || execute(command, context) != 0) return 0;
+        }
         script_expression(expr, clauses[2]);
     }
     return 1;
 }
 
-int gsh_script_execute_line(const char *line) {
+int gsh_script_execute_line_with_command(const char *line,
+                                         gsh_script_command_fn execute,
+                                         void *context) {
     const char *end;
     if (!line) return 0;
     if (!interactive_expression_initialized) {
@@ -512,11 +525,25 @@ int gsh_script_execute_line(const char *line) {
         interactive_expression_initialized = 1;
     }
     if (strncmp(line, "for", 3) == 0 && (line[3] == ' ' || line[3] == '(')) {
-        if (script_execute_inline_for(line, &interactive_expression)) return 1;
+        if (script_execute_inline_for(line, &interactive_expression, execute, context)) return 1;
     }
     end = line;
     while (*end) end++;
-    return script_handle_drift_line(line, end, &interactive_expression);
+    if (script_handle_drift_line(line, end, &interactive_expression)) return 1;
+    if (execute) {
+        char command[GSH_SCRIPT_MAX_COMMAND];
+        u32 length = (u32)(end - line);
+        if (length >= sizeof(command)) length = sizeof(command) - 1;
+        memcpy(command, line, length);
+        command[length] = 0;
+        script_expand(command, command, sizeof(command), &interactive_expression);
+        return execute(command, context) == 0;
+    }
+    return 0;
+}
+
+int gsh_script_execute_line(const char *line) {
+    return gsh_script_execute_line_with_command(line, NULL, NULL);
 }
 
 static int script_find_function(expression_t *expr, const char *name) {
@@ -563,23 +590,61 @@ static int script_is_block_opener(const script_line_t *line) {
            script_line_starts(line, "when ") || script_line_starts(line, "fun ");
 }
 
+static int script_expand_variable(expression_t *expr, const char **cursor,
+                                  char *out, u32 *used, u32 size,
+                                  char closing) {
+    const char *start = *cursor;
+    char name[GSH_SCRIPT_MAX_NAME];
+    char number[16];
+    script_variable_t *variable;
+    u32 length = 0;
+    u32 number_length = 0;
+    i32 value;
+
+    while (((*start >= 'a' && *start <= 'z') || (*start >= 'A' && *start <= 'Z') ||
+            (*start >= '0' && *start <= '9') || *start == '_') &&
+           length + 1 < sizeof(name)) {
+        name[length++] = *start++;
+    }
+    if (length == 0 || (closing != 0 && *start != closing) ||
+        (closing == 0 && ((*start >= 'a' && *start <= 'z') ||
+                          (*start >= 'A' && *start <= 'Z') ||
+                          (*start >= '0' && *start <= '9') || *start == '_'))) return 0;
+    name[length] = 0;
+    variable = script_variable(expr, name, length, 0);
+    if (!variable || variable->type != SCRIPT_INTEGER) return 0;
+    value = variable->value;
+    if (value < 0) {
+        number[number_length++] = '-';
+        value = -value;
+    }
+    do {
+        number[number_length++] = (char)('0' + value % 10);
+        value /= 10;
+    } while (value && number_length < sizeof(number));
+    while (number_length && *used + 1 < size) out[(*used)++] = number[--number_length];
+    *cursor = start + (closing != 0 ? 1 : 0);
+    return 1;
+}
+
 static void script_expand(const char *source, char *out, u32 size, expression_t *expr) {
     char input[GSH_SCRIPT_MAX_COMMAND];
     u32 used = 0, i;
     strncpy(input, source, sizeof(input) - 1); input[sizeof(input) - 1] = 0;
     for (i = 0; input[i] && used + 1 < size; i++) {
-        if (input[i] != '$') { out[used++] = input[i]; continue; }
-        i++; if (input[i] == '{') i++;
-        { char name[GSH_SCRIPT_MAX_NAME]; u32 length = 0;
-          while (((input[i] >= 'a' && input[i] <= 'z') || (input[i] >= 'A' && input[i] <= 'Z') || (input[i] >= '0' && input[i] <= '9') || input[i] == '_') && length + 1 < sizeof(name)) name[length++] = input[i++];
-          name[length] = 0; if (input[i] == '}') i++;
-          if (length) { char number[16]; u32 n = 0; i32 value = script_variable(expr, name, length, 0) ? script_variable(expr, name, length, 0)->value : 0;
-            if (value < 0) { number[n++] = '-'; value = -value; }
-            do { number[n++] = (char)('0' + value % 10); value /= 10; } while (value && n < sizeof(number));
-            while (n && used + 1 < size) out[used++] = number[--n];
-          } else out[used++] = '$';
-          i--;
+        if (input[i] == '$' || input[i] == '{' || input[i] == '(') {
+            const char *cursor = input + i + 1;
+            char closing = input[i] == '{' ? '}' : input[i] == '(' ? ')' : 0;
+            if (*cursor == '{') {
+                closing = '}';
+                cursor++;
+            }
+            if (script_expand_variable(expr, &cursor, out, &used, size, closing)) {
+                i = (u32)(cursor - input) - 1;
+                continue;
+            }
         }
+        out[used++] = input[i];
     }
     out[used] = 0;
 }

@@ -951,7 +951,7 @@ static void shell_execute_command(void) {
     kprintf("\n");
 
     if (shell_drift_mode && strcmp(input.buffer, "exit") != 0 && strcmp(input.buffer, "quit") != 0) {
-        if (!gsh_script_execute_line(input.buffer)) {
+        if (!gsh_script_execute_line_with_command(input.buffer, shell_execute_script_command, NULL)) {
             shell_last_status = 1;
             SHELL_COLOR_ERR();
             kprintf("Drift: invalid statement\n");
@@ -1602,7 +1602,7 @@ static void shell_execute_command(void) {
         kprintf("Entering Drift interpreter. Type exit or quit to return.\n");
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "gsh ", 4) == 0) {
-        if (!gsh_script_execute_line(input.buffer + 4)) {
+        if (!gsh_script_execute_line_with_command(input.buffer + 4, shell_execute_script_command, NULL)) {
             shell_last_status = 1;
             SHELL_COLOR_ERR();
             kprintf("gsh: invalid Drift statement\n");
@@ -1613,7 +1613,12 @@ static void shell_execute_command(void) {
         kprintf("GSH interpreter: use gsh <Drift statement>\n");
         SHELL_COLOR_RESET();
     } else if (input.len > 0) {
-        if (!gsh_script_execute_line(input.buffer)) {
+        if (shell_script_mode) {
+            shell_last_status = 1;
+            SHELL_COLOR_ERR();
+            kprintf("Unknown command: %s\nType 'help' for available commands\n", input.buffer);
+            SHELL_COLOR_RESET();
+        } else if (!gsh_script_execute_line_with_command(input.buffer, shell_execute_script_command, NULL)) {
             shell_last_status = 1;
             SHELL_COLOR_ERR();
             kprintf("Unknown command: %s\nType 'help' for available commands\n", input.buffer);

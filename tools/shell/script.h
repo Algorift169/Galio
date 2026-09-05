@@ -10,5 +10,8 @@ int gsh_script_run_file(const char *path, const char *current_dir,
 
 /* Evaluate one Drift statement while retaining interactive variables. */
 int gsh_script_execute_line(const char *line);
+int gsh_script_execute_line_with_command(const char *line,
+                                         gsh_script_command_fn execute,
+                                         void *context);
 
 #endif
