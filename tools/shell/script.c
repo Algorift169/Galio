@@ -3,6 +3,7 @@
 #include "path.h"
 #include "kprintf.h"
 #include "string.h"
+#include "keyboard.h"
 
 #define GSH_SCRIPT_MAX_SOURCE 16384
 #define GSH_SCRIPT_MAX_LINES 256
@@ -268,6 +269,33 @@ static void script_set_string(expression_t *expr, const char *name, const char *
     variable->type = SCRIPT_STRING;
 }
 
+static void script_read_input(const char *prompt, char *buffer, u32 max_length)
+{
+    u32 length = 0;
+    u8 scancode;
+    u8 pressed;
+    u8 extended;
+
+    kprintf("%s", prompt);
+    while (1) {
+        if (!keyboard_read_event(&scancode, &pressed, &extended)) continue;
+        if (!pressed || extended) continue;
+        u8 character = scancode_to_ascii(scancode);
+        if (character == '\n') break;
+        if (character == '\b') {
+            if (length > 0) {
+                length--;
+                kprintf("\b \b");
+            }
+        } else if (character >= 32 && character < 127 && length + 1 < max_length) {
+            buffer[length++] = character;
+            kprintf("%c", character);
+        }
+    }
+    buffer[length] = 0;
+    kprintf("\n");
+}
+
 static void script_set_array(expression_t *expr, const char *name, const char *text) {
     script_variable_t *variable = script_variable(expr, name, strlen(name), 1);
     const char *cursor = text;
@@ -435,6 +463,37 @@ static int script_handle_drift_line(const char *start, const char *end, expressi
         script_declare_variables(expr, text + 4);
         return 1;
     }
+    if (strncmp(text, "ask ", 4) == 0) {
+        const char *prompt_start = text + 4;
+        const char *prompt_end;
+        const char *target;
+        char prompt[GSH_SCRIPT_MAX_STRING];
+        char value[GSH_SCRIPT_MAX_STRING];
+        char name[GSH_SCRIPT_MAX_NAME];
+        u32 prompt_length = 0;
+        u32 name_length = 0;
+
+        while (*prompt_start == ' ' || *prompt_start == '\t') prompt_start++;
+        if (*prompt_start != '"' && *prompt_start != '\'') return 0;
+        char quote = *prompt_start++;
+        prompt_end = prompt_start;
+        while (*prompt_end && *prompt_end != quote) prompt_end++;
+        while (prompt_start < prompt_end && prompt_length + 1 < sizeof(prompt)) prompt[prompt_length++] = *prompt_start++;
+        prompt[prompt_length] = 0;
+        if (*prompt_end != quote) return 0;
+        target = prompt_end + 1;
+        while (*target == ' ' || *target == '\t') target++;
+        if (*target == '@') target++;
+        while (((*target >= 'A' && *target <= 'Z') || (*target >= 'a' && *target <= 'z') ||
+                (*target >= '0' && *target <= '9') || *target == '_') && name_length + 1 < sizeof(name)) {
+            name[name_length++] = *target++;
+        }
+        if (name_length == 0) return 0;
+        name[name_length] = 0;
+        script_read_input(prompt, value, sizeof(value));
+        script_set_string(expr, name, value);
+        return 1;
+    }
     if ((*text >= 'a' && *text <= 'z') || (*text >= 'A' && *text <= 'Z') || *text == '_') {
         const char *equals = text;
         char name[GSH_SCRIPT_MAX_NAME];
@@ -517,6 +576,38 @@ static int script_execute_body(const char *body, expression_t *expr,
     command[length] = 0;
     script_expand(command, command, sizeof(command), expr);
     return execute(command, context) == 0;
+}
+
+static int script_execute_body_sequence(const char *body, expression_t *expr,
+                                        gsh_script_command_fn execute, void *context)
+{
+    const char *segment_start = body;
+    const char *cursor = body;
+    int in_single_quote = 0;
+    int in_double_quote = 0;
+
+    while (*cursor) {
+        if (*cursor == '\'' && !in_double_quote) in_single_quote = !in_single_quote;
+        else if (*cursor == '"' && !in_single_quote) in_double_quote = !in_double_quote;
+        if (!in_single_quote && !in_double_quote && cursor[0] == ' ' &&
+            cursor[1] == 'a' && cursor[2] == 'n' && cursor[3] == 'd' &&
+            cursor[4] == ' ') {
+            char segment[GSH_SCRIPT_MAX_COMMAND];
+            u32 length = (u32)(cursor - segment_start);
+            while (length > 0 && (segment_start[length - 1] == ' ' || segment_start[length - 1] == '\t')) length--;
+            if (length == 0 || length >= sizeof(segment)) return 0;
+            memcpy(segment, segment_start, length);
+            segment[length] = 0;
+            if (!script_execute_body(segment, expr, execute, context)) return 0;
+            segment_start = cursor + 5;
+            cursor += 5;
+            continue;
+        }
+        cursor++;
+    }
+
+    while (*segment_start == ' ' || *segment_start == '\t') segment_start++;
+    return script_execute_body(segment_start, expr, execute, context);
 }
 
 static int script_execute_inline_repeat(const char *line, expression_t *expr,
@@ -631,7 +722,8 @@ static int script_execute_inline_condition(const char *line, expression_t *expr,
     } else if (strncmp(keyword, "while", 5) == 0 && (keyword[5] == ' ' || keyword[5] == '\t')) {
         condition_start = keyword + 5;
         is_while = 1;
-    } else if (strncmp(keyword, "if", 2) == 0 && (keyword[2] == ' ' || keyword[2] == '\t')) {
+    } else if (strncmp(keyword, "if", 2) == 0 &&
+               (keyword[2] == ' ' || keyword[2] == '\t' || keyword[2] == '(')) {
         condition_start = keyword + 2;
     } else {
         return 0;
@@ -639,22 +731,27 @@ static int script_execute_inline_condition(const char *line, expression_t *expr,
     colon = script_find_colon(condition_start);
     if (!colon) return 0;
     while (*condition_start == ' ' || *condition_start == '\t') condition_start++;
+    if (*condition_start == '(') {
+        condition_start++;
+        while (condition_start < colon && colon[-1] != ')') colon--;
+    }
     length = (u32)(colon - condition_start);
     while (length > 0 && (condition_start[length - 1] == ' ' || condition_start[length - 1] == '\t')) length--;
+    if (length > 0 && condition_start[length - 1] == ')') length--;
     if (length == 0 || length >= sizeof(condition)) return 0;
     memcpy(condition, condition_start, length);
     condition[length] = 0;
 
     if (is_while) {
         while (script_expression(expr, condition) != 0 && iterations++ < 100000) {
-            if (!script_execute_body(colon + 1, expr, execute, context)) return 0;
+            if (!script_execute_body_sequence(colon + 1, expr, execute, context)) return 0;
         }
         return iterations < 100000;
     }
 
     condition_value = script_expression(expr, condition) != 0;
     if (is_unless) condition_value = !condition_value;
-    return condition_value ? script_execute_body(colon + 1, expr, execute, context) : 1;
+    return condition_value ? script_execute_body_sequence(colon + 1, expr, execute, context) : 1;
 }
 
 static int script_execute_inline_for(const char *line, expression_t *expr,
@@ -724,10 +821,36 @@ int gsh_script_execute_line_with_command(const char *line,
                                          gsh_script_command_fn execute,
                                          void *context) {
     const char *end;
+    const char *segment_start;
+    const char *cursor;
     if (!line) return 0;
     if (!interactive_expression_initialized) {
         memset(&interactive_expression, 0, sizeof(interactive_expression));
         interactive_expression_initialized = 1;
+    }
+    if (strncmp(line, "var ", 4) == 0 || strncmp(line, "ask ", 4) == 0) {
+        segment_start = line;
+        cursor = line;
+        while (*cursor) {
+            if (cursor[0] == '&' && cursor[1] == '&') {
+                char segment[GSH_SCRIPT_MAX_COMMAND];
+                u32 length = (u32)(cursor - segment_start);
+                while (length > 0 && (segment_start[length - 1] == ' ' || segment_start[length - 1] == '\t')) length--;
+                if (length >= sizeof(segment)) return 0;
+                memcpy(segment, segment_start, length);
+                segment[length] = 0;
+                if (!script_handle_drift_line(segment, segment + length, &interactive_expression)) return 0;
+                segment_start = cursor + 2;
+                cursor += 2;
+                continue;
+            }
+            cursor++;
+        }
+        if (segment_start != line) {
+            while (*segment_start == ' ' || *segment_start == '\t') segment_start++;
+            if (script_handle_drift_line(segment_start, segment_start + strlen(segment_start), &interactive_expression)) return 1;
+            return 0;
+        }
     }
     if (strncmp(line, "repeat", 6) == 0 && (line[6] == ' ' || line[6] == '\t')) {
         if (script_execute_inline_repeat(line, &interactive_expression, execute, context)) return 1;

@@ -225,6 +225,22 @@ static u8 shell_root_mutation_denied(const char *command)
     return 1;
 }
 
+static u8 shell_is_drift_chain(const char *line)
+{
+    return (strncmp(line, "var ", 4) == 0 || strncmp(line, "ask ", 4) == 0) &&
+           shell_has_logical_operator(line);
+}
+
+static u8 shell_is_drift_statement(const char *line)
+{
+    return strncmp(line, "var ", 4) == 0 || strncmp(line, "ask ", 4) == 0 ||
+           strncmp(line, "say ", 4) == 0 || strncmp(line, "if ", 3) == 0 ||
+           strncmp(line, "if(", 3) == 0 || strncmp(line, "unless ", 7) == 0 ||
+           strncmp(line, "while ", 6) == 0 || strncmp(line, "repeat ", 7) == 0 ||
+           strncmp(line, "for ", 4) == 0 || strncmp(line, "for(", 4) == 0 ||
+           strncmp(line, "each ", 5) == 0 || strncmp(line, "when ", 5) == 0;
+}
+
 static int shell_execute_logical_line(const char *line) {
     char segment[SHELL_BUFFER_SIZE];
     int length = 0;
@@ -966,6 +982,30 @@ static void shell_execute_command(void) {
 
     if (shell_root_mutation_denied(input.buffer)) {
         shell_last_status = 1;
+        if (!shell_script_mode) shell_print_prompt();
+        input.len = 0;
+        return;
+    }
+
+    if (shell_is_drift_chain(input.buffer)) {
+        if (!gsh_script_execute_line_with_command(input.buffer, shell_execute_script_command, NULL)) {
+            shell_last_status = 1;
+            SHELL_COLOR_ERR();
+            kprintf("Drift: invalid statement\n");
+            SHELL_COLOR_RESET();
+        }
+        if (!shell_script_mode) shell_print_prompt();
+        input.len = 0;
+        return;
+    }
+
+    if (shell_is_drift_statement(input.buffer)) {
+        if (!gsh_script_execute_line_with_command(input.buffer, shell_execute_script_command, NULL)) {
+            shell_last_status = 1;
+            SHELL_COLOR_ERR();
+            kprintf("Drift: invalid statement\n");
+            SHELL_COLOR_RESET();
+        }
         if (!shell_script_mode) shell_print_prompt();
         input.len = 0;
         return;
