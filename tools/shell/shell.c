@@ -192,6 +192,39 @@ static void shell_normalize_input(void) {
     input.buffer[input.len] = 0;
 }
 
+static u8 shell_is_mutating_command(const char *command)
+{
+    const char *end = command;
+    char name[16];
+    u32 length;
+
+    while (*end && *end != ' ' && *end != '\t') end++;
+    length = (u32)(end - command);
+    if (length == 0 || length >= sizeof(name)) return 0;
+    memcpy(name, command, length);
+    name[length] = 0;
+
+    return strcmp(name, "new") == 0 || strcmp(name, "file") == 0 ||
+           strcmp(name, "write") == 0 || strcmp(name, "edit") == 0 ||
+           strcmp(name, "recycle") == 0 || strcmp(name, "delete") == 0 ||
+           strcmp(name, "clean") == 0 || strcmp(name, "dir") == 0 ||
+           strcmp(name, "mkdir") == 0 || strcmp(name, "rmdir") == 0 ||
+           strcmp(name, "move") == 0 || strcmp(name, "mv") == 0 ||
+           strcmp(name, "copy") == 0 || strcmp(name, "cp") == 0 ||
+           strcmp(name, "rename") == 0;
+}
+
+static u8 shell_root_mutation_denied(const char *command)
+{
+    if (shell_rex_command || strcmp(current_dir, ROOT_DIR) != 0 ||
+        !shell_is_mutating_command(command)) return 0;
+
+    SHELL_COLOR_ERR();
+    kprintf("Permission denied: use 'rex %s' to modify the root directory\n", command);
+    SHELL_COLOR_RESET();
+    return 1;
+}
+
 static int shell_execute_logical_line(const char *line) {
     char segment[SHELL_BUFFER_SIZE];
     int length = 0;
@@ -569,17 +602,6 @@ static u8 shell_ensure_directories(const char *path) {
     return 1;
 }
 
-static u8 is_root_child_path(const char *path) {
-    if (!path || *path == 0) return 0;
-    char normalized[DIR_PATH_SIZE];
-    if (!path_normalize(path, normalized, sizeof(normalized))) return 0;
-    if (strcmp(normalized, ".") == 0) return 0;
-
-    char parent[DIR_PATH_SIZE];
-    path_parent(normalized, parent, sizeof(parent));
-    return strcmp(parent, ".") == 0;
-}
-
 /* --- Pipeline & background job support --- */
 #define MAX_PIPE_STAGES 8
 #define MAX_BG_JOBS 16
@@ -863,6 +885,7 @@ static void shell_run_pipeline(char cmds[][256], int n, int bg) {
 }
 
 u8 shell_dir_command(const char *args, const char *current_dir, u8 replace, u8 privileged) {
+    (void)privileged;
     if (!args || *args == 0) {
         SHELL_COLOR_CMD();
         // Optional: show usage if desired, but keeping original style
@@ -893,15 +916,6 @@ u8 shell_dir_command(const char *args, const char *current_dir, u8 replace, u8 p
         /* Ensure parent directories exist */
         char parent[DIR_PATH_SIZE];
         path_parent(fullpath, parent, sizeof(parent));
-
-        if (!privileged && !auth_is_authorized() && is_root_child_path(fullpath)) {
-            SHELL_COLOR_ERR();
-            kprintf("[DIR] Permission denied: use 'rex dir %s' to create root-level directories\n", fullpath);
-            SHELL_COLOR_RESET();
-            *end = saved_char;
-            ptr = end + 1;
-            continue;
-        }
 
         if (!vfs_is_dir(parent)) {
             if (!shell_ensure_directories(parent)) {
@@ -949,6 +963,13 @@ static void shell_execute_command(void) {
     shell_last_status = 0;
     if (!shell_script_mode) shell_add_history(input.buffer);
     kprintf("\n");
+
+    if (shell_root_mutation_denied(input.buffer)) {
+        shell_last_status = 1;
+        if (!shell_script_mode) shell_print_prompt();
+        input.len = 0;
+        return;
+    }
 
     if (shell_drift_mode && strcmp(input.buffer, "exit") != 0 && strcmp(input.buffer, "quit") != 0) {
         if (!gsh_script_execute_line_with_command(input.buffer, shell_execute_script_command, NULL)) {
@@ -1434,15 +1455,9 @@ static void shell_execute_command(void) {
         const char *dirname = input.buffer + 6;
         char fullpath[DIR_PATH_SIZE];
         shell_resolve_path(current_dir, dirname, fullpath);
-        if (shell_requires_rex_for_root_access(fullpath)) {
-            SHELL_COLOR_ERR();
-            kprintf("Permission denied: use 'rex rmdir %s' to modify root-level directories\n", dirname);
-            SHELL_COLOR_RESET();
-        } else {
-            SHELL_COLOR_OUT();
-            vfs_rmdir(fullpath);
-            SHELL_COLOR_RESET();
-        }
+        SHELL_COLOR_OUT();
+        vfs_rmdir(fullpath);
+        SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "pwd", 3) == 0) {
         SHELL_COLOR_OUT();
         kprintf("%s\n", current_dir);
