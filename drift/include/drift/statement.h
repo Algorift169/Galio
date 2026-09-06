@@ -43,8 +43,15 @@ typedef enum {
     STATEMENT_WHEN,
     STATEMENT_FUNCTION,
     STATEMENT_FUNCTION_CALL,
-    STATEMENT_RETURN
+    STATEMENT_RETURN,
+    STATEMENT_COMMAND
 } StatementType;
+
+typedef struct {
+    char *text;
+} CommandStatement;
+
+void command_statement_free(CommandStatement *statement);
 
 typedef struct Statement {
     StatementType type;
@@ -62,6 +69,7 @@ typedef struct Statement {
         FunctionStatement function_statement;
         FunctionCallStatement function_call_statement;
         ReturnStatement return_statement;
+        CommandStatement command_statement;
     } as;
 } Statement;
 

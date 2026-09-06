@@ -217,6 +217,8 @@ static void statement_free(Statement *statement)
         function_call_statement_free(&statement->as.function_call_statement);
     } else if (statement->type == STATEMENT_RETURN) {
         return_statement_free(&statement->as.return_statement);
+    } else if (statement->type == STATEMENT_COMMAND) {
+        command_statement_free(&statement->as.command_statement);
     }
 }
 

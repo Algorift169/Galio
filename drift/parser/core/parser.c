@@ -1591,26 +1591,59 @@ Statement parser_parse(Parser *parser)
         return statement;
     }
 
-    if (token->type == TOKEN_IDENTIFIER) {
-        // Bare identifiers are not valid declaration statements in this language version.
-        fprintf(stderr, "Syntax Error: Only literal values are allowed during variable declaration in Drift v0.2.\n");
-        statement.type = STATEMENT_PRINT;
-        print_statement.value = NULL;
-        print_statement.is_variable_reference = 0;
-        print_statement.has_array_access = 0;
-        array_access_init(&print_statement.array_access);
-        statement.as.print_statement = print_statement;
+    {
+        size_t length = 0;
+        size_t index = parser->index;
+        char *command;
+
+        while (index < parser->count && !is_statement_terminator(&parser->tokens[index]) &&
+               parser->tokens[index].type != TOKEN_EOF) {
+            length += strlen(parser->tokens[index].value ? parser->tokens[index].value : "") + 2U;
+            index++;
+        }
+        command = (char *)malloc(length + 1U);
+        if (command == NULL) {
+            statement.type = STATEMENT_PRINT;
+            print_statement.value = NULL;
+            print_statement.is_variable_reference = 0;
+            print_statement.has_array_access = 0;
+            array_access_init(&print_statement.array_access);
+            statement.as.print_statement = print_statement;
+            return statement;
+        }
+        command[0] = '\0';
+        TokenType previous_type = TOKEN_UNKNOWN;
+        while (parser->index < index) {
+            Token *part = &parser->tokens[parser->index++];
+            int joins_previous = part->type == TOKEN_RIGHT_PAREN || part->type == TOKEN_RIGHT_BRACKET ||
+                                 part->type == TOKEN_DOT || part->type == TOKEN_COMMA;
+            int follows_open = previous_type == TOKEN_LEFT_PAREN || previous_type == TOKEN_LEFT_BRACKET ||
+                               previous_type == TOKEN_DOT;
+            if (command[0] != '\0' && !joins_previous && !follows_open) strcat(command, " ");
+            if (part->value != NULL) {
+                if (part->type == TOKEN_STRING && part->value[0] != '\'' && part->value[0] != '"') {
+                    strcat(command, "\"");
+                    strcat(command, part->value);
+                    strcat(command, "\"");
+                } else {
+                    strcat(command, part->value);
+                }
+            }
+            previous_type = part->type;
+        }
+        token = parser_peek(parser);
+        if (token != NULL && is_statement_terminator(token)) parser_advance(parser);
+        statement.type = STATEMENT_COMMAND;
+        statement.as.command_statement.text = command;
         return statement;
     }
+}
 
-    fprintf(stderr, "Syntax Error: expected 'say' or 'var'.\n");
-    statement.type = STATEMENT_PRINT;
-    print_statement.value = NULL;
-    print_statement.is_variable_reference = 0;
-    print_statement.has_array_access = 0;
-    array_access_init(&print_statement.array_access);
-    statement.as.print_statement = print_statement;
-    return statement;
+void command_statement_free(CommandStatement *statement)
+{
+    if (statement == NULL) return;
+    free(statement->text);
+    statement->text = NULL;
 }
 
 void print_statement_free(PrintStatement *statement)

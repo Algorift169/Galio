@@ -44,12 +44,23 @@ Environment environment_create(void)
     environment.function_count = 0;
     environment.return_value = value_create_null();
     environment.has_return_value = 0; // Only the prefix below count contains active bindings.
+    environment.command_handler = NULL;
+    environment.command_context = NULL;
     for (i = 0; i < DRIFT_ENVIRONMENT_CAPACITY; ++i) {
         environment.entries[i].name = NULL;
         environment.entries[i].value = value_create_string(NULL);
     }
 
     return environment;
+}
+
+void environment_set_command_handler(Environment *environment,
+                                      int (*handler)(const char *, void *),
+                                      void *context)
+{
+    if (environment == NULL) return;
+    environment->command_handler = handler;
+    environment->command_context = context;
 }
 
 /* Releases active names and values, leaving the environment empty but still reusable. Using this function

@@ -250,6 +250,26 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
         return 0;
     }
 
+    if (token->type == TOKEN_INTEGER) {
+        /* Compact count form: repeat N: body. The private counter preserves
+           the normal repeat runtime while keeping the counter unnamed. */
+        repeat_statement.counter_name = drift_duplicate_string("__repeat_counter");
+        repeat_statement.declares_counter = 1;
+        repeat_statement.has_range = 1;
+        repeat_statement.is_exclusive_upper = 1;
+        repeat_statement.start_text = drift_duplicate_string("0");
+        repeat_statement.end_text = drift_duplicate_string(token->value);
+        if (repeat_statement.counter_name == NULL || repeat_statement.start_text == NULL ||
+            repeat_statement.end_text == NULL) {
+            free(repeat_statement.counter_name);
+            free(repeat_statement.start_text);
+            free(repeat_statement.end_text);
+            return 0;
+        }
+        parser_advance(parser);
+        goto repeat_header_complete;
+    }
+
     if (token->type == TOKEN_VAR) {
         // Both repeat counter declaration forms accept an optional 'var'.
         repeat_statement.declares_counter = 1;
@@ -399,6 +419,7 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
         return 0;
     }
 
+repeat_header_complete:
     token = parser_peek(parser);
     if (token == NULL || token->type != TOKEN_COLON) {
         fprintf(stderr, "Syntax Error: Expected ':' after repeat header.\n");

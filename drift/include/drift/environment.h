@@ -21,6 +21,8 @@ typedef struct {
     int function_count;
     Value return_value;
     int has_return_value;
+    int (*command_handler)(const char *command, void *context);
+    void *command_context;
 } Environment;
 
 /* Initializes an empty fixed-capacity environment with safe value slots. */
@@ -37,5 +39,8 @@ int environment_exists(const Environment *environment, const char *name);
 int environment_set_function(Environment *environment, const FunctionStatement *function);
 /* Finds a function definition without transferring its environment ownership. */
 const FunctionStatement *environment_get_function(const Environment *environment, const char *name);
+void environment_set_command_handler(Environment *environment,
+                                      int (*handler)(const char *, void *),
+                                      void *context);
 
 #endif

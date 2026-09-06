@@ -241,9 +241,12 @@ static u8 shell_is_drift_statement(const char *line)
     return strncmp(line, "var ", 4) == 0 || strncmp(line, "ask ", 4) == 0 ||
            strncmp(line, "say ", 4) == 0 || strncmp(line, "if ", 3) == 0 ||
            strncmp(line, "if(", 3) == 0 || strncmp(line, "unless ", 7) == 0 ||
-           strncmp(line, "while ", 6) == 0 || strncmp(line, "repeat ", 7) == 0 ||
-           strncmp(line, "for ", 4) == 0 || strncmp(line, "for(", 4) == 0 ||
-           strncmp(line, "each ", 5) == 0 || strncmp(line, "when ", 5) == 0;
+           strncmp(line, "unless(", 7) == 0 || strncmp(line, "while ", 6) == 0 ||
+           strncmp(line, "while(", 6) == 0 || strncmp(line, "repeat ", 7) == 0 ||
+           strncmp(line, "repeat(", 7) == 0 || strncmp(line, "for ", 4) == 0 ||
+           strncmp(line, "for(", 4) == 0 || strncmp(line, "each ", 5) == 0 ||
+           strncmp(line, "each(", 5) == 0 || strncmp(line, "when ", 5) == 0 ||
+           strncmp(line, "when(", 5) == 0;
 }
 
 static int shell_execute_logical_line(const char *line) {

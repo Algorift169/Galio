@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "drift/input.h"
+#include "drift/platform.h"
 #include "drift/value.h"
 
 /*
@@ -52,32 +53,7 @@ static void trim_in_place(char *text)
 // for freeing the allocated memory when it is no longer needed.
 char *drift_read_line_from_stdin(const char *prompt)
 {
-    char buffer[4096]; // Buffer to hold the input line
-    char *line = NULL;
-    size_t length;
-
-    if (prompt != NULL && prompt[0] != '\0') {
-        printf("%s", prompt);
-        fflush(stdout); // Ensure the prompt is displayed before reading input 
-    }
-
-    if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
-        return NULL;
-    }
-
-    length = strlen(buffer);
-    if (length > 0 && buffer[length - 1] == '\n') {
-        buffer[length - 1] = '\0';
-    }
-
-    line = (char *)malloc(length + 1U); // Allocate memory for the line to return
-    if (line == NULL) {
-        fprintf(stderr, "Error: out of memory while reading input\n");
-        return NULL;
-    }
-
-    strcpy(line, buffer);
-    return line;
+    return drift_platform_read_line(prompt);
 }
 
 static char **s_input_tokens = NULL;

@@ -135,19 +135,23 @@ static int parse_each_body(Parser *parser, size_t indentation, Statement **out_b
     Statement *body = NULL;
     size_t count = 0;
     size_t capacity = 0;
+    int inline_body = 1;
 
     // To parse the body of the each statement, we continue parsing statements until we reach a 
     // terminator (end, dot, or dedent). Each statement is appended to the body array.
     while (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF) {
         Token *token = parser_peek(parser);
         if (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON) {
+            inline_body = 0;
             parser_advance(parser);
             continue;
         }
-        if (token->type == TOKEN_END || token->type == TOKEN_DOT || token->indentation <= indentation) {
+        if (token->type == TOKEN_END || token->type == TOKEN_DOT ||
+            (!inline_body && token->indentation <= indentation)) {
             break;
         }
         append_statement(&body, &count, &capacity, parser_parse(parser));
+        inline_body = 0;
     }
     *out_body = body;
     *out_count = count;

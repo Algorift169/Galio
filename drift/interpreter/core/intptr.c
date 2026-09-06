@@ -795,6 +795,60 @@ Value interpreter_evaluate_expression(Environment *environment, const char *expr
     return evaluate_expression_text(environment, expression, ok);
 }
 
+static char *expand_command_expressions(const char *command, Environment *environment)
+{
+    StringBuilder expanded;
+    size_t index = 0;
+
+    if (command == NULL || environment == NULL || !sb_init(&expanded)) return NULL;
+    while (command[index] != '\0') {
+        if (command[index] != '(') {
+            if (!sb_append_char(&expanded, command[index++])) goto failed;
+            continue;
+        }
+
+        size_t open = index;
+        size_t cursor = index + 1U;
+        int depth = 1;
+        while (command[cursor] != '\0' && depth > 0) {
+            if (command[cursor] == '(') depth++;
+            else if (command[cursor] == ')') depth--;
+            cursor++;
+        }
+        if (depth != 0) {
+            if (!sb_append_char(&expanded, command[index++])) goto failed;
+            continue;
+        }
+
+        size_t expression_length = (cursor - 1U) - (open + 1U);
+        char *expression = (char *)malloc(expression_length + 1U);
+        if (expression == NULL) goto failed;
+        memcpy(expression, command + open + 1U, expression_length);
+        expression[expression_length] = '\0';
+
+        int ok = 0;
+        Value value = interpreter_evaluate_expression(environment, expression, &ok);
+        free(expression);
+        if (!ok) {
+            value_free(&value);
+            if (!sb_append_char(&expanded, command[index++])) goto failed;
+            continue;
+        }
+
+        if (!format_value_to_string(&value, &expanded)) {
+            value_free(&value);
+            goto failed;
+        }
+        value_free(&value);
+        index = cursor;
+    }
+    return expanded.data;
+
+failed:
+    sb_free(&expanded);
+    return NULL;
+}
+
 /*
 Writes a runtime value using Drift's user-facing representation. Arrays use the
 array module's printer because their layout depends on their dimensions.
@@ -1172,6 +1226,19 @@ int interpreter_execute(Statement statement, Environment *environment)
     if (environment == NULL) {
         fprintf(stderr, "Runtime Error: missing execution environment.\n");
         return 1;
+    }
+
+    if (statement.type == STATEMENT_COMMAND) {
+        if (environment->command_handler == NULL || statement.as.command_statement.text == NULL) {
+            fprintf(stderr, "Runtime Error: No command handler is configured.\n");
+            return 1;
+        }
+        char *expanded = expand_command_expressions(statement.as.command_statement.text, environment);
+        int result;
+        if (expanded == NULL) return 1;
+        result = environment->command_handler(expanded, environment->command_context);
+        free(expanded);
+        return result;
     }
 
     if (statement.type == STATEMENT_BREAK) {

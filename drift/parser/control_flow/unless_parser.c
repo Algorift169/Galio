@@ -115,6 +115,7 @@ int parse_unless_statement(Parser *parser, Statement *statement)
     size_t body_count = 0;
     size_t capacity = 0;
     size_t indentation;
+    int inline_body = 1;
 
     if (parser == NULL || statement == NULL || parser_peek(parser) == NULL) {
         return 0;
@@ -138,13 +139,16 @@ int parse_unless_statement(Parser *parser, Statement *statement)
     while (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF) {
         Token *token = parser_peek(parser);
         if (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON) {
+            inline_body = 0;
             parser_advance(parser);
             continue;
         }
-        if (token->type == TOKEN_END || token->type == TOKEN_DOT || token->indentation <= indentation) {
+        if (token->type == TOKEN_END || token->type == TOKEN_DOT ||
+            (!inline_body && token->indentation <= indentation)) {
             break;
         }
         append_statement(&body, &body_count, &capacity, parser_parse(parser));
+        inline_body = 0;
     }
     if (parser_peek(parser) != NULL && (parser_peek(parser)->type == TOKEN_END || parser_peek(parser)->type == TOKEN_DOT)) {
         parser_advance(parser);

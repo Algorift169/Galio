@@ -80,3 +80,29 @@ char *strncat(char *dest, const char *src, size_t n) {
     *d = 0;
     return dest;
 }
+
+char *strcat(char *dest, const char *src) {
+    char *end = dest + strlen(dest);
+    while (*src) *end++ = *src++;
+    *end = '\0';
+    return dest;
+}
+
+char *strchr(const char *text, int character) {
+    while (*text) {
+        if (*text == (char)character) return (char *)text;
+        text++;
+    }
+    return character == '\0' ? (char *)text : NULL;
+}
+
+char *strstr(const char *text, const char *needle) {
+    size_t needle_length;
+    if (*needle == '\0') return (char *)text;
+    needle_length = strlen(needle);
+    while (*text) {
+        if (strncmp(text, needle, needle_length) == 0) return (char *)text;
+        text++;
+    }
+    return NULL;
+}

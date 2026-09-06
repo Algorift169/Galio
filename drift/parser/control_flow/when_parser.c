@@ -99,14 +99,18 @@ static int parse_body(Parser *parser, size_t indentation, Statement **out_body, 
     Statement *body = NULL;
     size_t count = 0;
     size_t capacity = 0;
+    int inline_body = 1;
     while (peek(parser) != NULL && peek(parser)->type != TOKEN_EOF) {
         Token *token = peek(parser);
         if (terminator(token)) {
+            inline_body = 0;
             advance(parser);
             continue;
         }
-        if (token->type == TOKEN_END || token->type == TOKEN_DOT || token->indentation <= indentation) break;
+        if (token->type == TOKEN_END || token->type == TOKEN_DOT ||
+            (!inline_body && token->indentation <= indentation)) break;
         append_statement(&body, &count, &capacity, parser_parse(parser));
+        inline_body = 0;
     }
     *out_body = body;
     *out_count = count;

@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* The lexer owns its cursor and emits one token at a time; callers release token-owned text after parsing. */
 
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,16 +22,21 @@ static int is_newline(char c)
     return c == '\n';
 }
 
+static int is_digit(char c)
+{
+    return c >= '0' && c <= '9';
+}
+
 /* Checks whether a character may begin a Drift identifier. */
 static int is_identifier_start(char c)
 {
-    return isalpha((unsigned char)c) || c == '_';
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
 }
 
 /* Checks whether a character may continue an identifier after its first character. */
 static int is_identifier_part(char c)
 {
-    return isalnum((unsigned char)c) || c == '_' || c == '-';
+    return is_identifier_start(c) || is_digit(c) || c == '-';
 }
 
 /* Packages a token type with already-owned text without duplicating that text. */
@@ -251,7 +255,7 @@ static Token read_number(Lexer *lexer)
 
     while (lexer->index < lexer->length) {
         char c = lexer->source[lexer->index];
-        if (isdigit((unsigned char)c)) {
+        if (is_digit(c)) {
             lexer->index++;
             length++;
             continue;
@@ -641,7 +645,7 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
                 return NULL;
             }
             tokens[count++] = token;
-        } else if (isdigit((unsigned char)lexer->source[lexer->index])) {
+        } else if (is_digit(lexer->source[lexer->index])) {
             Token token = read_number(lexer);
             if (token.type == TOKEN_UNKNOWN) {
                 token_free_array(tokens, count);

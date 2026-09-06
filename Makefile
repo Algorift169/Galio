@@ -23,11 +23,13 @@ INCLUDES = -Iinclude \
            -Itools/shell/commands \
            -Itools/shell/editor \
            -Itools/compiler/include \
-           -Iui/include
+           -Iui/include \
+           -Idrift/include
 
-# Drift is built as a hosted companion executable and packaged into the ISO.
-# The freestanding kernel-side gsh adapter remains tools/shell/script.c.
+# Drift is built for both the hosted companion executable and the kernel shell.
 DRIFT_SRCS = drift/main.c \
+             drift/runtime.c \
+             drift/platform_host.c \
              drift/token/token.c \
              drift/lexer/core/lexer.c \
              drift/lexer/keywords/logical_keywords.c \
@@ -75,6 +77,8 @@ USER_ELF_BASE = 0x40000000
 # Source files
 SRCS = kernel/kmain.c \
        kernel/auth.c \
+       kernel/drift_platform.c \
+       kernel/drift_compat.c \
        kernel/net/net.c \
        kernel/net/netdev.c \
        kernel/net/packet.c \
@@ -214,6 +218,9 @@ SRCS = kernel/kmain.c \
 	tools/shell/commands/where.c \
        tools/shell/editor/editor.c
 
+# Link the real Drift runtime into the kernel so gsh uses the same grammar.
+SRCS += $(filter-out drift/main.c drift/platform_host.c,$(DRIFT_SRCS))
+
 # Object files
 C_OBJS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRCS))
 # The legacy PIT assembly stub was written for 32-bit protected mode and is
@@ -293,6 +300,10 @@ $(OBJ_DIR)/tools/shell/editor/%.o: tools/shell/editor/%.c | $(OBJ_DIR)/tools/she
 $(OBJ_DIR)/tools/shell/%.o: tools/shell/%.c | $(OBJ_DIR)/tools/shell/.created
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ_DIR)/drift/%.o: drift/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -include drift/kernel_compat.h -c $< -o $@
 
 # Generic compile C files rule
 $(OBJ_DIR)/%.o: %.c

@@ -158,6 +158,7 @@ static int parse_for_body(Parser *parser, size_t block_indentation, Statement **
     Statement *body = NULL;
     size_t count = 0;
     size_t capacity = 0;
+    int inline_body = 1;
 
     if (out_body == NULL || out_count == NULL) {
         return 0;
@@ -168,14 +169,16 @@ static int parse_for_body(Parser *parser, size_t block_indentation, Statement **
             break;
         }
         if (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON) {
+            inline_body = 0;
             parser_advance(parser);
             continue;
         }
         if (token->type == TOKEN_END || token->type == TOKEN_DOT ||
-            token->indentation <= block_indentation) {
+            (!inline_body && token->indentation <= block_indentation)) {
             break;
         }
         append_statement(&body, &count, &capacity, parser_parse(parser));
+        inline_body = 0;
     }
     *out_body = body;
     *out_count = count;

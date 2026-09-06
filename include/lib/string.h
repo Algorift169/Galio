@@ -32,5 +32,8 @@ size_t strlen(const char *s);
 char *strcpy(char *dest, const char *src);
 char *strncpy(char *dest, const char *src, size_t n);
 char *strncat(char *dest, const char *src, size_t n);
+char *strcat(char *dest, const char *src);
+char *strchr(const char *text, int character);
+char *strstr(const char *text, const char *needle);
 
 #endif /* STRING_H */
