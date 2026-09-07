@@ -2,6 +2,7 @@
 #include "kprintf.h"
 #include "string.h"
 #include "user_syscall.h"
+#include "process.h"
 
 static int syscall_command_number(const char *text) {
     int value = 0;
@@ -64,6 +65,12 @@ static int syscall_name_number(const char *name) {
         {"rt_sigprocmask", SYS_RT_SIGPROCMASK}, {"rt_sigreturn", SYS_RT_SIGRETURN},
         {"sched_yield", SYS_SCHED_YIELD}, {"ioctl2", SYS_IOCTL2},
         {"sysinfo", SYS_SYSINFO},
+        {"mkdir", SYS_MKDIR},
+        {"rmdir", SYS_RMDIR},
+        {"unlink", SYS_UNLINK},
+        {"rename", SYS_RENAME},
+        {"chmod", SYS_CHMOD},
+        {"fsync", SYS_FSYNC},
         {"time", SYS_TIME}, {"sleep", SYS_SLEEP}, {"mmap2", SYS_MMAP2}
     };
     for (u32 i = 0; i < sizeof(calls) / sizeof(calls[0]); i++) {
@@ -142,6 +149,83 @@ u8 shell_syscall_command(const char *args, const char *current_dir, u8 privilege
         struct utsname info;
         int rc = (int)galio_syscall(SYS_UNAME, (long)&info, 0, 0, 0, 0);
         kprintf("SYS_UNAME = %d (%s %s %s)\n", rc, info.sysname, info.release, info.machine);
+        return rc == 0;
+    }
+    if (strcmp(name, "mkdir") == 0) {
+        if (!value || !*value) {
+            kprintf("Usage: rex syscall mkdir <path>\n");
+            return 0;
+        }
+        int rc = sys_mkdir(value, 0755);
+        kprintf("SYS_MKDIR(%s) = %d\n", value, rc);
+        return rc == 0;
+    }
+    if (strcmp(name, "rmdir") == 0) {
+        if (!value || !*value) {
+            kprintf("Usage: rex syscall rmdir <path>\n");
+            return 0;
+        }
+        int rc = sys_rmdir(value);
+        kprintf("SYS_RMDIR(%s) = %d\n", value, rc);
+        return rc == 0;
+    }
+    if (strcmp(name, "unlink") == 0) {
+        if (!value || !*value) {
+            kprintf("Usage: rex syscall unlink <path>\n");
+            return 0;
+        }
+        int rc = sys_unlink(value);
+        kprintf("SYS_UNLINK(%s) = %d\n", value, rc);
+        return rc == 0;
+    }
+    if (strcmp(name, "rename") == 0) {
+        char old_path[PROCESS_PATH_MAX];
+        char new_path[PROCESS_PATH_MAX];
+        u32 split = 0;
+        while (value[split] && value[split] != ' ') split++;
+        if (!value[split]) {
+            kprintf("Usage: rex syscall rename <old> <new>\n");
+            return 0;
+        }
+        if (split >= sizeof(old_path)) split = sizeof(old_path) - 1;
+        strncpy(old_path, value, split);
+        old_path[split] = 0;
+        while (value[split] == ' ') split++;
+        strncpy(new_path, value + split, sizeof(new_path) - 1);
+        new_path[sizeof(new_path) - 1] = 0;
+        int rc = sys_rename(old_path, new_path);
+        kprintf("SYS_RENAME(%s, %s) = %d\n", old_path, new_path, rc);
+        return rc == 0;
+    }
+    if (strcmp(name, "chmod") == 0) {
+        char path[PROCESS_PATH_MAX];
+        int mode = -1;
+        u32 split = 0;
+        while (value[split] && value[split] != ' ') split++;
+        if (!value[split]) {
+            kprintf("Usage: rex syscall chmod <mode> <path>\n");
+            return 0;
+        }
+        mode = syscall_command_number(value);
+        while (value[split] == ' ') split++;
+        strncpy(path, value + split, sizeof(path) - 1);
+        path[sizeof(path) - 1] = 0;
+        if (mode < 0) {
+            kprintf("Usage: rex syscall chmod <mode> <path>\n");
+            return 0;
+        }
+        int rc = sys_chmod(path, (u32)mode);
+        kprintf("SYS_CHMOD(%s, %d) = %d\n", path, mode, rc);
+        return rc == 0;
+    }
+    if (strcmp(name, "fsync") == 0) {
+        int fd = syscall_command_number(value);
+        if (fd < 0) {
+            kprintf("Usage: rex syscall fsync <fd>\n");
+            return 0;
+        }
+        int rc = sys_fsync(fd);
+        kprintf("SYS_FSYNC(%d) = %d\n", fd, rc);
         return rc == 0;
     }
     if (strcmp(name, "exit") == 0) {

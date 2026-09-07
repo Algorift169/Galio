@@ -51,6 +51,7 @@
 #include "editor.h"
 #include "process.h"
 #include "syscall_cmd.h"
+#include "shell_sysinfo.h"
 #include "wifi_list.h"
 #include "top.h"
 #include "spike.h"
@@ -1286,6 +1287,10 @@ static void shell_execute_command(void) {
     } else if (strcmp(input.buffer, "syscall") == 0) {
         SHELL_COLOR_CMD();
         shell_syscall_command("", current_dir, shell_rex_command);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "sysinfo") == 0) {
+        SHELL_COLOR_OUT();
+        shell_sysinfo_command("", current_dir);
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "SYS_", 4) == 0) {
         SHELL_COLOR_OUT();

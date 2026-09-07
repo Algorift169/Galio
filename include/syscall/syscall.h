@@ -25,6 +25,7 @@
 
 #include "common.h"
 #include "cpu.h"
+#include "sysinfo.h"
 
 #define SYSCALL_TRACE 1
 
@@ -113,6 +114,12 @@
 #define SYS_IOCTL2      254
 #define SYS_TIME        201
 #define SYS_SLEEP       202
+#define SYS_MKDIR       260
+#define SYS_RMDIR       261
+#define SYS_UNLINK      262
+#define SYS_RENAME      263
+#define SYS_CHMOD       264
+#define SYS_FSYNC       265
 
 /* Legacy Galio compatibility aliases retained for older code paths. */
 #define SYS_GALIO_EXIT         1
@@ -268,6 +275,12 @@ i32 syscall_rt_sigaction(i32 sig, const void *act, void *oldact, u32 sigsetsize)
 i32 syscall_rt_sigprocmask(i32 how, const void *set, void *oldset, u32 sigsetsize);
 i32 syscall_rt_sigreturn(void);
 i32 syscall_sysinfo(void *info);
+i32 syscall_mkdir(const char *path, u32 mode);
+i32 syscall_rmdir(const char *path);
+i32 syscall_unlink(const char *path);
+i32 syscall_rename(const char *old_path, const char *new_path);
+i32 syscall_chmod(const char *path, u32 mode);
+i32 syscall_fsync(u32 fd);
 
 /* Pipe support for process I/O */
 u32 pipe_read_fd(u32 handle, void *buffer, u32 size);

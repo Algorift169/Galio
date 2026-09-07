@@ -123,6 +123,13 @@ SRCS = kernel/kmain.c \
        kernel/process/elf.c \
        kernel/syscall/syscall.c \
        kernel/syscall/syscall_extra.c \
+       kernel/syscall/sysinfo.c \
+       kernel/syscall/mkdir.c \
+       kernel/syscall/rmdir.c \
+       kernel/syscall/unlink.c \
+       kernel/syscall/rename.c \
+       kernel/syscall/chmod.c \
+       kernel/syscall/fsync.c \
        kernel/process/signals.c \
        kernel/process/paths.c \
        kernel/fs/path.c \
@@ -203,6 +210,7 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/ip.c \
        tools/shell/commands/pkg.c \
        tools/shell/commands/syscall.c \
+       tools/shell/commands/sysinfo.c \
        tools/shell/commands/wifi_list.c \
        tools/shell/commands/top.c \
        tools/shell/commands/spike.c \

@@ -94,6 +94,12 @@ extern i32 syscall_rt_sigaction(i32 sig, const void *act, void *oldact, u32 sigs
 extern i32 syscall_rt_sigprocmask(i32 how, const void *set, void *oldset, u32 sigsetsize);
 extern i32 syscall_rt_sigreturn(void);
 extern i32 syscall_sysinfo(void *info);
+extern i32 syscall_mkdir(const char *path, u32 mode);
+extern i32 syscall_rmdir(const char *path);
+extern i32 syscall_unlink(const char *path);
+extern i32 syscall_rename(const char *old_path, const char *new_path);
+extern i32 syscall_chmod(const char *path, u32 mode);
+extern i32 syscall_fsync(u32 fd);
 
 extern int socket_create(u32 owner_pid, i32 domain, i32 type, i32 protocol);
 extern int socket_connect_fd(u32 handle, const struct galio_sockaddr_in *address);
@@ -675,6 +681,30 @@ static void syscall_handler(registers_t *regs) {
 
         case SYS_SYSINFO:
             regs->rax = syscall_sysinfo((void *)arg1);
+            break;
+
+        case SYS_MKDIR:
+            regs->rax = syscall_mkdir((const char *)arg1, (u32)arg2);
+            break;
+
+        case SYS_RMDIR:
+            regs->rax = syscall_rmdir((const char *)arg1);
+            break;
+
+        case SYS_UNLINK:
+            regs->rax = syscall_unlink((const char *)arg1);
+            break;
+
+        case SYS_RENAME:
+            regs->rax = syscall_rename((const char *)arg1, (const char *)arg2);
+            break;
+
+        case SYS_CHMOD:
+            regs->rax = syscall_chmod((const char *)arg1, (u32)arg2);
+            break;
+
+        case SYS_FSYNC:
+            regs->rax = syscall_fsync((u32)arg1);
             break;
 
         case SYS_MMAP2:

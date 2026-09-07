@@ -25,6 +25,7 @@
 #include "path.h"
 #include "string.h"
 #include "vfs.h"
+#include "vfs_core.h"
 #include "auth.h"
 
 static const char *skip_spaces(const char *text) {
@@ -40,13 +41,36 @@ static u8 token_is_basename(const char *token) {
     return 1;
 }
 
-static const char *entry_basename(const char *path) {
-    const char *base = path;
-    while (*path) {
-        if (*path == '/') base = path + 1;
-        path++;
+static u8 path_contains(const char *path, const char *name) {
+    u32 path_length = strlen(path);
+    u32 name_length = strlen(name);
+
+    if (name_length == 0 || name_length > path_length) return 0;
+    for (u32 i = 0; i <= path_length - name_length; i++) {
+        if (strncmp(path + i, name, name_length) == 0) return 1;
     }
-    return base;
+    return 0;
+}
+
+static u8 can_search_root_tree(const char *current_dir);
+static u8 path_is_in_current_tree(const char *path, const char *current_dir);
+
+static void search_dentry_tree(vfs_dentry_t *dentry, const char *token,
+                               const char *current_dir, u8 *found) {
+    char path[VFS_MAX_PATH];
+
+    if (!dentry || !dentry->inode) return;
+    vfs_core_build_path(dentry, path);
+    if ((can_search_root_tree(current_dir) ||
+         path_is_in_current_tree(path, current_dir)) &&
+        path_contains(path, token)) {
+        kprintf("%s\n", path);
+        *found = 1;
+    }
+
+    for (vfs_dentry_t *child = dentry->first_child; child; child = child->next_sibling) {
+        search_dentry_tree(child, token, current_dir, found);
+    }
 }
 
 static u8 can_search_root_tree(const char *current_dir) {
@@ -99,32 +123,21 @@ u8 shell_where_command(const char *args, const char *current_dir) {
         }
     }
 
-    char resolved[VFS_MAX_PATH];
-    path_resolve(current_dir ? current_dir : ".", token, resolved, sizeof(resolved));
-    vfs_entry_t *exact = vfs_find(resolved);
-    if (exact && (can_search_root_tree(current_dir) ||
-                  path_is_in_current_tree(exact->path, current_dir))) {
-        kprintf("%s\n", exact->path);
-        return 1;
-    }
-
     if (!token_is_basename(token) || !vfs_root) {
+        char resolved[VFS_MAX_PATH];
+        path_resolve(current_dir ? current_dir : ".", token, resolved, sizeof(resolved));
+        vfs_entry_t *exact = vfs_find(resolved);
+        if (exact && (can_search_root_tree(current_dir) ||
+                      path_is_in_current_tree(exact->path, current_dir))) {
+            kprintf("%s\n", exact->path);
+            return 1;
+        }
         kprintf("[WHERE] Not found: %s\n", token);
         return 0;
     }
 
     u8 found = 0;
-    for (u32 i = 0; i < vfs_root->entry_count; i++) {
-        const char *path = vfs_root->entries[i].path;
-        if (!can_search_root_tree(current_dir) &&
-            !path_is_in_current_tree(path, current_dir)) {
-            continue;
-        }
-        if (strcmp(entry_basename(path), token) == 0) {
-            kprintf("%s\n", path);
-            found = 1;
-        }
-    }
+    search_dentry_tree(vfs_core_root(), token, current_dir, &found);
 
     if (!found) {
         kprintf("[WHERE] Not found: %s\n", token);

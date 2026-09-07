@@ -912,9 +912,3 @@ i32 syscall_rt_sigprocmask(i32 how, const void *set, void *oldset, u32 sigsetsiz
 i32 syscall_rt_sigreturn(void) {
     return -38; /* ENOSYS */
 }
-
-/* System info stub */
-i32 syscall_sysinfo(void *info) {
-    (void)info;
-    return -38; /* ENOSYS */
-}

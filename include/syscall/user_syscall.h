@@ -62,6 +62,13 @@ static inline long sys_time(void) { return galio_syscall(SYS_TIME, 0, 0, 0, 0, 0
 static inline int sys_gettimeofday(void *tv) { return (int)galio_syscall(SYS_GETTIMEOFDAY, (long)tv, 0, 0, 0, 0); }
 static inline int sys_getuid(void) { return (int)galio_syscall(SYS_GETUID, 0, 0, 0, 0, 0); }
 static inline int sys_getgid(void) { return (int)galio_syscall(SYS_GETGID, 0, 0, 0, 0, 0); }
+static inline int sys_sysinfo(galio_sysinfo_t *info) { return (int)galio_syscall(SYS_SYSINFO, (long)info, 0, 0, 0, 0); }
+static inline int sys_mkdir(const char *path, unsigned int mode) { return (int)galio_syscall(SYS_MKDIR, (long)path, mode, 0, 0, 0); }
+static inline int sys_rmdir(const char *path) { return (int)galio_syscall(SYS_RMDIR, (long)path, 0, 0, 0, 0); }
+static inline int sys_unlink(const char *path) { return (int)galio_syscall(SYS_UNLINK, (long)path, 0, 0, 0, 0); }
+static inline int sys_rename(const char *old_path, const char *new_path) { return (int)galio_syscall(SYS_RENAME, (long)old_path, (long)new_path, 0, 0, 0); }
+static inline int sys_chmod(const char *path, unsigned int mode) { return (int)galio_syscall(SYS_CHMOD, (long)path, mode, 0, 0, 0); }
+static inline int sys_fsync(int fd) { return (int)galio_syscall(SYS_FSYNC, fd, 0, 0, 0, 0); }
 static inline int sys_socket(int domain, int type, int protocol) { return (int)galio_syscall(SYS_SOCKET, domain, type, protocol, 0, 0); }
 static inline int sys_bind(int sockfd, const void *addr, unsigned int addrlen) { return (int)galio_syscall(SYS_BIND, sockfd, (long)addr, addrlen, 0, 0); }
 static inline int sys_listen(int sockfd, int backlog) { return (int)galio_syscall(SYS_LISTEN, sockfd, backlog, 0, 0, 0); }
