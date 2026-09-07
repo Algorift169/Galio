@@ -44,6 +44,7 @@ void scheduler_tick(registers_t *regs) {
     process_t *current = process_current();
     if (current) {
         current->ticks++;
+        current->runtime_ticks++;
 
         if (current->time_slice > 0) {
             current->time_slice--;

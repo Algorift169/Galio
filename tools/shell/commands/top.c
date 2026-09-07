@@ -23,6 +23,8 @@
 #include "top.h"
 #include "kprintf.h"
 #include "process.h"
+#include "info.h"
+#include "pit.h"
 #include "keyboard.h"
 #include "vga.h"
 #include "string.h"
@@ -31,45 +33,19 @@ static const char *process_state_name(process_state_t state) {
     switch (state) {
         case PROCESS_READY: return "READY";
         case PROCESS_RUNNING: return "RUN";
-        case PROCESS_WAITING: return "WAIT";
+        case PROCESS_WAITING: return "SLEEP";
         case PROCESS_ZOMBIE: return "ZOMBIE";
         default: return "UNK";
     }
 }
 
-static u32 top_previous_ticks[MAX_PROCESSES];
 static u32 top_previous_time;
 
-static u32 process_cpu_percent(process_t *proc, u32 now, u32 index) {
-    u32 elapsed = now - top_previous_time;
-    u32 delta = proc->ticks - top_previous_ticks[index];
-    u32 percent = 0;
-
-    if (elapsed != 0) {
-        percent = (delta * 100) / elapsed;
-        if (percent > 100) {
-            percent = 100;
-        }
-    }
-    top_previous_ticks[index] = proc->ticks;
-    return percent;
-}
-
-static void top_put_u32(u32 value) {
-    char buffer[11];
-    u32 length = 0;
-    if (value == 0) {
-        vga_putch('0');
-        return;
-    }
-    while (value != 0) {
-        buffer[length++] = (char)('0' + (value % 10));
-        value /= 10;
-    }
-    while (length > 0) {
-        vga_putch(buffer[--length]);
-    }
-}
+typedef enum {
+    TOP_SORT_CPU,
+    TOP_SORT_MEMORY,
+    TOP_SORT_PID
+} top_sort_t;
 
 static void top_put_padded_u32(u32 value, u32 width) {
     char buffer[11];
@@ -91,81 +67,103 @@ static void top_put_padded_u32(u32 value, u32 width) {
     }
 }
 
-static void top_put_process(process_t *proc, u32 cpu, u32 memory) {
+static void top_put_path(const char *path) {
+    u32 length = 0;
+    while (path[length] && length < 32) {
+        vga_putch(path[length]);
+        length++;
+    }
+    if (path[length]) vga_puts("...");
+}
+
+static u32 process_cpu_percent(const process_info_t *proc, const process_info_t *previous,
+                               u64 total_delta) {
+    if (!previous || total_delta == 0 || proc->runtime_ticks < previous->runtime_ticks) {
+        return 0;
+    }
+    return (u32)(((proc->runtime_ticks - previous->runtime_ticks) * 1000) / total_delta);
+}
+
+static const process_info_t *top_previous_process(const process_info_t *previous,
+                                                  u32 previous_count, u32 pid) {
+    for (u32 i = 0; i < previous_count; i++) {
+        if (previous[i].pid == pid) return &previous[i];
+    }
+    return NULL;
+}
+
+static void top_put_process(const process_info_t *proc, u32 cpu_tenths) {
     top_put_padded_u32(proc->pid, 4);
     vga_puts("  ");
     top_put_padded_u32(proc->parent_pid, 4);
     vga_puts("  ");
     vga_puts(process_state_name(proc->state));
     vga_puts("   ");
-    top_put_padded_u32(cpu, 3);
+    top_put_padded_u32(cpu_tenths / 10, 3);
+    vga_putch('.');
+    vga_putch((char)('0' + (cpu_tenths % 10)));
     vga_puts("%  ");
-    top_put_padded_u32(memory / 1024, 6);
+    top_put_padded_u32(proc->memory_bytes / 1024, 6);
     vga_puts("K  ");
-    vga_puts(proc->path);
+    vga_puts(proc->type == PROCESS_INFO_KERNEL ? "KTHR  " : "USER  ");
+    top_put_path(proc->path);
     vga_putch('\n');
 }
 
-static void top_sort_processes(process_t **processes, u32 *cpus, u32 *memory_bytes, u32 count) {
+static void top_sort_processes(process_info_t *processes, u32 *cpus, u32 count, top_sort_t sort) {
     for (u32 i = 1; i < count; i++) {
-        process_t *process = processes[i];
+        process_info_t process = processes[i];
         u32 process_cpu = cpus[i];
-        u32 process_memory = memory_bytes[i];
         u32 position = i;
 
-        while (position > 0 &&
-               (cpus[position - 1] < process_cpu ||
-                (cpus[position - 1] == process_cpu && memory_bytes[position - 1] < process_memory) ||
-                (cpus[position - 1] == process_cpu && memory_bytes[position - 1] == process_memory &&
-                 processes[position - 1]->pid > process->pid))) {
+         while (position > 0 && ((sort == TOP_SORT_CPU && cpus[position - 1] < process_cpu) ||
+             (sort == TOP_SORT_MEMORY && processes[position - 1].memory_bytes < process.memory_bytes) ||
+               (sort == TOP_SORT_PID && processes[position - 1].pid > process.pid))) {
             processes[position] = processes[position - 1];
             cpus[position] = cpus[position - 1];
-            memory_bytes[position] = memory_bytes[position - 1];
             position--;
         }
         processes[position] = process;
         cpus[position] = process_cpu;
-        memory_bytes[position] = process_memory;
     }
 }
 
-static void print_process_table_once(void) {
-    extern u32 pit_get_ticks(void);
-    u32 now = pit_get_ticks();
-    process_t *processes[MAX_PROCESSES];
+static void print_process_table(const process_info_t *current, u32 current_count,
+                                const process_info_t *previous, u32 previous_count,
+                                u32 now, top_sort_t sort) {
+    process_info_t sorted[MAX_PROCESSES];
     u32 cpus[MAX_PROCESSES];
-    u32 memory_bytes[MAX_PROCESSES];
-    u32 visible = 0;
-    vga_puts("PID   PPID  STATE   CPU%  MEMORY   PATH\n");
-    vga_puts("-----------------------------------------------\n");
+    u64 total_delta = 0;
+    u32 running = 0;
+    u32 sleeping = 0;
+    u32 kernel = 0;
 
-    for (u32 i = 0; i < MAX_PROCESSES; i++) {
-        process_t *proc = process_get_by_index(i);
-        if (!proc) {
-            continue;
-        }
-
-        u32 process_memory = process_get_memory_usage(proc);
-        u32 cpu = process_cpu_percent(proc, now, i);
-        processes[visible] = proc;
-        cpus[visible] = cpu;
-        memory_bytes[visible] = process_memory;
-        visible++;
+    if (previous_count > 0) total_delta = now - top_previous_time;
+    for (u32 i = 0; i < current_count; i++) {
+        sorted[i] = current[i];
+        cpus[i] = process_cpu_percent(&current[i],
+                                      top_previous_process(previous, previous_count, current[i].pid),
+                                      total_delta);
+        if (current[i].state == PROCESS_RUNNING) running++;
+        if (current[i].state == PROCESS_WAITING) sleeping++;
+        if (current[i].type == PROCESS_INFO_KERNEL) kernel++;
     }
+    top_sort_processes(sorted, cpus, current_count, sort);
 
-    top_sort_processes(processes, cpus, memory_bytes, visible);
-    for (u32 i = 0; i < visible; i++) {
-        top_put_process(processes[i], cpus[i], memory_bytes[i]);
+    vga_puts("Galio Top\n");
+    kprintf("Tasks: %u total | %u running | %u sleeping | %u kernel\n",
+             current_count, running, sleeping, kernel);
+    kprintf("CPU: sample %u ticks | refresh 1s\n", now - top_previous_time);
+    vga_puts("PID   PPID  STATE   CPU%   MEMORY   TYPE  COMMAND\n");
+    vga_puts("-------------------------------------------------------------\n");
+    for (u32 i = 0; i < current_count && i < 18; i++) {
+        top_put_process(&sorted[i], cpus[i]);
     }
-
-    if (visible == 0) {
-        vga_puts("No active processes\n");
-    }
-    top_previous_time = now;
-    vga_puts("Press Ctrl+C to stop top\n");
+    if (current_count == 0) vga_puts("No active processes\n");
+    vga_puts("q/Ctrl+C quit | r refresh | p CPU | m memory | n PID\n");
 }
 
-static u8 top_should_exit(void) {
+static u8 top_should_exit(top_sort_t *sort, u8 *refresh) {
     u8 scancode = 0;
     u8 is_pressed = 0;
     u8 extended = 0;
@@ -173,6 +171,7 @@ static u8 top_should_exit(void) {
     if (keyboard_take_ctrl_c()) {
         keyboard_clear_pending_input();
         vga_puts("\nStopping top\n");
+        vga_enable_hardware_cursor();
         return 1;
     }
 
@@ -188,14 +187,26 @@ static u8 top_should_exit(void) {
         if (scancode == 0x2E && keyboard_ctrl_pressed()) {
             keyboard_clear_pending_input();
             kprintf("\nStopping top\n");
+            vga_enable_hardware_cursor();
             return 1;
         }
+
+        u8 ascii = scancode_to_ascii(scancode);
+        if (ascii == 'p') *sort = TOP_SORT_CPU;
+        if (ascii == 'm') *sort = TOP_SORT_MEMORY;
+        if (ascii == 'n') *sort = TOP_SORT_PID;
+        if (ascii == 'r') *refresh = 1;
     }
 
     return 0;
 }
 
 u8 shell_top_command(const char *args, const char *current_dir) {
+    process_info_t previous[MAX_PROCESSES];
+    process_info_t current[MAX_PROCESSES];
+    u32 previous_count = 0;
+    u32 next_sample;
+    top_sort_t sort = TOP_SORT_CPU;
     (void)current_dir;
     if (args && *args != '\0') {
         const char *trim = args;
@@ -210,20 +221,27 @@ u8 shell_top_command(const char *args, const char *current_dir) {
 
     keyboard_reset_state();
     keyboard_clear_pending_input();
+    vga_disable_hardware_cursor();
     vga_clear_no_update();
+    next_sample = pit_get_ticks();
+    top_previous_time = next_sample;
     for (;;) {
-        if (top_should_exit()) {
+        u8 refresh = 0;
+        if (top_should_exit(&sort, &refresh)) {
             return 1;
         }
 
-        vga_clear_no_update();
-        print_process_table_once();
-        process_yield();
-
-        for (volatile u32 i = 0; i < 2000000; i++) {
-            if (top_should_exit()) {
-                return 1;
-            }
+        u32 now = pit_get_ticks();
+        if (refresh || (u32)(now - next_sample) < 0x80000000u) {
+            u32 current_count = process_snapshot(current, MAX_PROCESSES);
+            vga_set_cursor_position(0, 0);
+            print_process_table(current, current_count, previous, previous_count, now, sort);
+            for (u32 i = 0; i < current_count; i++) previous[i] = current[i];
+            previous_count = current_count;
+            top_previous_time = now;
+            next_sample = now + 100;
+        } else {
+            __asm__ volatile("hlt" ::: "memory");
         }
     }
 }

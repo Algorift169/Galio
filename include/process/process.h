@@ -103,6 +103,7 @@ typedef struct {
     u32 burst_time;
     u32 arrival_order;
     u32 ticks;
+    u64 runtime_ticks;
     u32 memory_bytes;
     u32 time_slice;
     u32 fd_table[PROCESS_MAX_FDS];

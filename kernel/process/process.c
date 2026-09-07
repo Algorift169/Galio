@@ -36,6 +36,7 @@
 #include "auth.h"
 #include "elf.h"
 #include "vga.h"
+#include "info.h"
 
 #define PAGE_SIZE 4096
 
@@ -214,6 +215,7 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->burst_time = priority == 0 ? 1 : priority;
     proc->arrival_order = next_arrival_order++;
     proc->ticks = 0;
+    proc->runtime_ticks = 0;
     proc->memory_bytes = 0;
     proc->pagedir = paging_create_user_directory();
     if (!proc->pagedir) {
@@ -674,6 +676,36 @@ process_t *process_get_by_index(u32 index) {
     }
 
     return proc;
+}
+
+u32 process_snapshot(process_info_t *entries, u32 capacity) {
+    u32 count = 0;
+
+    if (!entries || capacity == 0) return 0;
+
+    spin_lock(&process_table_lock);
+    for (u32 i = 0; i < MAX_PROCESSES && count < capacity; i++) {
+        process_t *proc = &processes[i];
+        if (proc->pid == 0 || proc->pid == 0xFFFFFFFFu ||
+            proc->state == PROCESS_ZOMBIE) {
+            continue;
+        }
+
+        entries[count].pid = proc->pid;
+        entries[count].parent_pid = proc->parent_pid;
+        entries[count].state = proc->state;
+        entries[count].type = (proc->regs.cs & 3) == 3 ?
+            PROCESS_INFO_USER : PROCESS_INFO_KERNEL;
+        entries[count].priority = proc->priority;
+        entries[count].runtime_ticks = proc->runtime_ticks;
+        entries[count].memory_bytes = process_get_memory_usage(proc);
+        strncpy(entries[count].path, proc->path, PROCESS_INFO_NAME_MAX - 1);
+        entries[count].path[PROCESS_INFO_NAME_MAX - 1] = 0;
+        count++;
+    }
+    spin_unlock(&process_table_lock);
+
+    return count;
 }
 
 u32 process_get_memory_usage(process_t *proc) {

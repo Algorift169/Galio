@@ -147,6 +147,15 @@ void vga_clear_no_update(void) {
     vga_current_color = VGA_COLOR_BOOT_GREEN;
 }
 
+void vga_set_cursor_position(int x, int y) {
+    if (x < 0) x = 0;
+    if (x >= VGA_WIDTH) x = VGA_WIDTH - 1;
+    if (y < 0) y = 0;
+    if (y >= VGA_HEIGHT) y = VGA_HEIGHT - 1;
+    cursor_x = (u32)x;
+    cursor_y = (u32)y;
+}
+
 void vga_set_color(unsigned char color) {
     vga_current_color = color;
 }
