@@ -866,32 +866,6 @@ i32 syscall_semctl(i32 semid, i32 semnum, i32 cmd, void *arg) {
     return -38; /* ENOSYS */
 }
 
-void *syscall_shmat(i32 shmid, const void *shmaddr, i32 shmflg) {
-    (void)shmid;
-    (void)shmaddr;
-    (void)shmflg;
-    return (void *)-38;
-}
-
-i32 syscall_shmdt(const void *shmaddr) {
-    (void)shmaddr;
-    return -38; /* ENOSYS */
-}
-
-i32 syscall_shmget(u32 key, u32 size, i32 shmflg) {
-    (void)key;
-    (void)size;
-    (void)shmflg;
-    return -38; /* ENOSYS */
-}
-
-i32 syscall_shmctl(i32 shmid, i32 cmd, void *buf) {
-    (void)shmid;
-    (void)cmd;
-    (void)buf;
-    return -38; /* ENOSYS */
-}
-
 /* Signal handling stubs */
 i32 syscall_rt_sigaction(i32 sig, const void *act, void *oldact, u32 sigsetsize) {
     (void)sig;

@@ -26,6 +26,7 @@
 #include "common.h"
 #include "cpu.h"
 #include "sysinfo.h"
+#include "shmem.h"
 
 #define SYSCALL_TRACE 1
 

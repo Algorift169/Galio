@@ -110,6 +110,7 @@ SRCS = kernel/kmain.c \
        kernel/mm/heap.c \
        kernel/mm/memory.c \
        kernel/mm/dma.c \
+       kernel/mm/shmem.c \
        kernel/process/process.c \
        kernel/process/scheduler.c \
        kernel/cpu/cpu.c \
@@ -123,6 +124,7 @@ SRCS = kernel/kmain.c \
        kernel/process/elf.c \
        kernel/syscall/syscall.c \
        kernel/syscall/syscall_extra.c \
+       kernel/syscall/shmem.c \
        kernel/syscall/sysinfo.c \
        kernel/syscall/mkdir.c \
        kernel/syscall/rmdir.c \

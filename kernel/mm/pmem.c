@@ -35,6 +35,7 @@ static u8 frame_refcount[BITMAP_SIZE * 8] = {0};
 static u32 total_frames = 0;
 static u32 used_frames = 0;
 static u32 kernel_frames = 0;
+static u32 allocation_cursor = 0;
 
 #define FRAME_MASK(frame) ((frame) / 8)
 #define BIT_MASK(frame)   (1 << ((frame) % 8))
@@ -178,11 +179,12 @@ u32 pmem_alloc(size_t num_frames) {
         return 0;
     }
 
-    for (u32 frame = 0; frame + num_frames <= max_frames; frame++) {
-        if (!get_frame(frame)) {
-            /* Check if we have enough contiguous frames */
+    for (u32 pass = 0; pass < 2; pass++) {
+        u32 start = pass == 0 ? allocation_cursor : 0;
+        u32 limit = pass == 0 ? max_frames : allocation_cursor;
+        for (u32 frame = start; frame + num_frames <= limit; frame++) {
             u8 found = 1;
-            for (u32 i = 1; i < num_frames; i++) {
+            for (u32 i = 0; i < num_frames; i++) {
                 if (get_frame(frame + i)) {
                     found = 0;
                     break;
@@ -194,7 +196,7 @@ u32 pmem_alloc(size_t num_frames) {
                 for (u32 i = 0; i < num_frames; i++) {
                     ref_frame(frame + i);
                 }
-                // kprintf("pmem_alloc: Allocated %u frame(s) at addr=%x (frame %u)\n", num_frames, addr, frame);
+                allocation_cursor = (frame + num_frames) % max_frames;
                 return addr;
             }
         }

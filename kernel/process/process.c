@@ -22,6 +22,7 @@
 
 /* process.c - Process management and scheduling */
 #include "process.h"
+#include "mm/shmem.h"
 #include "string.h"
 #include "signals.h"
 #include "net/socket.h"
@@ -354,6 +355,7 @@ u32 process_create(void (*entry)(void), u32 priority) {
 void process_free_address_space(process_t *proc) {
     if (!proc || !proc->pagedir) return;
     page_directory_t *pd = proc->pagedir;
+    shmem_detach_process(proc->pid);
     
     /* Walk page directory and free all user pages */
     for (u32 table_slot = 0; table_slot < PAGE_TABLE_SLOTS; table_slot++) {
@@ -626,12 +628,12 @@ void process_exit(i32 code) {
     current_process->pending_signals = 0;
     current_process->waiting_for_pid = -1;
     process_t *parent = process_get_any(current_process->parent_pid);
-    u8 parent_was_waiting = parent && parent->state == PROCESS_WAITING;
-    if (parent_was_waiting) {
+    if (parent && parent != current_process && parent->state != PROCESS_ZOMBIE) {
         parent->state = PROCESS_READY;
     }
     process_send_signal(current_process->parent_pid, SIGCHLD);
-    if ((current_process->regs.cs & 3) != 0 && parent && parent_was_waiting) {
+    if ((current_process->regs.cs & 3) != 0 && parent &&
+        parent != current_process && parent->state != PROCESS_ZOMBIE) {
         process_t *next = parent;
         if (next != current_process) {
             next->state = PROCESS_RUNNING;
