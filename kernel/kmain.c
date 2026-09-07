@@ -22,6 +22,7 @@
 
 #include "vga.h"
 #include "framebuffer.h"
+#include "gpu.h"
 #include "gdt.h"
 #include "idt.h"
 #include "irq.h"
@@ -236,8 +237,6 @@ static void register_kernel_services(void) {
 
 /* Entry point from bootloader - receives Multiboot info */
 void kmain(void *multiboot_ptr) {
-    (void)multiboot_ptr;
-
     serial_init();
     vga_init();
     fb_init();
@@ -297,6 +296,7 @@ void kmain(void *multiboot_ptr) {
     rtl8188eu_register_driver();
     e1000_register_driver();
     pci_init();
+    gpu_init();
     net_print_devices();
 
     kprintf("Running memory stabilization tests...\n");

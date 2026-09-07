@@ -163,6 +163,7 @@ SRCS = kernel/kmain.c \
        kernel/power/power_wakelock.c \
        kernel/drivers/video/vga.c \
        kernel/drivers/video/fb.c \
+       kernel/drivers/video/gpu.c \
        kernel/drivers/usb/usb.c \
        ui/src/display/display.c \
        ui/src/display/terminal_layer.c \

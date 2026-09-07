@@ -21,6 +21,8 @@
  */
 
 #include "framebuffer.h"
+#include "paging.h"
+#include "kprintf.h"
 
 #define FB_LINEAR_BASE 0xE0000000u
 
@@ -38,13 +40,60 @@ static inline u32 fb_index_for(u32 x, u32 y) {
 }
 
 void fb_init(void) {
-    g_fb.width = FB_DEFAULT_WIDTH;
-    g_fb.height = FB_DEFAULT_HEIGHT;
-    g_fb.bpp = FB_DEFAULT_BPP;
-    g_fb.pitch = g_fb.width * (g_fb.bpp / 8u);
+    g_fb.initialized = 0;
+    g_fb.base = NULL;
+}
+
+u8 fb_init_from_multiboot(const void *multiboot_info) {
+    const u32 *words = (const u32 *)multiboot_info;
+    u64 physical_base;
+    u32 pitch;
+    u32 width;
+    u32 height;
+    u32 bpp;
+
+    if (!words || !(words[0] & (1u << 12))) return 0;
+
+    physical_base = ((u64)words[23] << 32) | words[22];
+    pitch = words[24];
+    width = words[25];
+    height = words[26];
+    bpp = ((const u8 *)multiboot_info)[108];
+    if (physical_base > 0xFFFFFFFFu) {
+        kprintf("FB: framebuffer above 4 GiB is unsupported by current paging\n");
+        return 0;
+    }
+    if (!fb_attach((u32)physical_base, width, height, pitch, bpp)) return 0;
+    kprintf("FB: Multiboot framebuffer %ux%u %ubpp pitch=%u phys=0x%08X\n",
+            width, height, bpp, pitch, (u32)physical_base);
+    return 1;
+}
+
+u8 fb_is_initialized(void) {
+    return g_fb.initialized;
+}
+
+u8 fb_attach(u32 physical_base, u32 width, u32 height, u32 pitch, u32 bpp) {
+    if (!physical_base || !width || !height || bpp != 32 || pitch < width * 4u) {
+        return 0;
+    }
+
+    u32 bytes = pitch * height;
+    u32 pages = (bytes + PAGE_SIZE - 1) / PAGE_SIZE;
+    for (u32 i = 0; i < pages; i++) {
+        paging_map_kernel(FB_LINEAR_BASE + i * PAGE_SIZE,
+                          physical_base + i * PAGE_SIZE,
+                          PAGE_PRESENT | PAGE_RW);
+    }
+
+    g_fb.width = width;
+    g_fb.height = height;
+    g_fb.bpp = bpp;
+    g_fb.pitch = pitch;
     g_fb.base = (volatile u32 *)FB_LINEAR_BASE;
     g_fb.initialized = 1;
     fb_clear(FB_COLOR(0, 0, 0));
+    return 1;
 }
 
 void fb_set_mode(u32 width, u32 height, u32 bpp) {

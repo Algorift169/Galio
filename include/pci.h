@@ -62,6 +62,7 @@ void pci_write_config_u32(u8 bus, u8 device, u8 function, u8 offset, u32 value);
 u16 pci_read_config_u16(u8 bus, u8 device, u8 function, u8 offset);
 void pci_write_config_u16(u8 bus, u8 device, u8 function, u8 offset, u16 value);
 u8  pci_read_config_u8(u8 bus, u8 device, u8 function, u8 offset);
+u64 pci_get_bar_size(const pci_device_t *device, u8 bar_index);
 
 /* Access to device list */
 pci_device_t *pci_find_device(u16 vendor, u16 device);

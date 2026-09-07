@@ -69,6 +69,54 @@ u8 pci_read_config_u8(u8 bus, u8 device, u8 function, u8 offset) {
     return res;
 }
 
+u64 pci_get_bar_size(const pci_device_t *device, u8 bar_index) {
+    u32 original;
+    u32 mask;
+    u32 original_high = 0;
+    u32 mask_high = 0;
+    u64 size;
+    u8 offset;
+    u8 is_64_bit = 0;
+
+    if (!device || bar_index >= 6 || !device->bars[bar_index]) return 0;
+    offset = (u8)(0x10 + bar_index * 4);
+    original = pci_read_config_u32(device->bus, device->device,
+                                   device->function, offset);
+    if (device->bar_is_mem[bar_index] &&
+        ((original >> 1) & 0x3u) == 0x2u && bar_index < 5) {
+        is_64_bit = 1;
+        original_high = pci_read_config_u32(device->bus, device->device,
+                                            device->function, offset + 4);
+    }
+    pci_write_config_u32(device->bus, device->device, device->function,
+                         offset, 0xFFFFFFFFu);
+    if (is_64_bit) {
+        pci_write_config_u32(device->bus, device->device, device->function,
+                             offset + 4, 0xFFFFFFFFu);
+    }
+    mask = pci_read_config_u32(device->bus, device->device,
+                               device->function, offset);
+    if (is_64_bit) {
+        mask_high = pci_read_config_u32(device->bus, device->device,
+                                        device->function, offset + 4);
+    }
+    pci_write_config_u32(device->bus, device->device, device->function,
+                         offset, original);
+    if (is_64_bit) {
+        pci_write_config_u32(device->bus, device->device, device->function,
+                             offset + 4, original_high);
+    }
+    if (mask == 0 || mask == 0xFFFFFFFFu) return 0;
+    if (is_64_bit) {
+        size = ((u64)mask_high << 32) | (mask & ~0xFu);
+        return (~size) + 1;
+    }
+    if (device->bar_is_mem[bar_index]) {
+        return (u64)(~(mask & ~0xFu) + 1u);
+    }
+    return (u64)(~(mask & ~0x3u) + 1u);
+}
+
 static void pci_add_device(pci_device_t *d) {
     d->next = pci_dev_list;
     pci_dev_list = d;

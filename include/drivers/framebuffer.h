@@ -43,6 +43,9 @@ typedef struct {
 } framebuffer_t;
 
 void fb_init(void);
+u8 fb_init_from_multiboot(const void *multiboot_info);
+u8 fb_attach(u32 physical_base, u32 width, u32 height, u32 pitch, u32 bpp);
+u8 fb_is_initialized(void);
 void fb_set_mode(u32 width, u32 height, u32 bpp);
 void fb_clear(u32 color);
 void fb_put_pixel(u32 x, u32 y, u32 color);
