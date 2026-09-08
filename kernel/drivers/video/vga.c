@@ -274,6 +274,10 @@ void vga_puts(const char *s) {
 
 /* Scroll view up into history (shows older lines) */
 void vga_scrollback_up(void) {
+    if (fb_console_active()) {
+        fb_console_scroll_up();
+        return;
+    }
     if (scrollback_count == 0) return;
     if (scroll_offset >= scrollback_count) return;
 
@@ -324,6 +328,10 @@ void vga_scrollback_up(void) {
 
 /* Scroll view down towards live screen (shows newer lines) */
 void vga_scrollback_down(void) {
+    if (fb_console_active()) {
+        fb_console_scroll_down();
+        return;
+    }
     if (scroll_offset == 0) return;
 
     u32 step = 3;

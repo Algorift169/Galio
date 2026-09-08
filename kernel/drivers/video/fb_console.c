@@ -8,6 +8,7 @@
 #define FB_CONSOLE_BACKGROUND   0x00000000u
 #define FB_CONSOLE_MAX_COLUMNS  128u
 #define FB_CONSOLE_MAX_ROWS     96u
+#define FB_CONSOLE_SCROLLBACK_LINES 200u
 
 static u32 console_columns;
 static u32 console_rows;
@@ -20,6 +21,12 @@ static u8 console_cursor;
 static u32 console_background = FB_CONSOLE_BACKGROUND;
 static u32 console_foreground = FB_CONSOLE_FOREGROUND;
 static u16 console_cells[FB_CONSOLE_MAX_ROWS][FB_CONSOLE_MAX_COLUMNS];
+static u16 console_scrollback[FB_CONSOLE_SCROLLBACK_LINES][FB_CONSOLE_MAX_COLUMNS];
+static u32 console_scrollback_head = 0u;
+static u32 console_scrollback_count = 0u;
+static u32 console_scroll_offset = 0u;
+static u16 console_live_snapshot[FB_CONSOLE_MAX_ROWS][FB_CONSOLE_MAX_COLUMNS];
+static u8 console_live_snapshot_valid = 0u;
 
 static u8 glyph_row(char character, u32 row) {
     static const u8 digits[10][7] = {
@@ -124,7 +131,77 @@ static void draw_glyph(u32 x, u32 y, char character, u32 background) {
 static void draw_character(char character) {
     u32 x = console_column * console_cell_width;
     u32 y = console_row * console_cell_height;
+    console_cells[console_row][console_column] = (u16)(character | (0x0Fu << 8u));
     draw_glyph(x, y, character, console_background);
+}
+
+static void fb_console_draw_cell(u32 x, u32 y, u16 cell) {
+    char character = (char)(cell & 0xFFu);
+    u8 attr = (u8)(cell >> 8);
+    u32 background = console_background;
+
+    if (character == '\0') character = ' ';
+    fb_fill_rect(x * console_cell_width,
+                 y * console_cell_height,
+                 console_cell_width,
+                 console_cell_height,
+                 background);
+    if (character != ' ') {
+        draw_glyph(x * console_cell_width,
+                   y * console_cell_height,
+                   character,
+                   background);
+    }
+
+    (void)attr;
+}
+
+static void fb_console_render_visible(void) {
+    if (!console_ready) return;
+    for (u32 row = 0; row < console_rows; row++) {
+        for (u32 column = 0; column < console_columns; column++) {
+            fb_console_draw_cell(column, row, console_cells[row][column]);
+        }
+    }
+}
+
+static void fb_console_capture_live_snapshot(void) {
+    for (u32 row = 0; row < console_rows; row++) {
+        for (u32 column = 0; column < console_columns; column++) {
+            console_live_snapshot[row][column] = console_cells[row][column];
+        }
+    }
+    console_live_snapshot_valid = 1u;
+}
+
+static void fb_console_render_scrollback_view(void) {
+    if (!console_ready) return;
+
+    if (console_scroll_offset == 0u) {
+        fb_console_render_visible();
+        return;
+    }
+
+    if (!console_live_snapshot_valid) {
+        fb_console_capture_live_snapshot();
+    }
+
+    u32 history_rows = console_scroll_offset < console_rows ? console_scroll_offset : console_rows;
+
+    for (u32 row = 0; row < console_rows; row++) {
+        for (u32 column = 0; column < console_columns; column++) {
+            u16 cell;
+            if (row < history_rows) {
+                u32 lines_back = console_scroll_offset - row;
+                u32 idx = (console_scrollback_head + FB_CONSOLE_SCROLLBACK_LINES - lines_back) % FB_CONSOLE_SCROLLBACK_LINES;
+                cell = console_scrollback[idx][column];
+            } else {
+                u32 live_row = row - history_rows;
+                cell = console_live_snapshot[live_row][column];
+            }
+            fb_console_draw_cell(column, row, cell);
+        }
+    }
 }
 
 static void scroll_console(void) {
@@ -132,17 +209,29 @@ static void scroll_console(void) {
     u32 height;
     fb_get_info(&width, &height, NULL, NULL);
     if (console_rows < 2) return;
-    for (u32 row = 1; row < console_rows; row++) {
-        for (u32 y = 0; y < console_cell_height; y++) {
-            for (u32 x = 0; x < width; x++) {
-                fb_put_pixel(x, (row - 1u) * console_cell_height + y,
-                             fb_get_pixel(x, row * console_cell_height + y));
-            }
+
+    for (u32 row = 0; row < console_rows - 1u; row++) {
+        for (u32 column = 0; column < console_columns; column++) {
+            console_cells[row][column] = console_cells[row + 1u][column];
         }
     }
-    fb_fill_rect(0u, (console_rows - 1u) * console_cell_height,
-                 width, height - (console_rows - 1u) * console_cell_height,
-                 console_background);
+    for (u32 column = 0; column < console_columns; column++) {
+        console_cells[console_rows - 1u][column] = (u16)' ';
+    }
+
+    for (u32 x = 0; x < console_columns; x++) {
+        console_scrollback[console_scrollback_head][x] = console_cells[0][x];
+    }
+    console_scrollback_head = (console_scrollback_head + 1u) % FB_CONSOLE_SCROLLBACK_LINES;
+    if (console_scrollback_count < FB_CONSOLE_SCROLLBACK_LINES) {
+        console_scrollback_count++;
+    }
+
+    if (console_scroll_offset != 0u) {
+        console_scroll_offset = 0u;
+    }
+
+    fb_console_render_visible();
 }
 
 void fb_console_init(void) {
@@ -201,6 +290,15 @@ void fb_console_clear(u32 color) {
             console_cells[row][column] = (u16)' ';
         }
     }
+    for (u32 row = 0; row < FB_CONSOLE_SCROLLBACK_LINES; row++) {
+        for (u32 column = 0; column < FB_CONSOLE_MAX_COLUMNS; column++) {
+            console_scrollback[row][column] = (u16)' ';
+        }
+    }
+    console_scrollback_head = 0u;
+    console_scrollback_count = 0u;
+    console_scroll_offset = 0u;
+    console_live_snapshot_valid = 0u;
     console_column = 0;
     console_row = 0;
 }
@@ -227,6 +325,37 @@ void fb_console_begin_prompt_line(void) {
     fb_fill_rect(0, console_row * console_cell_height,
                  console_columns * console_cell_width, console_cell_height,
                  console_background);
+}
+
+void fb_console_scroll_up(void) {
+    if (!console_ready || console_scrollback_count == 0u) return;
+
+    u32 step = 3u;
+    if (console_scroll_offset + step > console_scrollback_count) {
+        console_scroll_offset = console_scrollback_count;
+    } else {
+        console_scroll_offset += step;
+    }
+
+    if (!console_live_snapshot_valid) {
+        fb_console_capture_live_snapshot();
+    }
+
+    fb_console_render_scrollback_view();
+}
+
+void fb_console_scroll_down(void) {
+    if (!console_ready || console_scroll_offset == 0u) return;
+
+    u32 step = 3u;
+    if (console_scroll_offset <= step) {
+        console_scroll_offset = 0u;
+        fb_console_render_visible();
+        return;
+    }
+
+    console_scroll_offset -= step;
+    fb_console_render_scrollback_view();
 }
 
 void fb_console_write_cell(int x, int y, char character, u8 color) {

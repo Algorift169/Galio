@@ -12,6 +12,8 @@ u32 fb_console_get_background(void);
 void fb_console_set_color(u8 color);
 void fb_console_set_foreground(u32 color);
 void fb_console_begin_prompt_line(void);
+void fb_console_scroll_up(void);
+void fb_console_scroll_down(void);
 void fb_console_write_cell(int x, int y, char character, u8 color);
 void fb_console_write_cursor_cell(int x, int y, char character);
 u16 fb_console_read_cell(int x, int y);
