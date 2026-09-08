@@ -1,399 +1,235 @@
-/*
- * Galio Kernel
- *
- * Copyright (C) 2026 S.M Israfil
- *
- * This file is part of Galio.
- *
- * Galio is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published
- * by the Free Software Foundation, either version 3 of the License,
- * or (at your option) any later version.
- *
- * Galio is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- *
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Galio. If not, see <https://www.gnu.org/licenses/>.
- */
-
 #include "editor.h"
 #include "vga.h"
-#include "kprintf.h"
 #include "string.h"
 #include "vfs.h"
-#include "vfs_core.h"
 #include "keyboard.h"
+#include "arch/x86/cpu.h"
+#include "irq.h"
 
-#define EDITOR_BUFFER_SIZE 4096
+#define EDITOR_BUFFER_SIZE 4096u
+#define EDITOR_TEXT_COLOR 0x0Fu
+#define EDITOR_CURSOR_COLOR 0xF0u
 
 typedef struct {
-    char content[EDITOR_BUFFER_SIZE];
+    char data[EDITOR_BUFFER_SIZE];
     u32 size;
     u32 cursor;
-} editor_buffer_t;
+    u8 ctrl_down;
+} editor_state_t;
 
-/* ASCII tables */
-static const u8 ascii_table[] = {
-    0, 27, '1','2','3','4','5','6','7','8','9','0','-','=', '\b','\t',
-    'q','w','e','r','t','y','u','i','o','p','[',']','\n',0, 'a','s',
+#define EDITOR_PS2_STATUS 0x64
+#define EDITOR_PS2_DATA   0x60
+
+static u8 editor_shift_down;
+static u8 editor_ctrl_down;
+static u8 editor_alt_down;
+static u8 editor_extended;
+
+static const u8 keymap[] = {
+    0,27,'1','2','3','4','5','6','7','8','9','0','-','=', '\b','\t',
+    'q','w','e','r','t','y','u','i','o','p','[',']','\n',0,'a','s',
     'd','f','g','h','j','k','l',';','\'','`',0,'\\','z','x','c','v',
-    'b','n','m',',','.','/',0,'*',0,' ',0,0,0,0,0,0,
+    'b','n','m',',','.','/',0,'*',0,' ',0,0,0,0,0,0
 };
-
-static const u8 ascii_table_shift[] = {
-    0, 27, '!','@','#','$','%','^','&','*','(',')','_','+', '\b','\t',
+static const u8 shifted_keymap[] = {
+    0,27,'!','@','#','$','%','^','&','*','(',')','_','+', '\b','\t',
     'Q','W','E','R','T','Y','U','I','O','P','{','}','\n',0,'A','S',
     'D','F','G','H','J','K','L',':','"','~',0,'|','Z','X','C','V',
-    'B','N','M','<','>','?',0,'*',0,' ',0,0,0,0,0,0,
+    'B','N','M','<','>','?',0,'*',0,' ',0,0,0,0,0,0
 };
 
-static u32 editor_line_count(const editor_buffer_t *buf) {
-    if (buf->size == 0) return 1;
-
-    u32 count = 1;
-    for (u32 i = 0; i < buf->size; i++) {
-        if (buf->content[i] == '\n') {
-            count++;
-        }
+static u8 editor_translate(u8 raw) {
+    if (raw < sizeof(keymap)) {
+        return editor_shift_down ? shifted_keymap[raw] : keymap[raw];
     }
-    return count;
-}
-
-static u32 editor_line_start(const editor_buffer_t *buf, u32 line_index) {
-    u32 current_line = 0;
-    u32 start = 0;
-
-    for (u32 i = 0; i < buf->size; i++) {
-        if (current_line == line_index) {
-            return start;
-        }
-        if (buf->content[i] == '\n') {
-            current_line++;
-            start = i + 1;
-        }
-    }
-
-    return start;
-}
-
-static u32 editor_line_end(const editor_buffer_t *buf, u32 line_index) {
-    u32 start = editor_line_start(buf, line_index);
-    u32 end = start;
-
-    while (end < buf->size && buf->content[end] != '\n') {
-        end++;
-    }
-
-    return end;
-}
-
-static void editor_move_cursor_left(editor_buffer_t *buf) {
-    if (buf->cursor > 0) {
-        buf->cursor--;
+    /* Set-1 keypad and navigation keys that produce printable characters. */
+    switch (raw) {
+        case 0x47: return '7';
+        case 0x48: return '8';
+        case 0x49: return '9';
+        case 0x4A: return '-';
+        case 0x4B: return '4';
+        case 0x4C: return '5';
+        case 0x4D: return '6';
+        case 0x4E: return '+';
+        case 0x4F: return '1';
+        case 0x50: return '2';
+        case 0x51: return '3';
+        case 0x52: return '0';
+        case 0x53: return '.';
+        default: return 0;
     }
 }
 
-static void editor_move_cursor_right(editor_buffer_t *buf) {
-    if (buf->cursor < buf->size) {
-        buf->cursor++;
-    }
-}
+static u8 editor_read_scancode(u8 *scancode, u8 *pressed, u8 *extended) {
+    u8 status = inb(EDITOR_PS2_STATUS);
+    if (!(status & 0x01u) || (status & 0x20u)) return 0;
 
-static void editor_move_vertical(editor_buffer_t *buf, int delta) {
-    if (buf->size == 0) {
-        return;
-    }
-
-    u32 current_line = 0;
-    for (u32 i = 0; i < buf->cursor; i++) {
-        if (buf->content[i] == '\n') {
-            current_line++;
-        }
-    }
-
-    int target_line = (int)current_line + delta;
-    if (target_line < 0) {
-        target_line = 0;
-    }
-
-    u32 total_lines = editor_line_count(buf);
-    if ((u32)target_line >= total_lines) {
-        target_line = (int)total_lines - 1;
-    }
-
-    u32 current_line_start = editor_line_start(buf, (u32)current_line);
-    u32 current_col = buf->cursor - current_line_start;
-    u32 target_line_start = editor_line_start(buf, (u32)target_line);
-    u32 target_line_end = editor_line_end(buf, (u32)target_line);
-    u32 target_col = current_col;
-    u32 target_line_len = target_line_end - target_line_start;
-    if (target_col > target_line_len) {
-        target_col = target_line_len;
-    }
-
-    buf->cursor = target_line_start + target_col;
-}
-
-static void editor_put_text_at(int x, int y, const char *text, unsigned char color) {
-    int cx = x;
-    int cy = y;
-    while (*text) {
-        if (*text == '\n') {
-            cx = x;
-            cy++;
-        } else {
-            vga_write_cell(cx, cy, *text, color);
-            cx++;
-        }
-        text++;
-    }
-}
-
-static void editor_redraw(editor_buffer_t *buf, const char *filepath, u8 save_status) {
-    vga_clear();
-    vga_disable_hardware_cursor();
-
-    editor_put_text_at(0, 0, "^X Exit | ^S Save | Arrows Move Cursor", 0x0F);
-    editor_put_text_at(0, 1, "File: ", 0x0F);
-    editor_put_text_at(6, 1, filepath, 0x0F);
-    editor_put_text_at(0, 2, "=====================", 0x0F);
-
-    if (save_status == 1) editor_put_text_at(0, 3, ">>> SAVING... <<<", 0x0F);
-    else if (save_status == 2) editor_put_text_at(0, 3, ">>> SAVED! <<<", 0x0F);
-    else if (save_status == 3) editor_put_text_at(0, 3, ">>> SAVE FAILED! <<<", 0x0F);
-
-    int cursor_x = 0;
-    int cursor_y = 5;
-    int visual_cursor_x = 0;
-    int visual_cursor_y = cursor_y;
-
-    if (buf->size == 0) {
-        editor_put_text_at(0, cursor_y, "[Empty file - start typing]", 0x0F);
-        visual_cursor_x = 0;
-        visual_cursor_y = cursor_y;
-        cursor_y += 1;
-    } else {
-        for (u32 i = 0; i < buf->size; i++) {
-            char ch = buf->content[i];
-            if (i == buf->cursor) {
-                visual_cursor_x = cursor_x;
-                visual_cursor_y = cursor_y;
-            }
-            if (ch == '\n') {
-                cursor_x = 0;
-                cursor_y++;
-                continue;
-            }
-            vga_write_cell(cursor_x, cursor_y, ch, 0x0F);
-            cursor_x++;
-        }
-
-        if (buf->cursor == buf->size) {
-            visual_cursor_x = cursor_x;
-            visual_cursor_y = cursor_y;
-        }
-    }
-
-    /* Keep the character under the insertion point visible; the hardware cursor
-       marks the position without replacing that character. */
-    vga_move_hardware_cursor(visual_cursor_x, visual_cursor_y);
-    vga_enable_hardware_cursor();
-
-    editor_put_text_at(0, cursor_y + 1, "=====================", 0x0F);
-}
-
-static u8 vfs_write_file(const char *path, const u8 *data, u32 size) {
-    /* Use the VFS wrapper so path normalization and error reporting are handled consistently. */
-    u32 fd = vfs_open(path);
-    if (fd == VFS_INVALID_FD) {
-        /* If the file does not exist yet, try to create it before writing. */
-        if (!vfs_create(path, 1)) {
-            kprintf("[EDITOR] ERROR: Could not open or create file: %s\n", path);
-            return 0;
-        }
-        fd = vfs_open(path);
-        if (fd == VFS_INVALID_FD) {
-            kprintf("[EDITOR] ERROR: Could not open file after creation: %s\n", path);
-            return 0;
-        }
-    }
-
-    u32 written = vfs_write(fd, data, size);
-    if (written != size) {
-        kprintf("[EDITOR] ERROR: write failed (expected %u, wrote %u bytes)\n", size, written);
-    }
-
-    vfs_close(fd);
-    return (written == size) ? 1 : 0;
-}
-
-static void editor_handle_key(editor_buffer_t *buf, u8 scancode, u8 is_pressed, u8 extended,
-                               u8 *save_flag, u8 *exit_flag, u8 *buffer_changed) {
-    *buffer_changed = 0;
-    if (!is_pressed) return;
-    
-    u8 raw = scancode & 0x7F;
-    
-    /* Ctrl+S (scancode 0x1F = 's') */
-    if (keyboard_ctrl_pressed() && raw == 0x1F) {
-        *save_flag = 1;
-        return;
-    }
-    
-    /* Ctrl+X (scancode 0x2D = 'x') */
-    if (keyboard_ctrl_pressed() && raw == 0x2D) {
-        *exit_flag = 1;
-        return;
-    }
-
-    /* Esc is a fallback exit in case a Ctrl release event was missed. */
-    if (raw == 0x01) {
-        *exit_flag = 1;
-        return;
-    }
-    
-    /* If Ctrl was active but this was not a save/exit combo, discard the key. */
-    if (keyboard_ctrl_pressed()) {
-        return;
-    }
-
-    if (extended) {
-        switch (raw) {
-            case 0x4B:
-                editor_move_cursor_left(buf);
-                *buffer_changed = 1;
-                return;
-            case 0x4D:
-                editor_move_cursor_right(buf);
-                *buffer_changed = 1;
-                return;
-            case 0x48:
-                editor_move_vertical(buf, -1);
-                *buffer_changed = 1;
-                return;
-            case 0x50:
-                editor_move_vertical(buf, 1);
-                *buffer_changed = 1;
-                return;
-            default:
-                return;
-        }
-    }
-    
-    if (raw >= sizeof(ascii_table)) return;
-    
-    u8 c = keyboard_shift_pressed() ? ascii_table_shift[raw] : ascii_table[raw];
-    if (c == 0) return;
-    
-    if (c == '\b') {
-        if (buf->cursor > 0) {
-            for (u32 i = buf->cursor; i < buf->size; i++) {
-                buf->content[i - 1] = buf->content[i];
-            }
-            buf->size--;
-            buf->cursor--;
-            *buffer_changed = 1;
-        }
-    } else if (c == '\n') {
-        if (buf->size < EDITOR_BUFFER_SIZE - 1) {
-            for (u32 i = buf->size; i > buf->cursor; i--) {
-                buf->content[i] = buf->content[i - 1];
-            }
-            buf->content[buf->cursor] = '\n';
-            buf->size++;
-            buf->cursor++;
-            *buffer_changed = 1;
-        }
-    } else if (c >= 32 && c < 127) {
-        if (buf->size < EDITOR_BUFFER_SIZE - 1) {
-            for (u32 i = buf->size; i > buf->cursor; i--) {
-                buf->content[i] = buf->content[i - 1];
-            }
-            buf->content[buf->cursor] = c;
-            buf->size++;
-            buf->cursor++;
-            *buffer_changed = 1;
-        }
-    }
-}
-
-static void editor_poll_keyboard(editor_buffer_t *buf, u8 *save_flag, u8 *exit_flag, u8 *buffer_changed) {
-    u8 scancode;
-    u8 is_pressed;
-    u8 extended;
-
-    if (!keyboard_read_event(&scancode, &is_pressed, &extended)) {
-        return;
-    }
-
-    if (!is_pressed) {
-        return;
-    }
-
-    editor_handle_key(buf, scancode, is_pressed, extended, save_flag, exit_flag, buffer_changed);
-}
-
-u8 shell_editor(const char *filepath) {
-    if (!filepath || *filepath == 0) {
-        kprintf("[EDITOR] No file specified\n");
+    u8 data = inb(EDITOR_PS2_DATA);
+    if (data == 0xE0u) {
+        editor_extended = 1;
         return 0;
     }
 
-    editor_buffer_t buf = {0};
-    u8 save_flag = 0, exit_flag = 0;
-    u8 buffer_changed = 0;
-    
-    /* Load existing content */
-    vfs_entry_t *entry = vfs_find(filepath);
-    if (entry && !entry->is_dir && entry->size > 0) {
-        u32 to_read = (entry->size < EDITOR_BUFFER_SIZE) ? entry->size : EDITOR_BUFFER_SIZE;
-        vfs_read(filepath, buf.content, to_read);
-        buf.size = to_read;
-        buf.cursor = buf.size;
+    if (scancode) *scancode = data & 0x7Fu;
+    if (pressed) *pressed = (data & 0x80u) == 0;
+    if (extended) *extended = editor_extended;
+    editor_extended = 0;
+
+    switch (data & 0x7Fu) {
+        case 0x2Au:
+        case 0x36u:
+            editor_shift_down = (data & 0x80u) == 0;
+            break;
+        case 0x1Du:
+            editor_ctrl_down = (data & 0x80u) == 0;
+            break;
+        case 0x38u:
+            editor_alt_down = (data & 0x80u) == 0;
+            break;
+        default:
+            break;
     }
-    
-    kprintf("[EDITOR] Opening %s\n", filepath);
-    kprintf("[EDITOR] Press Ctrl+S to save, Ctrl+X to exit\n");
-    keyboard_reset_state();
-    vga_disable_hardware_cursor();
-    
-    /* Small delay to show message */
-    for (volatile int i = 0; i < 200000; i++);
-    
-    editor_redraw(&buf, filepath, 0);
+    return 1;
+}
 
-    while (!exit_flag) {
-        editor_poll_keyboard(&buf, &save_flag, &exit_flag, &buffer_changed);
+static void editor_put(int x, int y, char character, u8 color) {
+    if (x >= 0 && y >= 0 && x < 128 && y < 48) vga_write_cell(x, y, character, color);
+}
 
-        if (buffer_changed) {
-            editor_redraw(&buf, filepath, 0);
-            buffer_changed = 0;
-        }
-        
-        if (save_flag) {
-            save_flag = 0;
-            editor_redraw(&buf, filepath, 1);
-            
-            if (vfs_write_file(filepath, (u8*)buf.content, buf.size)) {
-                /* Force filesystem sync to ensure data is written to disk */
-                vfs_fsync();
-                editor_redraw(&buf, filepath, 2);
-            } else {
-                editor_redraw(&buf, filepath, 3);
+static void editor_text(int x, int y, const char *text, u8 color) {
+    while (text && *text && x < 128) editor_put(x++, y, *text++, color);
+}
+
+static u32 editor_line_column(const editor_state_t *state, u32 *line) {
+    u32 column = 0;
+    *line = 0;
+    for (u32 index = 0; index < state->cursor; index++) {
+        if (state->data[index] == '\n') {
+            (*line)++;
+            column = 0;
+        } else column++;
+    }
+    return column;
+}
+
+static void editor_draw_cursor(const editor_state_t *state) {
+    u32 line;
+    u32 column = editor_line_column(state, &line);
+    if (line >= 44u || column >= 128u) return;
+
+    /* Match GSH: a visible white cell with the underlying character in black. */
+    vga_move_hardware_cursor((int)column, (int)(4u + line));
+    vga_write_cell((int)column, (int)(4u + line), ' ', EDITOR_CURSOR_COLOR);
+}
+
+static void editor_draw(const editor_state_t *state, const char *path, const char *status) {
+    int x = 0;
+    int y = 4;
+
+    vga_clear();
+    editor_text(0, 0, "Ctrl+S Save | Ctrl+X Exit | Arrows Move", EDITOR_TEXT_COLOR);
+    editor_text(0, 1, "File: ", EDITOR_TEXT_COLOR);
+    editor_text(6, 1, path, EDITOR_TEXT_COLOR);
+    if (status) editor_text(0, 2, status, EDITOR_TEXT_COLOR);
+
+    for (u32 index = 0; index < state->size && y < 47; index++) {
+        char character = state->data[index];
+        if (character == '\n') {
+            x = 0;
+            y++;
+        } else {
+            editor_put(x++, y, character, EDITOR_TEXT_COLOR);
+            if (x >= 128) {
+                x = 0;
+                y++;
             }
         }
-        
-        /* Small delay to avoid CPU spinning */
-        for (volatile int i = 0; i < 100; i++);
     }
-    
+    editor_draw_cursor(state);
+}
+
+static u8 editor_save(const char *path, const editor_state_t *state) {
+    u32 fd = vfs_open(path);
+    if (fd == VFS_INVALID_FD) return 0;
+    u32 written = vfs_write(fd, (const u8 *)state->data, state->size);
+    vfs_close(fd);
+    if (written != state->size) return 0;
+    vfs_fsync();
+    return 1;
+}
+
+static void editor_insert(editor_state_t *state, char character) {
+    if (state->size >= EDITOR_BUFFER_SIZE - 1) return;
+    for (u32 index = state->size; index > state->cursor; index--) state->data[index] = state->data[index - 1];
+    state->data[state->cursor++] = character;
+    state->size++;
+}
+
+static void editor_delete_left(editor_state_t *state) {
+    if (state->cursor == 0) return;
+    for (u32 index = state->cursor - 1; index < state->size - 1; index++) state->data[index] = state->data[index + 1];
+    state->cursor--;
+    state->size--;
+}
+
+u8 shell_editor(const char *filepath) {
+    editor_state_t state = {0};
+    u8 scancode;
+    u8 pressed;
+    u8 extended;
+    vfs_entry_t *entry;
+
+    if (!filepath || !*filepath) return 0;
+    entry = vfs_find(filepath);
+    if (entry && !entry->is_dir && entry->size) {
+        state.size = entry->size < EDITOR_BUFFER_SIZE - 1 ? entry->size : EDITOR_BUFFER_SIZE - 1;
+        vfs_read(filepath, (u8 *)state.data, state.size);
+        state.cursor = state.size;
+    }
+
+    /* Editor owns PS/2 input exclusively while active. */
+    irq_mask(1);
     keyboard_reset_state();
+    editor_shift_down = 0;
+    editor_ctrl_down = 0;
+    editor_alt_down = 0;
+    editor_extended = 0;
+    enable_interrupts();
+    vga_disable_hardware_cursor();
+    editor_draw(&state, filepath, NULL);
+
+    for (;;) {
+        if (!editor_read_scancode(&scancode, &pressed, &extended)) continue;
+        u8 raw = scancode & 0x7Fu;
+        if (!pressed) continue;
+
+        state.ctrl_down = editor_ctrl_down;
+        if (editor_ctrl_down && raw == 0x1F) {
+            editor_draw(&state, filepath, editor_save(filepath, &state) ? "Saved" : "Save failed");
+            continue;
+        }
+        if (editor_ctrl_down && raw == 0x2D) break;
+        if (editor_ctrl_down || editor_alt_down) continue;
+
+        if (extended) {
+            if (raw == 0x4B && state.cursor) state.cursor--;
+            else if (raw == 0x4D && state.cursor < state.size) state.cursor++;
+            else continue;
+            editor_draw(&state, filepath, NULL);
+            continue;
+        }
+            u8 character = editor_translate(raw);
+        if (character == '\b') editor_delete_left(&state);
+        else if (character >= 32 && character < 127) editor_insert(&state, (char)character);
+        else if (character == '\n') editor_insert(&state, '\n');
+        else continue;
+        editor_draw(&state, filepath, NULL);
+    }
+
+    keyboard_reset_state();
+    irq_unmask(1);
     vga_enable_hardware_cursor();
     vga_clear();
-    kprintf("[EDITOR] Exited\n");
     return 1;
 }

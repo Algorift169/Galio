@@ -1,9 +1,9 @@
 #include "fb_console.h"
 #include "framebuffer.h"
 
-#define FB_CONSOLE_GLYPH_WIDTH  16u
-#define FB_CONSOLE_GLYPH_HEIGHT 18u
-#define FB_CONSOLE_GLYPH_SCALE  2u
+#define FB_CONSOLE_GLYPH_WIDTH  8u
+#define FB_CONSOLE_GLYPH_HEIGHT 16u
+#define FB_CONSOLE_GLYPH_SCALE  1u
 #define FB_CONSOLE_FOREGROUND   0x00FFFFFFu
 #define FB_CONSOLE_BACKGROUND   0x00000000u
 #define FB_CONSOLE_MAX_COLUMNS  128u
@@ -112,8 +112,8 @@ static void draw_glyph(u32 x, u32 y, char character, u32 background) {
         u8 bits = glyph_row(character, row);
         for (u32 column = 0; column < 5u; column++) {
             if (bits & (1u << (4u - column))) {
-                fb_fill_rect(x + 2u + column * FB_CONSOLE_GLYPH_SCALE,
-                             y + 2u + row * FB_CONSOLE_GLYPH_SCALE,
+                fb_fill_rect(x + 1u + column * FB_CONSOLE_GLYPH_SCALE,
+                             y + 4u + row * FB_CONSOLE_GLYPH_SCALE,
                              FB_CONSOLE_GLYPH_SCALE,
                              FB_CONSOLE_GLYPH_SCALE,
                              console_foreground);

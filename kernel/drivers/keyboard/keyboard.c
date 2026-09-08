@@ -125,6 +125,9 @@ static const u8 scancode_table_shift[] = {
 
 static void keyboard_handler(registers_t *regs) {
     (void)regs;
+    if (!(inb(KEYBOARD_CTRL) & 0x01) || (inb(KEYBOARD_CTRL) & 0x20)) {
+        return;
+    }
     u8 scancode = inb(KEYBOARD_DATA);
 
     u8 is_pressed = !(scancode & 0x80);
@@ -201,13 +204,22 @@ static u8 keyboard_poll_port_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
 
     if (raw_scancode == LSHIFT_PRESSED || raw_scancode == RSHIFT_PRESSED) {
         shift_pressed = pressed;
-        return 0;
+        if (scancode) *scancode = raw_scancode;
+        if (is_pressed) *is_pressed = pressed;
+        if (extended) *extended = ext;
+        return 1;
     } else if (raw_scancode == LCTRL_PRESSED) {
         ctrl_pressed = pressed;
-        return 0;
+        if (scancode) *scancode = raw_scancode;
+        if (is_pressed) *is_pressed = pressed;
+        if (extended) *extended = ext;
+        return 1;
     } else if (raw_scancode == LALT_PRESSED) {
         alt_pressed = pressed;
-        return 0;
+        if (scancode) *scancode = raw_scancode;
+        if (is_pressed) *is_pressed = pressed;
+        if (extended) *extended = ext;
+        return 1;
     }
 
     if (pressed && raw_scancode == 0x2E && ctrl_pressed) {
@@ -236,21 +248,25 @@ void keyboard_reset_state(void) {
     alt_pressed = 0;
     ctrl_c_pending = 0;
     poll_pending_extended = 0;
-    irq_restore(flags);
 
-    /* Drain any bytes that arrived while switching input modes. */
+    /* Keep IRQ1 masked while draining hardware so a transition byte cannot
+     * be re-enqueued between the queue reset and the port drain. */
     while (inb(KEYBOARD_CTRL) & 0x01) {
         (void)inb(KEYBOARD_DATA);
     }
+    irq_restore(flags);
 }
 
 void keyboard_clear_pending_input(void) {
-    keyboard_flush_queue();
+    u32 flags = irq_save();
+    queue_head = 0;
+    queue_tail = 0;
     poll_pending_extended = 0;
 
     for (u32 i = 0; i < KEYBOARD_QUEUE_SIZE && (inb(KEYBOARD_CTRL) & 0x01); i++) {
         (void)inb(KEYBOARD_DATA);
     }
+    irq_restore(flags);
 }
 
 u8 keyboard_read_event(u8 *scancode, u8 *is_pressed, u8 *extended) {
