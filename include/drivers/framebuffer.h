@@ -34,17 +34,32 @@
 #define FB_COLOR_A(r, g, b, a) ((u32)(((u32)(a) << 24) | ((u32)(r) << 16) | ((u32)(g) << 8) | (u32)(b)))
 
 typedef struct {
+    u8 red_position;
+    u8 red_size;
+    u8 green_position;
+    u8 green_size;
+    u8 blue_position;
+    u8 blue_size;
+    u8 reserved_position;
+    u8 reserved_size;
+} framebuffer_format_t;
+
+typedef struct {
     u32 width;
     u32 height;
     u32 pitch;
     u32 bpp;
-    volatile u32 *base;
+    u32 bytes;
+    u32 physical_base;
+    volatile u8 *base;
+    framebuffer_format_t format;
     u8 initialized;
 } framebuffer_t;
 
 void fb_init(void);
 u8 fb_init_from_multiboot(const void *multiboot_info);
 u8 fb_attach(u32 physical_base, u32 width, u32 height, u32 pitch, u32 bpp);
+u8 fb_validate_geometry(u32 width, u32 height, u32 pitch, u32 bpp, u32 *bytes_out);
 u8 fb_is_initialized(void);
 void fb_set_mode(u32 width, u32 height, u32 bpp);
 void fb_clear(u32 color);

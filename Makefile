@@ -193,6 +193,7 @@ SRCS = kernel/kmain.c \
        kernel/tests/heap_test.c \
        kernel/tests/security_test.c \
        kernel/tests/cpufreq_test.c \
+       kernel/tests/framebuffer_test.c \
        init/init.c \
        tools/shell/shell.c \
        tools/shell/script.c \

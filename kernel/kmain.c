@@ -285,6 +285,7 @@ void kmain(void *multiboot_ptr) {
 
     kprintf("Initializing paging...\n");
     paging_init();
+    fb_init_from_multiboot(multiboot_ptr);
     kprintf("Initializing heap...\n");
     heap_init();
 
