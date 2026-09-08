@@ -349,8 +349,9 @@ void auth_bootstrap(void) {
 
     i32 loaded = auth_load_from_disk();
 
-    /* Clear boot logs and prepare the screen for authentication/registration */
+    /* Clear boot logs and prepare the screen for authentication/registration. */
     vga_clear();
+    vga_set_color(0x0F);
 
     if (loaded == 1) {
         while (1) {

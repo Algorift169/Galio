@@ -1,10 +1,13 @@
 #include "fb_console.h"
 #include "framebuffer.h"
 
-#define FB_CONSOLE_GLYPH_WIDTH  8u
-#define FB_CONSOLE_GLYPH_HEIGHT 8u
-#define FB_CONSOLE_FOREGROUND   0x00A8FF68u
+#define FB_CONSOLE_GLYPH_WIDTH  16u
+#define FB_CONSOLE_GLYPH_HEIGHT 18u
+#define FB_CONSOLE_GLYPH_SCALE  2u
+#define FB_CONSOLE_FOREGROUND   0x00FFFFFFu
 #define FB_CONSOLE_BACKGROUND   0x00000000u
+#define FB_CONSOLE_MAX_COLUMNS  128u
+#define FB_CONSOLE_MAX_ROWS     96u
 
 static u32 console_columns;
 static u32 console_rows;
@@ -14,6 +17,10 @@ static u32 console_column;
 static u32 console_row;
 static u8 console_ready;
 static u8 console_cursor;
+static u32 console_background = FB_CONSOLE_BACKGROUND;
+static u32 console_foreground = FB_CONSOLE_FOREGROUND;
+static u32 prompt_row = FB_CONSOLE_MAX_ROWS;
+static u16 console_cells[FB_CONSOLE_MAX_ROWS][FB_CONSOLE_MAX_COLUMNS];
 
 static u8 glyph_row(char character, u32 row) {
     static const u8 digits[10][7] = {
@@ -38,10 +45,25 @@ static u8 glyph_row(char character, u32 row) {
         {0x11,0x11,0x11,0x15,0x15,0x1B,0x11}, {0x11,0x11,0x0A,0x04,0x0A,0x11,0x11},
         {0x11,0x11,0x0A,0x04,0x04,0x04,0x04}, {0x1F,0x01,0x02,0x04,0x08,0x10,0x1F}
     };
+    static const u8 lowercase[26][7] = {
+        {0x00,0x00,0x0E,0x01,0x0F,0x11,0x0F}, {0x10,0x10,0x1E,0x11,0x11,0x11,0x1E},
+        {0x00,0x00,0x0E,0x11,0x10,0x11,0x0E}, {0x01,0x01,0x0F,0x11,0x11,0x11,0x0F},
+        {0x00,0x00,0x0E,0x11,0x1F,0x10,0x0E}, {0x06,0x09,0x08,0x1E,0x08,0x08,0x08},
+        {0x00,0x00,0x0E,0x11,0x11,0x0F,0x01}, {0x10,0x10,0x1E,0x11,0x11,0x11,0x11},
+        {0x04,0x00,0x0C,0x04,0x04,0x04,0x0E}, {0x02,0x00,0x06,0x02,0x02,0x12,0x0C},
+        {0x10,0x10,0x12,0x14,0x18,0x14,0x12}, {0x0C,0x04,0x04,0x04,0x04,0x04,0x0E},
+        {0x00,0x00,0x1A,0x15,0x15,0x15,0x15}, {0x00,0x00,0x1E,0x11,0x11,0x11,0x11},
+        {0x00,0x00,0x0E,0x11,0x11,0x11,0x0E}, {0x00,0x00,0x1E,0x11,0x11,0x1E,0x10},
+        {0x00,0x00,0x0E,0x11,0x11,0x0F,0x01}, {0x00,0x00,0x16,0x19,0x10,0x10,0x10},
+        {0x00,0x00,0x0F,0x10,0x0E,0x01,0x1E}, {0x08,0x08,0x1E,0x08,0x08,0x09,0x06},
+        {0x00,0x00,0x11,0x11,0x11,0x13,0x0D}, {0x00,0x00,0x11,0x11,0x0A,0x0A,0x04},
+        {0x00,0x00,0x11,0x15,0x15,0x15,0x0A}, {0x00,0x00,0x11,0x0A,0x04,0x0A,0x11},
+        {0x00,0x00,0x11,0x11,0x0F,0x01,0x0E}, {0x00,0x00,0x1F,0x02,0x04,0x08,0x1F}
+    };
 
     if (row >= 7) return 0;
     if (character >= '0' && character <= '9') return digits[character - '0'][row];
-    if (character >= 'a' && character <= 'z') character = (char)(character - 'a' + 'A');
+    if (character >= 'a' && character <= 'z') return lowercase[character - 'a'][row];
     if (character >= 'A' && character <= 'Z') return letters[character - 'A'][row];
     switch (character) {
         case '.': return row == 6 ? 0x04 : 0;
@@ -62,29 +84,49 @@ static u8 glyph_row(char character, u32 row) {
         case '[': return row == 0 || row == 6 ? 0x0E : 0x08;
         case ']': return row == 0 || row == 6 ? 0x0E : 0x02;
         case '*': return row == 3 ? 0x0A : (row == 2 || row == 4 ? 0x04 : 0);
-        default: return character == ' ' ? 0 : (row == 0 || row == 6 ? 0x1F : 0x11);
+        case '@': return row == 0 ? 0x0E : (row == 1 ? 0x11 : (row == 2 ? 0x17 : (row == 3 ? 0x15 : (row == 4 ? 0x17 : (row == 5 ? 0x10 : 0x0E)))));
+        case '#': return row == 1 || row == 5 ? 0x0A : (row == 2 || row == 3 || row == 4 ? 0x1F : 0x0A);
+        case '$': return row == 0 || row == 6 ? 0x04 : (row == 1 ? 0x0E : (row == 2 ? 0x10 : (row == 3 ? 0x0E : (row == 4 ? 0x01 : 0x1E))));
+        case '%': return row == 0 || row == 1 ? 0x19 : (row == 2 ? 0x02 : (row == 3 ? 0x04 : (row == 4 ? 0x08 : 0x13)));
+        case '&': return row == 0 ? 0x0C : (row == 1 ? 0x12 : (row == 2 ? 0x0C : (row == 3 ? 0x0A : (row == 4 ? 0x15 : (row == 5 ? 0x12 : 0x0D)))));
+        case '~': return row == 2 ? 0x0D : (row == 3 ? 0x16 : 0);
+        case '"': return row < 2 ? 0x0A : 0;
+        case '\'': return row < 2 ? 0x04 : 0;
+        case '`': return row == 0 ? 0x08 : 0;
+        case '^': return row == 0 ? 0x04 : (row == 1 ? 0x0A : 0);
+        case '<': return row == 3 ? 0x04 : (row == 2 || row == 4 ? 0x02 : 0);
+        case '>': return row == 3 ? 0x04 : (row == 2 || row == 4 ? 0x08 : 0);
+        default: return 0;
     }
 }
 
 static void draw_cursor(void) {
-    if (!console_ready) return;
-    fb_fill_rect(console_column * console_cell_width,
-                 console_row * console_cell_height + console_cell_height - 2u,
-                 console_cell_width, 2u, console_cursor ? FB_CONSOLE_FOREGROUND : FB_CONSOLE_BACKGROUND);
+    /* The shell redraws its own cursor cell. Do not paint a persistent
+     * underline over the next character position. */
+    (void)console_cursor;
+}
+
+static void draw_glyph(u32 x, u32 y, char character, u32 background) {
+    fb_fill_rect(x, y, console_cell_width, console_cell_height, background);
+    for (u32 row = 0; row < 7u; row++) {
+        u8 bits = glyph_row(character, row);
+        for (u32 column = 0; column < 5u; column++) {
+            if (bits & (1u << (4u - column))) {
+                fb_fill_rect(x + 2u + column * FB_CONSOLE_GLYPH_SCALE,
+                             y + 2u + row * FB_CONSOLE_GLYPH_SCALE,
+                             FB_CONSOLE_GLYPH_SCALE,
+                             FB_CONSOLE_GLYPH_SCALE,
+                             console_foreground);
+            }
+        }
+    }
 }
 
 static void draw_character(char character) {
     u32 x = console_column * console_cell_width;
     u32 y = console_row * console_cell_height;
-    fb_fill_rect(x, y, console_cell_width, console_cell_height, FB_CONSOLE_BACKGROUND);
-    for (u32 row = 0; row < 7; row++) {
-        u8 bits = glyph_row(character, row);
-        for (u32 column = 0; column < 5; column++) {
-            if (bits & (1u << (4u - column))) {
-                fb_fill_rect(x + column + 1u, y + row, 1u, 1u, FB_CONSOLE_FOREGROUND);
-            }
-        }
-    }
+    u32 background = console_row == prompt_row ? 0u : console_background;
+    draw_glyph(x, y, character, background);
 }
 
 static void scroll_console(void) {
@@ -150,4 +192,91 @@ void fb_console_putc(char character) {
         console_row = console_rows - 1;
     }
     draw_cursor();
+}
+
+void fb_console_clear(u32 color) {
+    if (!console_ready) return;
+    console_background = color;
+    fb_clear(color);
+    for (u32 row = 0; row < FB_CONSOLE_MAX_ROWS; row++) {
+        for (u32 column = 0; column < FB_CONSOLE_MAX_COLUMNS; column++) {
+            console_cells[row][column] = (u16)' ';
+        }
+    }
+    console_column = 0;
+    console_row = 0;
+}
+
+void fb_console_set_background(u32 color) {
+    if (console_ready) console_background = color;
+}
+
+u32 fb_console_get_background(void) {
+    return console_background;
+}
+
+void fb_console_set_color(u8 color) {
+    if (!console_ready) return;
+    console_foreground = (color & 0x0Fu) == 0x0Eu ? 0x00D4AF37u : 0x00FFFFFFu;
+}
+
+void fb_console_set_foreground(u32 color) {
+    if (console_ready) console_foreground = color;
+}
+
+void fb_console_begin_prompt_line(void) {
+    if (!console_ready) return;
+    prompt_row = FB_CONSOLE_MAX_ROWS;
+    fb_fill_rect(0, console_row * console_cell_height,
+                 console_columns * console_cell_width, console_cell_height,
+                 console_background);
+}
+
+void fb_console_write_cell(int x, int y, char character, u8 color) {
+    if (!console_ready || x < 0 || y < 0 ||
+        (u32)x >= console_columns || (u32)y >= console_rows) return;
+    console_cells[y][x] = (u16)((u8)character | ((u16)color << 8));
+    u32 background = (u32)y == prompt_row ? 0u : console_background;
+    if ((color & 0x0Fu) != 0u) {
+        draw_glyph((u32)x * console_cell_width, (u32)y * console_cell_height,
+                   character, background);
+    } else {
+        fb_fill_rect((u32)x * console_cell_width, (u32)y * console_cell_height,
+                     console_cell_width, console_cell_height, background);
+    }
+}
+
+void fb_console_write_cursor_cell(int x, int y, char character) {
+    u32 saved_foreground;
+    if (!console_ready || x < 0 || y < 0 ||
+        (u32)x >= console_columns || (u32)y >= console_rows) return;
+    console_cells[y][x] = (u16)((u8)character | 0xF000u);
+    fb_fill_rect((u32)x * console_cell_width, (u32)y * console_cell_height,
+                 console_cell_width, console_cell_height, 0x00FFFFFFu);
+    saved_foreground = console_foreground;
+    console_foreground = 0x00000000u;
+    draw_glyph((u32)x * console_cell_width, (u32)y * console_cell_height,
+               character, 0x00FFFFFFu);
+    console_foreground = saved_foreground;
+}
+
+u16 fb_console_read_cell(int x, int y) {
+    if (!console_ready || x < 0 || y < 0 ||
+        (u32)x >= console_columns || (u32)y >= console_rows) return (u16)' ';
+    return console_cells[y][x];
+}
+
+void fb_console_set_cursor(int x, int y) {
+    if (!console_ready) return;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if ((u32)x >= console_columns) x = (int)console_columns - 1;
+    if ((u32)y >= console_rows) y = (int)console_rows - 1;
+    console_column = (u32)x;
+    console_row = (u32)y;
+}
+
+void fb_console_get_cursor(int *x, int *y) {
+    if (x) *x = console_ready ? (int)console_column : 0;
+    if (y) *y = console_ready ? (int)console_row : 0;
 }

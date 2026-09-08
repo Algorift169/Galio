@@ -23,6 +23,7 @@
 #include "vga.h"
 #include "common.h"
 #include "cpu.h"
+#include "fb_console.h"
 #include <string.h>
 
 #define VGA_WIDTH  80
@@ -55,6 +56,7 @@ static u16 live_snapshot[VGA_HEIGHT][VGA_WIDTH];
 static u8  live_snapshot_valid = 0;
 
 void vga_update_cursor(void) {
+    if (fb_console_active()) return;
     u16 pos = cursor_y * VGA_WIDTH + cursor_x;
     outb(0x3D4, 0x0F);
     for (volatile int i = 0; i < 10; i++);  /* Small delay for VGA controller */
@@ -111,6 +113,10 @@ static void scroll(void) {
 }
 
 void vga_clear(void) {
+    if (fb_console_active()) {
+        fb_console_clear(fb_console_get_background());
+        return;
+    }
     if (bounds_enabled) {
         /* Clear only the bounded region */
         for (int y = bounds_y; y < bounds_y + bounds_height; y++) {
@@ -139,6 +145,10 @@ void vga_clear(void) {
 /* Clear the VGA text buffer without updating the hardware cursor (avoids port I/O).
  * Use this from contexts where VGA port access may not be safe. */
 void vga_clear_no_update(void) {
+    if (fb_console_active()) {
+        fb_console_clear(fb_console_get_background());
+        return;
+    }
     for (u32 i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
         vga_buf[i] = (u16)(' ' | (VGA_COLOR_BOOT_GREEN << 8));
     }
@@ -148,6 +158,10 @@ void vga_clear_no_update(void) {
 }
 
 void vga_set_cursor_position(int x, int y) {
+    if (fb_console_active()) {
+        fb_console_set_cursor(x, y);
+        return;
+    }
     if (x < 0) x = 0;
     if (x >= VGA_WIDTH) x = VGA_WIDTH - 1;
     if (y < 0) y = 0;
@@ -158,9 +172,17 @@ void vga_set_cursor_position(int x, int y) {
 
 void vga_set_color(unsigned char color) {
     vga_current_color = color;
+    if (fb_console_active()) fb_console_set_color(color);
 }
 
 void vga_move_cursor(int dx, int dy) {
+    if (fb_console_active()) {
+        int x;
+        int y;
+        fb_console_get_cursor(&x, &y);
+        fb_console_set_cursor(x + dx, y + dy);
+        return;
+    }
     int new_x = (int)cursor_x + dx;
     int new_y = (int)cursor_y + dy;
     if (new_x < 0) new_x = 0;
@@ -215,6 +237,10 @@ void vga_init(void) {
 }
 
 void vga_putch(char c) {
+    if (fb_console_active()) {
+        fb_console_putc(c);
+        return;
+    }
     if (c == '\n') {
         vga_newline();
     } else if (c == '\t') {
@@ -341,6 +367,14 @@ void vga_show_live_screen(void) {
 }
 
 void vga_write_cell(int x, int y, char c, unsigned char color) {
+    if (fb_console_active()) {
+        if ((color & 0x0Fu) == 0u && (color >> 4) == 0x0Fu) {
+            fb_console_write_cursor_cell(x, y, c);
+            return;
+        }
+        fb_console_write_cell(x, y, c, color);
+        return;
+    }
     /* Respect bounds if enabled */
     if (bounds_enabled) {
         if (x < bounds_x || x >= bounds_x + bounds_width || 
@@ -356,6 +390,7 @@ void vga_write_cell(int x, int y, char c, unsigned char color) {
 }
 
 unsigned short vga_read_cell(int x, int y) {
+    if (fb_console_active()) return fb_console_read_cell(x, y);
     if (x >= 0 && x < VGA_WIDTH && y >= 0 && y < VGA_HEIGHT) {
         return vga_buf[y * VGA_WIDTH + x];
     }
@@ -363,6 +398,10 @@ unsigned short vga_read_cell(int x, int y) {
 }
 
 void vga_move_hardware_cursor(int x, int y) {
+    if (fb_console_active()) {
+        fb_console_set_cursor(x, y);
+        return;
+    }
     if (x >= 0 && x < VGA_WIDTH && y >= 0 && y < VGA_HEIGHT) {
         cursor_x = x;
         cursor_y = y;
@@ -371,11 +410,16 @@ void vga_move_hardware_cursor(int x, int y) {
 }
 
 void vga_get_hardware_cursor(int *x, int *y) {
+    if (fb_console_active()) {
+        fb_console_get_cursor(x, y);
+        return;
+    }
     if (x) *x = cursor_x;
     if (y) *y = cursor_y;
 }
 
 void vga_disable_hardware_cursor(void) {
+    if (fb_console_active()) return;
     outb(0x3D4, 0x0A);
     for (volatile int i = 0; i < 10; i++);
     outb(0x3D5, 0x20);
@@ -417,6 +461,7 @@ void vga_set_bounds(int x, int y, int width, int height) {
     cursor_x = bounds_x;
     cursor_y = bounds_y;
 }
+
 
 void vga_clear_bounds(void) {
     bounds_enabled = 0;

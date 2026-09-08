@@ -202,10 +202,12 @@ static file_spec_t files[] = {
         0, 0},
 
     {"./boot/.grub.cfg",
+        "set gfxmode=1024x768x32\n"
+        "set gfxpayload=keep\n"
         "menuentry 'Galio Kernel' {\n"
         "    multiboot /boot/galio.bin\n"
         "}\n",
-        49, 0},
+        108, 0},
 
     /* System files */
     {"./etc/.hostname", "galio\n", 14, 0},

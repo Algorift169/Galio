@@ -24,6 +24,7 @@
 #include "shell.h"
 #include "vga.h"
 #include "kprintf.h"
+#include "fb_console.h"
 #include "string.h"
 #include "keyboard.h"
 #include <string.h>
@@ -355,6 +356,7 @@ static void shell_cursor_reset(void) {
 
 static void shell_print_prompt(void) {
     shell_cursor_restore();
+    fb_console_begin_prompt_line();
     const char *host = shell_hostname;
     char display_dir[DIR_PATH_SIZE];
     const char *dir = shell_display_dir(current_dir, display_dir, sizeof(display_dir));
@@ -362,8 +364,10 @@ static void shell_print_prompt(void) {
         host = session_current()->username;
     }
     SHELL_COLOR_CMD();
+    fb_console_set_foreground(0x00F5E6D3u);
     kprintf("[ %s @ galio ]:~ %s> ", host, dir);
     SHELL_COLOR_RESET();
+    fb_console_set_foreground(0x00FFFFFFu);
     vga_get_hardware_cursor(&shell_input_origin_x, &shell_input_origin_y);
     input.cursor = 0;
     shell_rendered_input_len = 0;

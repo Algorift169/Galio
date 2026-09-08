@@ -66,7 +66,11 @@ static u32 fb_pixel_value(u32 color) {
 }
 
 static void fb_write_pixel_raw(u32 x, u32 y, u32 value) {
-    u64 offset = (u64)y * g_fb.pitch + (u64)x * g_fb.bytes_per_pixel;
+    u64 offset;
+    if (!g_fb.bytes || !g_fb.bytes_per_pixel ||
+        x >= g_fb.width || y >= g_fb.height) return;
+    offset = (u64)y * g_fb.pitch + (u64)x * g_fb.bytes_per_pixel;
+    if (offset >= g_fb.bytes || (u64)g_fb.bytes_per_pixel > g_fb.bytes - offset) return;
     volatile u8 *pixel = g_fb.base + offset;
     if (g_fb.bytes_per_pixel == 4u) {
         *(volatile u32 *)pixel = value;
@@ -86,7 +90,11 @@ static void fb_write_pixel_raw(u32 x, u32 y, u32 value) {
 }
 
 static u32 fb_read_pixel_raw(u32 x, u32 y) {
-    u64 offset = (u64)y * g_fb.pitch + (u64)x * g_fb.bytes_per_pixel;
+    u64 offset;
+    if (!g_fb.bytes || !g_fb.bytes_per_pixel ||
+        x >= g_fb.width || y >= g_fb.height) return 0u;
+    offset = (u64)y * g_fb.pitch + (u64)x * g_fb.bytes_per_pixel;
+    if (offset >= g_fb.bytes || (u64)g_fb.bytes_per_pixel > g_fb.bytes - offset) return 0u;
     volatile u8 *pixel = g_fb.base + offset;
     if (g_fb.bytes_per_pixel == 4u) {
         return *(volatile u32 *)pixel;
@@ -186,6 +194,13 @@ u8 fb_init_from_multiboot(const void *multiboot_info) {
     width = words[25];
     height = words[26];
     bpp = ((const u8 *)multiboot_info)[108];
+
+    /* GRUB reports the VGA text buffer as 80x25x16 in text mode. It is not a
+     * pixel framebuffer and writing pixels there corrupts the visible console. */
+    if (physical_base == 0xB8000ull && width == 80u && height == 25u) {
+        kprintf("[FB] Text-mode VGA buffer detected; keeping VGA console\n");
+        return 0;
+    }
 
     if (!fb_attach(physical_base, width, height, pitch, bpp)) {
         kprintf("[FB] Invalid framebuffer descriptor: phys=0x%016llX %ux%u pitch=%u bpp=%u\n",
@@ -305,18 +320,7 @@ void fb_clear(u32 color) {
     if (!g_fb.initialized || !g_fb.base) {
         return;
     }
-
-    for (u32 y = 0; y < g_fb.height; y++) {
-        u32 pixel_value = fb_make_color((u8)((color >> 16) & 0xFFu),
-                                       (u8)((color >> 8) & 0xFFu),
-                                       (u8)(color & 0xFFu),
-                                       (u8)((color >> 24) & 0xFFu));
-        volatile u8 *row = g_fb.base + (u64)y * g_fb.pitch;
-        for (u32 x = 0; x < g_fb.width; x++) {
-            fb_write_pixel_raw(x, y, pixel_value);
-        }
-        (void)row;
-    }
+    fb_fill_rect(0u, 0u, g_fb.width, g_fb.height, color);
 }
 
 void fb_put_pixel(u32 x, u32 y, u32 color) {

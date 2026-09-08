@@ -23,6 +23,7 @@ INCLUDES = -Iinclude \
            -Itools/shell/commands \
            -Itools/shell/editor \
            -Itools/compiler/include \
+           -Igui/include \
            -Iui/include \
            -Idrift/include
 
@@ -169,6 +170,8 @@ SRCS = kernel/kmain.c \
        ui/src/display/display.c \
        ui/src/display/terminal_layer.c \
        ui/src/display/pk.c \
+       gui/src/terminal_background.c \
+       gui/tools/background.c \
        ui/src/mouse/mouse.c \
        ui/src/mouse/cursor.c \
        ui/src/panel/panel.c \
@@ -373,7 +376,7 @@ $(KERNEL_ISO): $(KERNEL_BIN) $(INITRD_IMAGE) $(DRIFT_BIN)
 	@cp $(KERNEL_BIN) $(ISO_DIR)/boot/galio.bin
 	@cp $(INITRD_IMAGE) $(ISO_DIR)/boot/initrd.bin
 	@cp $(DRIFT_BIN) $(ISO_DIR)/boot/drift
-	@printf '%s\n' 'set timeout=0' 'set default=0' '' \
+	@printf '%s\n' 'set timeout=0' 'set default=0' 'set gfxmode=1024x768x32' 'set gfxpayload=keep' '' \
 		'menuentry "Galio Kernel" {' \
 		'  multiboot /boot/galio.bin' \
 		'  boot' \

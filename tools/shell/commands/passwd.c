@@ -43,7 +43,7 @@ static void passwd_read_password(const char *prompt, char *buffer, u32 max_len) 
         u8 extended;
         
         while (1) {
-            if (!keyboard_read_event(&scancode, &is_pressed, &extended)) {
+            if (!keyboard_read_shell_event(&scancode, &is_pressed, &extended)) {
                 for (volatile int i = 0; i < 100; i++);
                 continue;
             }

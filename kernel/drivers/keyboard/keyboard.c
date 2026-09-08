@@ -141,12 +141,15 @@ static void keyboard_handler(registers_t *regs) {
 
     if (raw_scancode == LSHIFT_PRESSED || raw_scancode == RSHIFT_PRESSED) {
         shift_pressed = is_pressed;
+        keyboard_enqueue(raw_scancode, is_pressed, extended);
         return;
     } else if (raw_scancode == LCTRL_PRESSED) {
         ctrl_pressed = is_pressed;
+        keyboard_enqueue(raw_scancode, is_pressed, extended);
         return;
     } else if (raw_scancode == LALT_PRESSED) {
         alt_pressed = is_pressed;
+        keyboard_enqueue(raw_scancode, is_pressed, extended);
         return;
     }
 
