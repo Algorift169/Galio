@@ -23,6 +23,7 @@
 #include "framebuffer.h"
 #include "paging.h"
 #include "kprintf.h"
+#include "fb_console.h"
 
 #define FB_LINEAR_BASE 0xE0000000u
 #define FB_PAGE_MASK   (PAGE_SIZE - 1u)
@@ -73,6 +74,7 @@ static u32 fb_pixel_address(u32 x, u32 y) {
 void fb_init(void) {
     g_fb.initialized = 0;
     g_fb.base = NULL;
+    fb_console_init();
 }
 
 u8 fb_init_from_multiboot(const void *multiboot_info) {
@@ -83,7 +85,14 @@ u8 fb_init_from_multiboot(const void *multiboot_info) {
     u32 height;
     u32 bpp;
 
-    if (!words || !(words[0] & (1u << 12))) return 0;
+    if (!words) {
+        kprintf("FB: no Multiboot information pointer\n");
+        return 0;
+    }
+    if (!(words[0] & (1u << 12))) {
+        kprintf("FB: Multiboot framebuffer flag not set (flags=0x%08X)\n", words[0]);
+        return 0;
+    }
 
     physical_base = ((u64)words[23] << 32) | words[22];
     pitch = words[24];
@@ -94,7 +103,11 @@ u8 fb_init_from_multiboot(const void *multiboot_info) {
         kprintf("FB: framebuffer above 4 GiB is unsupported by current paging\n");
         return 0;
     }
-    if (!fb_attach((u32)physical_base, width, height, pitch, bpp)) return 0;
+    if (!fb_attach((u32)physical_base, width, height, pitch, bpp)) {
+        kprintf("FB: invalid framebuffer descriptor phys=0x%08X %ux%u pitch=%u bpp=%u\n",
+                (u32)physical_base, width, height, pitch, bpp);
+        return 0;
+    }
     g_fb.format.red_position = ((const u8 *)multiboot_info)[112];
     g_fb.format.red_size = ((const u8 *)multiboot_info)[113];
     g_fb.format.green_position = ((const u8 *)multiboot_info)[116];
@@ -104,11 +117,13 @@ u8 fb_init_from_multiboot(const void *multiboot_info) {
     if (!fb_mask_valid(g_fb.format.red_position, g_fb.format.red_size, bpp) ||
         !fb_mask_valid(g_fb.format.green_position, g_fb.format.green_size, bpp) ||
         !fb_mask_valid(g_fb.format.blue_position, g_fb.format.blue_size, bpp)) {
+        kprintf("FB: unsupported channel format\n");
         fb_init();
         return 0;
     }
     kprintf("FB: Multiboot framebuffer %ux%u %ubpp pitch=%u phys=0x%08X\n",
             width, height, bpp, pitch, (u32)physical_base);
+    fb_console_init();
     return 1;
 }
 

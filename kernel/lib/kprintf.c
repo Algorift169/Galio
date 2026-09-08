@@ -24,6 +24,7 @@
 #include "kprintf.h"
 #include "vga.h"
 #include "serial.h"
+#include "fb_console.h"
 #include <stdarg.h>
 #include <stdint.h>
 
