@@ -72,8 +72,8 @@ static u8 glyph_row(char character, u32 row) {
         case ';': return row == 2 ? 0x04 : (row == 6 ? 0x06 : 0);
         case '-': return row == 3 ? 0x0E : 0;
         case '_': return row == 6 ? 0x1F : 0;
-        case '/': return row < 7 ? (u8)(1u << (6u - row)) : 0;
-        case '\\': return row < 7 ? (u8)(1u << row) : 0;
+        case '/': return row < 7 ? (u8)(1u << row) : 0;
+        case '\\': return row < 7 ? (u8)(1u << (6u - row)) : 0;
         case '=': return row == 2 || row == 4 ? 0x1F : 0;
         case '+': return row == 3 ? 0x1F : (row == 1 || row == 5 ? 0x04 : 0);
         case '!': return row < 5 ? 0x04 : (row == 6 ? 0x04 : 0);
