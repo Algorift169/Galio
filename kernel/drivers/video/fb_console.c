@@ -19,7 +19,6 @@ static u8 console_ready;
 static u8 console_cursor;
 static u32 console_background = FB_CONSOLE_BACKGROUND;
 static u32 console_foreground = FB_CONSOLE_FOREGROUND;
-static u32 prompt_row = FB_CONSOLE_MAX_ROWS;
 static u16 console_cells[FB_CONSOLE_MAX_ROWS][FB_CONSOLE_MAX_COLUMNS];
 
 static u8 glyph_row(char character, u32 row) {
@@ -125,8 +124,7 @@ static void draw_glyph(u32 x, u32 y, char character, u32 background) {
 static void draw_character(char character) {
     u32 x = console_column * console_cell_width;
     u32 y = console_row * console_cell_height;
-    u32 background = console_row == prompt_row ? 0u : console_background;
-    draw_glyph(x, y, character, background);
+    draw_glyph(x, y, character, console_background);
 }
 
 static void scroll_console(void) {
@@ -144,7 +142,7 @@ static void scroll_console(void) {
     }
     fb_fill_rect(0u, (console_rows - 1u) * console_cell_height,
                  width, height - (console_rows - 1u) * console_cell_height,
-                 FB_CONSOLE_BACKGROUND);
+                 console_background);
 }
 
 void fb_console_init(void) {
@@ -226,7 +224,6 @@ void fb_console_set_foreground(u32 color) {
 
 void fb_console_begin_prompt_line(void) {
     if (!console_ready) return;
-    prompt_row = FB_CONSOLE_MAX_ROWS;
     fb_fill_rect(0, console_row * console_cell_height,
                  console_columns * console_cell_width, console_cell_height,
                  console_background);
@@ -236,13 +233,12 @@ void fb_console_write_cell(int x, int y, char character, u8 color) {
     if (!console_ready || x < 0 || y < 0 ||
         (u32)x >= console_columns || (u32)y >= console_rows) return;
     console_cells[y][x] = (u16)((u8)character | ((u16)color << 8));
-    u32 background = (u32)y == prompt_row ? 0u : console_background;
     if ((color & 0x0Fu) != 0u) {
         draw_glyph((u32)x * console_cell_width, (u32)y * console_cell_height,
-                   character, background);
+                   character, console_background);
     } else {
         fb_fill_rect((u32)x * console_cell_width, (u32)y * console_cell_height,
-                     console_cell_width, console_cell_height, background);
+                     console_cell_width, console_cell_height, console_background);
     }
 }
 
