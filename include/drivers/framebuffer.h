@@ -49,8 +49,9 @@ typedef struct {
     u32 height;
     u32 pitch;
     u32 bpp;
-    u32 bytes;
-    u32 physical_base;
+    u32 bytes_per_pixel;
+    u64 bytes;
+    u64 physical_base;
     volatile u8 *base;
     framebuffer_format_t format;
     u8 initialized;
@@ -58,8 +59,8 @@ typedef struct {
 
 void fb_init(void);
 u8 fb_init_from_multiboot(const void *multiboot_info);
-u8 fb_attach(u32 physical_base, u32 width, u32 height, u32 pitch, u32 bpp);
-u8 fb_validate_geometry(u32 width, u32 height, u32 pitch, u32 bpp, u32 *bytes_out);
+u8 fb_attach(u64 physical_base, u32 width, u32 height, u32 pitch, u32 bpp);
+u8 fb_validate_geometry(u32 width, u32 height, u32 pitch, u32 bpp, u64 *bytes_out);
 u8 fb_is_initialized(void);
 void fb_set_mode(u32 width, u32 height, u32 bpp);
 void fb_clear(u32 color);
@@ -68,6 +69,9 @@ u32 fb_get_pixel(u32 x, u32 y);
 void fb_fill_rect(u32 x, u32 y, u32 width, u32 height, u32 color);
 void fb_draw_hline(u32 x, u32 y, u32 width, u32 color);
 void fb_draw_vline(u32 x, u32 y, u32 height, u32 color);
+void fb_draw_line(u32 x0, u32 y0, u32 x1, u32 y1, u32 color);
+void fb_draw_rect(u32 x, u32 y, u32 width, u32 height, u32 color);
+u32 fb_make_color(u8 r, u8 g, u8 b, u8 a);
 void fb_get_info(u32 *width, u32 *height, u32 *pitch, u32 *bpp);
 
 #endif /* FRAMEBUFFER_H */

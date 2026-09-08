@@ -158,8 +158,7 @@ void mouse_init(void) {
     u8 command_byte = inb(PS2_DATA_PORT);
     
     /* Enable mouse IRQ and disable translation */
-    command_byte |= 0x03;   /* Enable keyboard and mouse IRQs */
-    command_byte &= ~0x10;  /* Disable translation */
+    command_byte = (command_byte & ~0x10) | 0x03;  /* Keep keyboard IRQ, enable mouse IRQ, disable translation */
     
     /* Write back command byte */
     ps2_wait_input();

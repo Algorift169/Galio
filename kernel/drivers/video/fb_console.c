@@ -1,13 +1,15 @@
 #include "fb_console.h"
 #include "framebuffer.h"
 
-#define FB_CONSOLE_CELL_WIDTH  8u
-#define FB_CONSOLE_CELL_HEIGHT 8u
-#define FB_CONSOLE_FOREGROUND  0x00A8FF68u
-#define FB_CONSOLE_BACKGROUND  0x00000000u
+#define FB_CONSOLE_GLYPH_WIDTH  8u
+#define FB_CONSOLE_GLYPH_HEIGHT 8u
+#define FB_CONSOLE_FOREGROUND   0x00A8FF68u
+#define FB_CONSOLE_BACKGROUND   0x00000000u
 
 static u32 console_columns;
 static u32 console_rows;
+static u32 console_cell_width;
+static u32 console_cell_height;
 static u32 console_column;
 static u32 console_row;
 static u8 console_ready;
@@ -66,20 +68,20 @@ static u8 glyph_row(char character, u32 row) {
 
 static void draw_cursor(void) {
     if (!console_ready) return;
-    fb_fill_rect(console_column * FB_CONSOLE_CELL_WIDTH,
-                 console_row * FB_CONSOLE_CELL_HEIGHT + 6,
-                 FB_CONSOLE_CELL_WIDTH, 2, console_cursor ? FB_CONSOLE_FOREGROUND : FB_CONSOLE_BACKGROUND);
+    fb_fill_rect(console_column * console_cell_width,
+                 console_row * console_cell_height + console_cell_height - 2u,
+                 console_cell_width, 2u, console_cursor ? FB_CONSOLE_FOREGROUND : FB_CONSOLE_BACKGROUND);
 }
 
 static void draw_character(char character) {
-    u32 x = console_column * FB_CONSOLE_CELL_WIDTH;
-    u32 y = console_row * FB_CONSOLE_CELL_HEIGHT;
-    fb_fill_rect(x, y, FB_CONSOLE_CELL_WIDTH, FB_CONSOLE_CELL_HEIGHT, FB_CONSOLE_BACKGROUND);
+    u32 x = console_column * console_cell_width;
+    u32 y = console_row * console_cell_height;
+    fb_fill_rect(x, y, console_cell_width, console_cell_height, FB_CONSOLE_BACKGROUND);
     for (u32 row = 0; row < 7; row++) {
         u8 bits = glyph_row(character, row);
         for (u32 column = 0; column < 5; column++) {
             if (bits & (1u << (4u - column))) {
-                fb_fill_rect(x + column + 1, y + row, 1, 1, FB_CONSOLE_FOREGROUND);
+                fb_fill_rect(x + column + 1u, y + row, 1u, 1u, FB_CONSOLE_FOREGROUND);
             }
         }
     }
@@ -91,15 +93,15 @@ static void scroll_console(void) {
     fb_get_info(&width, &height, NULL, NULL);
     if (console_rows < 2) return;
     for (u32 row = 1; row < console_rows; row++) {
-        for (u32 y = 0; y < FB_CONSOLE_CELL_HEIGHT; y++) {
+        for (u32 y = 0; y < console_cell_height; y++) {
             for (u32 x = 0; x < width; x++) {
-                fb_put_pixel(x, (row - 1) * FB_CONSOLE_CELL_HEIGHT + y,
-                             fb_get_pixel(x, row * FB_CONSOLE_CELL_HEIGHT + y));
+                fb_put_pixel(x, (row - 1u) * console_cell_height + y,
+                             fb_get_pixel(x, row * console_cell_height + y));
             }
         }
     }
-    fb_fill_rect(0, (console_rows - 1) * FB_CONSOLE_CELL_HEIGHT,
-                 width, height - (console_rows - 1) * FB_CONSOLE_CELL_HEIGHT,
+    fb_fill_rect(0u, (console_rows - 1u) * console_cell_height,
+                 width, height - (console_rows - 1u) * console_cell_height,
                  FB_CONSOLE_BACKGROUND);
 }
 
@@ -108,8 +110,10 @@ void fb_console_init(void) {
     u32 height;
     if (!fb_is_initialized()) return;
     fb_get_info(&width, &height, NULL, NULL);
-    console_columns = width / FB_CONSOLE_CELL_WIDTH;
-    console_rows = height / FB_CONSOLE_CELL_HEIGHT;
+    console_cell_width = FB_CONSOLE_GLYPH_WIDTH;
+    console_cell_height = FB_CONSOLE_GLYPH_HEIGHT;
+    console_columns = width / console_cell_width;
+    console_rows = height / console_cell_height;
     console_column = 0;
     console_row = 0;
     console_cursor = 1;

@@ -34,6 +34,50 @@
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
 
+static u8 ps2_read_command_byte(void) {
+    while (inb(0x64) & 0x02) {
+        for (volatile int i = 0; i < 10; i++);
+    }
+    outb(0x64, 0x20); /* Read PS/2 Controller Command Byte */
+    while (!(inb(0x64) & 0x01)) {
+        for (volatile int i = 0; i < 10; i++);
+    }
+    return inb(0x60);
+}
+
+static void ps2_write_command_byte(u8 command_byte) {
+    while (inb(0x64) & 0x02) {
+        for (volatile int i = 0; i < 10; i++);
+    }
+    outb(0x64, 0x60); /* Write PS/2 Controller Command Byte */
+    while (inb(0x64) & 0x02) {
+        for (volatile int i = 0; i < 10; i++);
+    }
+    outb(0x60, command_byte);
+}
+
+static void ps2_restore_keyboard_shell_state(void) {
+    while (inb(0x64) & 0x01) {
+        (void)inb(0x60);
+    }
+
+    u8 command_byte = ps2_read_command_byte();
+
+    /* Root cause: raw writes to the PS/2 command byte can silently disable IRQ1,
+     * which leaves the shell dead because the kernel keyboard handler never fires.
+     * Preserve the current state, keep keyboard IRQ enabled, disable the mouse IRQ,
+     * and leave AT translation on for compatibility. */
+    command_byte |= 0x41;
+    command_byte &= ~0x02;
+
+    ps2_write_command_byte(command_byte);
+
+    while (inb(0x64) & 0x02) {
+        for (volatile int i = 0; i < 10; i++);
+    }
+    outb(0x64, 0xAE); /* Enable first PS/2 port */
+}
+
 void display_init(void) {
     vga_clear();
     panel_init();
@@ -63,27 +107,12 @@ void display_enter_shell_mode(void) {
      * Instead, write a known-good CCB directly: keyboard IRQ enabled (bit 0),
      * mouse IRQ disabled (bit 1), AT translation enabled (bit 6).
      */
-    /* Drain any stale bytes first so the CCB read returns the real byte */
-    while (inb(0x64) & 0x01) { (void)inb(0x60); }
-
-    /* Write CCB: enable keyboard IRQ, enable mouse IRQ, enable translation */
-    while (inb(0x64) & 0x02);          /* wait for input buffer empty */
-    outb(0x64, 0x60);                   /* "Write Command Byte" */
-    while (inb(0x64) & 0x02);
-    outb(0x60, 0x41);   /* keyboard IRQ, both devices enabled, AT translation on */
-
-    /* Re-enable the keyboard port just in case it was disabled */
-    while (inb(0x64) & 0x02);
-    outb(0x64, 0xAE);   /* Enable first PS/2 port */
+    ps2_restore_keyboard_shell_state();
 
     mouse_init();
     /* GSH polls AUX data directly; keep mouse streaming for wheel events but
      * leave IRQ 1 as the only active PS/2 input interrupt. */
-    while (inb(0x64) & 0x01) { (void)inb(0x60); }
-    while (inb(0x64) & 0x02);
-    outb(0x64, 0x60);
-    while (inb(0x64) & 0x02);
-    outb(0x60, 0x41);
+    ps2_restore_keyboard_shell_state();
     keyboard_reset_state();
     keyboard_clear_pending_input();
     irq_unmask(1);
