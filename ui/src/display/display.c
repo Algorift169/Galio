@@ -31,6 +31,8 @@
 #include "common.h"
 #include "display/terminal_layer.h"
 #include "terminal_background.h"
+#include "desktop.h"
+#include "gsh_button.h"
 
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
@@ -87,6 +89,9 @@ void display_init(void) {
 
 void display_enter_userland_mode(void) {
     vga_clear();
+    desktop_init();
+    desktop_draw();
+    gsh_button_init();
     panel_init();
     panel_draw_header();
     vga_disable_hardware_cursor();
@@ -94,6 +99,8 @@ void display_enter_userland_mode(void) {
 }
 
 void display_enter_shell_mode(void) {
+    desktop_init();
+    desktop_draw();
     panel_set_enabled(0);
     cursor_deactivate();
 

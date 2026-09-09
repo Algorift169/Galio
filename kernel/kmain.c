@@ -28,7 +28,6 @@
 #include "irq.h"
 #include "kprintf.h"
 #include "display/display.h"
-#include "panel/panel.h"
 #include "mouse/cursor.h"
 #include "serial.h"
 #include "pmem.h"
@@ -59,11 +58,15 @@
 #include "net/dns.h"
 #include "power/power.h"
 #include "shell.h"
+#include "script.h"
 
 // Disk entry - line: 193
 
 /* Syscall interface declaration */
 void syscall_init(void);
+
+/* Assembly handoff that enters the full-resolution GUI after authentication. */
+extern void gui_boot(void);
 
 /* Memory test declaration */
 void mem_test_run(void);
@@ -458,28 +461,20 @@ void kmain(void *multiboot_ptr) {
 
     auth_bootstrap();
 
-    /* Register init before the interactive shell so top can see it. */
-    u32 init_pid = process_create(init_main, 1);
-    if (!init_pid) {
-        kprintf("Failed to create init process!\n");
-        for (;;) {
-            __asm__ volatile("hlt");
-        }
-    }
-    process_set_path(process_get(init_pid), "/sbin/init");
+    /* The embedded ELF test runner is not the desktop init process. Starting
+     * it here floods the display before the authenticated GUI can take over. */
     register_kernel_services();
 
-    /* The shell runs in the boot process context. Enable timer and keyboard
-     * interrupts before entering it so scheduling and CPU accounting work. */
+    /* Default desktop mode becomes the active UI after auth; GSH is launched
+     * from the desktop launch area instead of booting directly into the raw shell. */
     __asm__ volatile("sti");
     irq_unmask(1);
 
-    display_enter_shell_mode();
-    process_set_path(process_current(), "/bin/gsh");
+    gui_boot();
     enable_interrupts();
-    shell_run();
 
     for (;;) {
+        cursor_poll();
         __asm__ volatile("hlt");
     }
 }

@@ -114,7 +114,11 @@ static void scroll(void) {
 
 void vga_clear(void) {
     if (fb_console_active()) {
-        fb_console_clear(fb_console_get_background());
+        if (bounds_enabled) {
+            fb_console_clear_region();
+        } else {
+            fb_console_clear(fb_console_get_background());
+        }
         return;
     }
     if (bounds_enabled) {
@@ -146,7 +150,11 @@ void vga_clear(void) {
  * Use this from contexts where VGA port access may not be safe. */
 void vga_clear_no_update(void) {
     if (fb_console_active()) {
-        fb_console_clear(fb_console_get_background());
+        if (bounds_enabled) {
+            fb_console_clear_region();
+        } else {
+            fb_console_clear(fb_console_get_background());
+        }
         return;
     }
     for (u32 i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
@@ -375,6 +383,10 @@ void vga_show_live_screen(void) {
 }
 
 void vga_write_cell(int x, int y, char c, unsigned char color) {
+    if (bounds_enabled && (x < bounds_x || x >= bounds_x + bounds_width ||
+                           y < bounds_y || y >= bounds_y + bounds_height)) {
+        return;
+    }
     if (fb_console_active()) {
         if ((color & 0x0Fu) == 0u && (color >> 4) == 0x0Fu) {
             fb_console_write_cursor_cell(x, y, c);
@@ -384,12 +396,7 @@ void vga_write_cell(int x, int y, char c, unsigned char color) {
         return;
     }
     /* Respect bounds if enabled */
-    if (bounds_enabled) {
-        if (x < bounds_x || x >= bounds_x + bounds_width || 
-            y < bounds_y || y >= bounds_y + bounds_height) {
-            return;
-        }
-    } else {
+    if (!bounds_enabled) {
         if (x < 0 || x >= VGA_WIDTH || y < 0 || y >= VGA_HEIGHT) {
             return;
         }
@@ -475,6 +482,13 @@ void vga_clear_bounds(void) {
     bounds_enabled = 0;
     cursor_x = 0;
     cursor_y = 0;
+}
+
+void vga_get_bounds(int *x, int *y, int *width, int *height) {
+    if (x) *x = bounds_enabled ? bounds_x : 0;
+    if (y) *y = bounds_enabled ? bounds_y : 0;
+    if (width) *width = bounds_enabled ? bounds_width : VGA_WIDTH;
+    if (height) *height = bounds_enabled ? bounds_height : VGA_HEIGHT;
 }
 
 void vga_enable_paging(void) {

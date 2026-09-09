@@ -20,11 +20,11 @@ INCLUDES = -Iinclude \
            -Iinclude/process \
            -Iinclude/syscall \
            -Itools/shell/include \
+           -Itools/shell \
            -Itools/shell/commands \
            -Itools/shell/editor \
            -Itools/compiler/include \
            -Igui/include \
-           -Iui/include \
            -Idrift/include
 
 # Drift is built for both the hosted companion executable and the kernel shell.
@@ -168,21 +168,19 @@ SRCS = kernel/kmain.c \
        kernel/drivers/video/fb_console.c \
        kernel/drivers/video/gpu.c \
        kernel/drivers/usb/usb.c \
-       ui/src/display/display.c \
-       ui/src/display/terminal_layer.c \
-       ui/src/display/pk.c \
+       gui/src/display/display.c \
        gui/src/terminal_background.c \
+       gui/src/terminal_window.c \
+       gui/src/gsh_button.c \
        gui/tools/background.c \
-       ui/src/mouse/mouse.c \
-       ui/src/mouse/cursor.c \
-       ui/src/panel/panel.c \
-       ui/src/panel/sysinfo.c \
-       ui/src/panel/clock.c \
-       ui/src/panel/date.c \
-       ui/src/panel/fs_browser.c \
-       ui/src/panel/launch_region.c \
-       ui/src/buttons/galio.c \
-       ui/src/buttons/gsh.c \
+       gui/tools/window.c \
+       gui/tools/win-border.c \
+       gui/tools/desktop.c \
+       gui/tools/display_wrapper.c \
+       gui/tools/cursor.c \
+       gui/tools/button.c \
+       gui/src/mouse/mouse.c \
+       gui/src/mouse/cursor.c \
        kernel/pci/pci.c \
        kernel/drivers/net/e1000.c \
        kernel/dev/device.c \
@@ -249,8 +247,8 @@ GAS_OBJS = $(patsubst %.s,$(OBJ_DIR)/%.o,$(GAS_SRCS))
 
 ASM_OBJS = $(OBJ_DIR)/kernel/arch/x86/cpu/asm.o \
            $(OBJ_DIR)/kernel/arch/x86/cpu/isr_asm.o \
-           $(OBJ_DIR)/kernel/arch/x86/boot/boot.o
-
+           $(OBJ_DIR)/kernel/arch/x86/boot/boot.o \
+           $(OBJ_DIR)/gui/boot/gui.o
 EMBEDDED_OBJS = $(OBJ_DIR)/src/embedded_test.o \
                 $(OBJ_DIR)/src/embedded_initrd.o
 
@@ -343,6 +341,14 @@ $(OBJ_DIR)/kernel/arch/x86/cpu/isr_asm.o: kernel/arch/x86/cpu/isr_asm.s
 	$(AS) $(ASFLAGS) $< -o $@
 
 $(OBJ_DIR)/kernel/arch/x86/boot/boot.o: kernel/arch/x86/boot/boot.S
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ_DIR)/gui/boot/gui.o: gui/boot/gui.s
+	@mkdir -p $(dir $@)
+	$(AS) $(ASFLAGS) $< -o $@
+
+$(OBJ_DIR)/kernel/drivers/net/%.o: kernel/drivers/net/%.s
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 

@@ -91,6 +91,8 @@ static file_spec_t files[] = {
     /* Root and core directories */
     {".",              NULL, 0, 1},
     {"./boot",          NULL, 0, 1},
+    {"./gui",           NULL, 0, 1},
+    {"./gui/boot",      NULL, 0, 1},
     {"./bin",           NULL, 0, 1},
     {"./sbin",          NULL, 0, 1},
     {"./dev",           NULL, 0, 1},
@@ -200,6 +202,10 @@ static file_spec_t files[] = {
     {"./boot/.config.txt",
         boot_config_txt,
         0, 0},
+
+    {"./gui/boot/gui.s",
+        "gui\n",
+        4, 0},
 
     {"./boot/.grub.cfg",
         "set gfxmode=1024x768x32\n"

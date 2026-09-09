@@ -24,6 +24,10 @@ static u8 editor_shift_down;
 static u8 editor_ctrl_down;
 static u8 editor_alt_down;
 static u8 editor_extended;
+static int editor_origin_x;
+static int editor_origin_y;
+static int editor_width;
+static int editor_height;
 
 static const u8 keymap[] = {
     0,27,'1','2','3','4','5','6','7','8','9','0','-','=', '\b','\t',
@@ -94,7 +98,9 @@ static u8 editor_read_scancode(u8 *scancode, u8 *pressed, u8 *extended) {
 }
 
 static void editor_put(int x, int y, char character, u8 color) {
-    if (x >= 0 && y >= 0 && x < 128 && y < 48) vga_write_cell(x, y, character, color);
+    if (x >= 0 && y >= 0 && x < editor_width && y < editor_height) {
+        vga_write_cell(editor_origin_x + x, editor_origin_y + y, character, color);
+    }
 }
 
 static void editor_text(int x, int y, const char *text, u8 color) {
@@ -116,31 +122,34 @@ static u32 editor_line_column(const editor_state_t *state, u32 *line) {
 static void editor_draw_cursor(const editor_state_t *state) {
     u32 line;
     u32 column = editor_line_column(state, &line);
-    if (line >= 44u || column >= 128u) return;
+    if (line + 4u >= (u32)editor_height || column >= (u32)editor_width) return;
 
     /* Match GSH: a visible white cell with the underlying character in black. */
-    vga_move_hardware_cursor((int)column, (int)(4u + line));
-    vga_write_cell((int)column, (int)(4u + line), ' ', EDITOR_CURSOR_COLOR);
+    vga_move_hardware_cursor(editor_origin_x + (int)column,
+                             editor_origin_y + (int)(4u + line));
+    vga_write_cell(editor_origin_x + (int)column,
+                   editor_origin_y + (int)(4u + line), ' ', EDITOR_CURSOR_COLOR);
 }
 
 static void editor_draw(const editor_state_t *state, const char *path, const char *status) {
     int x = 0;
     int y = 4;
 
+    vga_get_bounds(&editor_origin_x, &editor_origin_y, &editor_width, &editor_height);
     vga_clear();
     editor_text(0, 0, "Ctrl+S Save | Ctrl+X Exit | Arrows Move", EDITOR_TEXT_COLOR);
     editor_text(0, 1, "File: ", EDITOR_TEXT_COLOR);
     editor_text(6, 1, path, EDITOR_TEXT_COLOR);
     if (status) editor_text(0, 2, status, EDITOR_TEXT_COLOR);
 
-    for (u32 index = 0; index < state->size && y < 47; index++) {
+    for (u32 index = 0; index < state->size && y < editor_height - 1; index++) {
         char character = state->data[index];
         if (character == '\n') {
             x = 0;
             y++;
         } else {
             editor_put(x++, y, character, EDITOR_TEXT_COLOR);
-            if (x >= 128) {
+            if (x >= editor_width) {
                 x = 0;
                 y++;
             }

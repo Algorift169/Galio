@@ -26,6 +26,7 @@
 #include "buttons/galio.h"
 #include "vga.h"
 #include "common.h"
+#include "desktop.h"
 
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
@@ -114,6 +115,12 @@ void cursor_poll(void) {
             gsh_button_click();
         } else if (galio_button_contains(mx, my)) {
             galio_button_click();
+        } else {
+            desktop_handle_click(mx, my);
+            if (desktop_is_gsh_open()) {
+                gsh_button_click();
+                desktop_set_gsh_open(0u);
+            }
         }
     }
 

@@ -28,6 +28,8 @@
 #include "panel/panel.h"
 #include "panel/launch_region.h"
 #include "keyboard.h"
+#include "window.h"
+#include "framebuffer.h"
 
 /* GSH button properties */
 #define GSH_BUTTON_WIDTH 6   /* "[GSH]" = 5 chars + space */
@@ -39,6 +41,18 @@ static int gsh_button_x = 9;
 static int gsh_button_y = 0;
 static int gsh_is_hovered = 0;
 static u8 gsh_shell_active = 0;
+static window_t gsh_window;
+static u8 gsh_window_initialized = 0u;
+
+static void gsh_prepare_window(void) {
+    if (!gsh_window_initialized) {
+        window_init(&gsh_window, "gsh", FB_COLOR(18, 24, 30), 170u, 90u, 620u, 360u);
+        gsh_window_initialized = 1u;
+    }
+    gsh_window.visible = 1u;
+    gsh_window.closed = 0u;
+    window_draw(&gsh_window);
+}
 
 void gsh_button_init(void) {
     /* Initialize GSH button */
@@ -68,32 +82,23 @@ void gsh_button_click(void) {
     }
 
     gsh_shell_active = 1;
+    gsh_prepare_window();
 
-    /* Get launch region coordinates */
-    launch_region_t *region = launch_region_get();
-    
-    /* Position cursor inside launch region (below top border) */
-    int shell_x = region->x + 2;  /* Left padding inside border */
-    int shell_y = region->y + 2;  /* Top padding inside border */
-    
-    /* Move cursor to launch region start position */
-    vga_set_bounds(shell_x, shell_y, region->width - 4, region->height - 4);
-    
-    /* Disable panel updates while shell runs */
+    int shell_x = gsh_window.x + 12;
+    int shell_y = gsh_window.y + 24;
+    int shell_w = (int)gsh_window.width - 24;
+    int shell_h = (int)gsh_window.height - 30;
+
+    vga_set_bounds(shell_x, shell_y, shell_w, shell_h);
     panel_set_enabled(0);
-    
-    /* Flush input and run shell */
     mouse_flush_port();
     keyboard_reset_state();
     shell_run();
     mouse_flush_port();
     keyboard_reset_state();
-    
-    /* Exit bounds mode and redraw UI */
     vga_clear_bounds();
     panel_set_enabled(1);
     panel_draw_header();
-    
     gsh_shell_active = 0;
 }
 

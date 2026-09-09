@@ -37,6 +37,8 @@
 #include "path.h"
 #include "display/display.h"
 #include "mouse/mouse.h"
+#include "mouse/cursor.h"
+#include "gsh_button.h"
 #include "new.h"
 #include "file.h"
 #include "write.h"
@@ -151,6 +153,12 @@ static int shell_input_origin_y = 0;
 static u32 shell_rendered_input_len = 0;
 static unsigned short shell_cursor_saved_cell = 0;
 static u8 shell_cursor_drawn = 0;
+static int shell_exit_x = 0;
+static int shell_exit_y = 0;
+static int shell_exit_width = 0;
+static int shell_exit_height = 0;
+static u8 shell_exit_enabled = 0;
+static u8 shell_mouse_buttons = 0;
 
 static const char *shell_display_dir(const char *path, char *out, u32 out_size);
 static u8 shell_is_direct_root_child(const char *path);
@@ -365,7 +373,7 @@ static void shell_print_prompt(void) {
     }
     SHELL_COLOR_CMD();
     fb_console_set_foreground(0x00F5E6D3u);
-    kprintf("[ %s @ galio ]:~ %s> ", host, dir);
+    kprintf("[ %s @ galio ]:~ %s >>", host, dir);
     SHELL_COLOR_RESET();
     fb_console_set_foreground(0x00FFFFFFu);
     vga_get_hardware_cursor(&shell_input_origin_x, &shell_input_origin_y);
@@ -494,6 +502,20 @@ static void shell_print_cursor(void) {
 
 static void shell_poll_mouse(void) {
     mouse_poll_position();
+
+    int mouse_x;
+    int mouse_y;
+    u8 mouse_buttons = mouse_get_buttons();
+    mouse_get_position(&mouse_x, &mouse_y);
+    gsh_button_poll_pointer(mouse_x, mouse_y, mouse_buttons);
+    cursor_poll();
+    if ((mouse_buttons & 1u) && !(shell_mouse_buttons & 1u) &&
+        shell_exit_enabled && mouse_x >= shell_exit_x &&
+        mouse_x < shell_exit_x + shell_exit_width &&
+        mouse_y >= shell_exit_y && mouse_y < shell_exit_y + shell_exit_height) {
+        shell_should_exit = 1u;
+    }
+    shell_mouse_buttons = mouse_buttons;
 
     s8 scroll = mouse_get_scroll_delta();
     if (scroll > 0) {
@@ -1028,6 +1050,13 @@ static void shell_execute_command(void) {
         return;
     }
 
+    if (strcmp(input.buffer, "gui") == 0) {
+        display_enter_userland_mode();
+        if (!shell_script_mode) shell_print_prompt();
+        input.len = 0;
+        return;
+    }
+
     if (shell_is_drift_chain(input.buffer)) {
         if (!gsh_script_execute_line_with_command(input.buffer, shell_execute_script_command, NULL)) {
             shell_last_status = 1;
@@ -1382,7 +1411,11 @@ static void shell_execute_command(void) {
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "clear", 5) == 0) {
         shell_cursor_restore();
-        vga_clear();
+        if (fb_console_active()) {
+            fb_console_clear_active_region();
+        } else {
+            vga_clear();
+        }
         SHELL_COLOR_OUT();
     } else if (strncmp(input.buffer, "tree", 4) == 0) {
         const char *path = input.buffer + 4;
@@ -1708,6 +1741,8 @@ static void shell_execute_command(void) {
             kprintf("gsh: invalid Drift statement\n");
             SHELL_COLOR_RESET();
         }
+    } else if (strcmp(input.buffer, "gui") == 0) {
+        display_enter_userland_mode();
     } else if (strcmp(input.buffer, "gsh") == 0) {
         SHELL_COLOR_CMD();
         kprintf("GSH interpreter: use gsh <Drift statement>\n");
@@ -1761,6 +1796,12 @@ static void shell_poll_keyboard(void) {
 
     if (keyboard_read_shell_event(&scancode, &is_pressed, &extended)) {
         if (!is_pressed) {
+            return;
+        }
+
+        /* Ctrl shortcuts belong to the shell; do not insert their letters as
+         * ordinary input characters. Ctrl+C is handled by the pending flag. */
+        if (keyboard_ctrl_pressed() && (scancode == 0x1F || scancode == 0x2E)) {
             return;
         }
 
@@ -1843,13 +1884,10 @@ void shell_run(void) {
     input.cursor = 0;
     input.buffer[0] = 0;
     shell_should_exit = 0;
-
-    vga_clear();
+    shell_mouse_buttons = mouse_get_buttons();
 
     strncpy(current_dir, HOME_DIR, sizeof(current_dir) - 1);
     current_dir[sizeof(current_dir) - 1] = 0;
-
-    vfs_cleanup_old_recycle_bin("./usr/home/desktop/recycle", 259200000);
 
     SHELL_COLOR_OUT();
     SHELL_COLOR_RESET();
@@ -1867,5 +1905,16 @@ void shell_run(void) {
     shell_cursor_restore();
     shell_cursor_drawn = 0;
     vga_disable_hardware_cursor();  /* Disable hardware cursor; UI manages its own */
-    vga_clear();
+}
+
+void shell_set_exit_region(int x, int y, int width, int height) {
+    shell_exit_x = x;
+    shell_exit_y = y;
+    shell_exit_width = width;
+    shell_exit_height = height;
+    shell_exit_enabled = 1u;
+}
+
+void shell_clear_exit_region(void) {
+    shell_exit_enabled = 0u;
 }

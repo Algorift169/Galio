@@ -25,8 +25,14 @@ static u16 console_scrollback[FB_CONSOLE_SCROLLBACK_LINES][FB_CONSOLE_MAX_COLUMN
 static u32 console_scrollback_head = 0u;
 static u32 console_scrollback_count = 0u;
 static u32 console_scroll_offset = 0u;
+static u8 console_bounds_enabled;
+static u32 console_bounds_x;
+static u32 console_bounds_y;
+static u32 console_bounds_width;
+static u32 console_bounds_height;
 static u16 console_live_snapshot[FB_CONSOLE_MAX_ROWS][FB_CONSOLE_MAX_COLUMNS];
 static u8 console_live_snapshot_valid = 0u;
+static u16 console_relocate_cells[FB_CONSOLE_MAX_ROWS][FB_CONSOLE_MAX_COLUMNS];
 
 static u8 glyph_row(char character, u32 row) {
     static const u8 digits[10][7] = {
@@ -158,11 +164,42 @@ static void fb_console_draw_cell(u32 x, u32 y, u16 cell) {
 
 static void fb_console_render_visible(void) {
     if (!console_ready) return;
-    for (u32 row = 0; row < console_rows; row++) {
-        for (u32 column = 0; column < console_columns; column++) {
+    u32 first_row = console_bounds_enabled ? console_bounds_y : 0u;
+    u32 last_row = console_bounds_enabled ? console_bounds_y + console_bounds_height : console_rows;
+    u32 first_column = console_bounds_enabled ? console_bounds_x : 0u;
+    u32 last_column = console_bounds_enabled ? console_bounds_x + console_bounds_width : console_columns;
+    for (u32 row = first_row; row < last_row; row++) {
+        for (u32 column = first_column; column < last_column; column++) {
             fb_console_draw_cell(column, row, console_cells[row][column]);
         }
     }
+}
+
+void fb_console_redraw(void) {
+    fb_console_render_visible();
+}
+
+void fb_console_relocate(int old_x, int old_y, int new_x, int new_y, int width, int height) {
+    if (!console_ready || width <= 0 || height <= 0) return;
+    if (old_x < 0 || old_y < 0 || new_x < 0 || new_y < 0) return;
+    if (old_x + width > (int)console_columns || new_x + width > (int)console_columns ||
+        old_y + height > (int)console_rows || new_y + height > (int)console_rows) return;
+
+    for (int row = 0; row < height; row++) {
+        for (int column = 0; column < width; column++) {
+            console_relocate_cells[row][column] =
+                console_cells[old_y + row][old_x + column];
+            console_cells[old_y + row][old_x + column] = (u16)' ';
+        }
+    }
+    for (int row = 0; row < height; row++) {
+        for (int column = 0; column < width; column++) {
+            console_cells[new_y + row][new_x + column] =
+                console_relocate_cells[row][column];
+        }
+    }
+    console_column = (u32)new_x;
+    console_row = (u32)new_y;
 }
 
 static void fb_console_capture_live_snapshot(void) {
@@ -208,18 +245,22 @@ static void scroll_console(void) {
     u32 width;
     u32 height;
     fb_get_info(&width, &height, NULL, NULL);
-    if (console_rows < 2) return;
+    u32 first_row = console_bounds_enabled ? console_bounds_y : 0u;
+    u32 last_row = console_bounds_enabled ? console_bounds_y + console_bounds_height : console_rows;
+    u32 first_column = console_bounds_enabled ? console_bounds_x : 0u;
+    u32 last_column = console_bounds_enabled ? console_bounds_x + console_bounds_width : console_columns;
+    if (last_row <= first_row + 1u) return;
 
-    for (u32 row = 0; row < console_rows - 1u; row++) {
-        for (u32 column = 0; column < console_columns; column++) {
+    for (u32 row = first_row; row + 1u < last_row; row++) {
+        for (u32 column = first_column; column < last_column; column++) {
             console_cells[row][column] = console_cells[row + 1u][column];
         }
     }
-    for (u32 column = 0; column < console_columns; column++) {
-        console_cells[console_rows - 1u][column] = (u16)' ';
+    for (u32 column = first_column; column < last_column; column++) {
+        console_cells[last_row - 1u][column] = (u16)' ';
     }
 
-    for (u32 x = 0; x < console_columns; x++) {
+    for (u32 x = first_column; x < last_column; x++) {
         console_scrollback[console_scrollback_head][x] = console_cells[0][x];
     }
     console_scrollback_head = (console_scrollback_head + 1u) % FB_CONSOLE_SCROLLBACK_LINES;
@@ -245,6 +286,7 @@ void fb_console_init(void) {
     console_rows = height / console_cell_height;
     console_column = 0;
     console_row = 0;
+    console_bounds_enabled = 0u;
     console_cursor = 1;
     console_ready = console_columns > 0 && console_rows > 0;
     if (console_ready) fb_clear(FB_CONSOLE_BACKGROUND);
@@ -256,7 +298,7 @@ void fb_console_putc(char character) {
     if (!console_ready) return;
     draw_cursor();
     if (character == '\n') {
-        console_column = 0;
+        console_column = console_bounds_enabled ? console_bounds_x : 0u;
         console_row++;
     } else if (character == '\r') {
         console_column = 0;
@@ -269,14 +311,16 @@ void fb_console_putc(char character) {
     } else if (character >= 32 && character < 127) {
         draw_character(character);
         console_column++;
-        if (console_column >= console_columns) {
-            console_column = 0;
+        u32 right = console_bounds_enabled ? console_bounds_x + console_bounds_width : console_columns;
+        if (console_column >= right) {
+            console_column = console_bounds_enabled ? console_bounds_x : 0u;
             console_row++;
         }
     }
-    if (console_row >= console_rows) {
+    u32 bottom = console_bounds_enabled ? console_bounds_y + console_bounds_height : console_rows;
+    if (console_row >= bottom) {
         scroll_console();
-        console_row = console_rows - 1;
+        console_row = bottom - 1u;
     }
     draw_cursor();
 }
@@ -301,6 +345,7 @@ void fb_console_clear(u32 color) {
     console_live_snapshot_valid = 0u;
     console_column = 0;
     console_row = 0;
+    console_bounds_enabled = 0u;
 }
 
 void fb_console_set_background(u32 color) {
@@ -320,10 +365,56 @@ void fb_console_set_foreground(u32 color) {
     if (console_ready) console_foreground = color;
 }
 
+void fb_console_set_bounds(int x, int y, int width, int height) {
+    if (!console_ready || x < 0 || y < 0 || width <= 0 || height <= 0) return;
+    console_bounds_x = (u32)x;
+    console_bounds_y = (u32)y;
+    console_bounds_width = (u32)width;
+    console_bounds_height = (u32)height;
+    if (console_bounds_x + console_bounds_width > console_columns) {
+        console_bounds_width = console_columns - console_bounds_x;
+    }
+    if (console_bounds_y + console_bounds_height > console_rows) {
+        console_bounds_height = console_rows - console_bounds_y;
+    }
+    console_bounds_enabled = console_bounds_width > 0u && console_bounds_height > 0u;
+    console_column = console_bounds_x;
+    console_row = console_bounds_y;
+}
+
+void fb_console_clear_bounds(void) {
+    if (!console_ready || !console_bounds_enabled) return;
+    fb_console_clear_region();
+    console_bounds_enabled = 0u;
+}
+
+void fb_console_clear_region(void) {
+    if (!console_ready || !console_bounds_enabled) return;
+    fb_console_clear_active_region();
+}
+
+void fb_console_clear_active_region(void) {
+    if (!console_ready || console_bounds_width == 0u || console_bounds_height == 0u) return;
+    for (u32 row = console_bounds_y; row < console_bounds_y + console_bounds_height; row++) {
+        for (u32 column = console_bounds_x; column < console_bounds_x + console_bounds_width; column++) {
+            console_cells[row][column] = (u16)' ';
+        }
+    }
+    fb_fill_rect(console_bounds_x * console_cell_width,
+                 console_bounds_y * console_cell_height,
+                 console_bounds_width * console_cell_width,
+                 console_bounds_height * console_cell_height,
+                 console_background);
+    console_column = console_bounds_x;
+    console_row = console_bounds_y;
+}
+
 void fb_console_begin_prompt_line(void) {
     if (!console_ready) return;
-    fb_fill_rect(0, console_row * console_cell_height,
-                 console_columns * console_cell_width, console_cell_height,
+    u32 left = console_bounds_enabled ? console_bounds_x : 0u;
+    u32 width = console_bounds_enabled ? console_bounds_width : console_columns;
+    fb_fill_rect(left * console_cell_width, console_row * console_cell_height,
+                 width * console_cell_width, console_cell_height,
                  console_background);
 }
 
@@ -395,8 +486,14 @@ void fb_console_set_cursor(int x, int y) {
     if (!console_ready) return;
     if (x < 0) x = 0;
     if (y < 0) y = 0;
-    if ((u32)x >= console_columns) x = (int)console_columns - 1;
-    if ((u32)y >= console_rows) y = (int)console_rows - 1;
+    int left = console_bounds_enabled ? (int)console_bounds_x : 0;
+    int top = console_bounds_enabled ? (int)console_bounds_y : 0;
+    int right = console_bounds_enabled ? left + (int)console_bounds_width - 1 : (int)console_columns - 1;
+    int bottom = console_bounds_enabled ? top + (int)console_bounds_height - 1 : (int)console_rows - 1;
+    if (x < left) x = left;
+    if (y < top) y = top;
+    if (x > right) x = right;
+    if (y > bottom) y = bottom;
     console_column = (u32)x;
     console_row = (u32)y;
 }
