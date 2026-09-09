@@ -592,11 +592,11 @@ i32 syscall_readlink(const char *path, char *buf, u32 bufsize) {
 }
 
 i64 syscall_clock_gettime(i32 clk_id, void *tp) {
-    if (!tp || !validate_user_buffer(tp, sizeof(struct timespec), 1)) {
+    if (!tp || !validate_user_buffer(tp, sizeof(struct galio_timespec), 1)) {
         return -1;
     }
 
-    struct timespec *ts = (struct timespec *)tp;
+    struct galio_timespec *ts = (struct galio_timespec *)tp;
     u32 sec = kernel_time_get_seconds();
     u32 usec = kernel_time_get_microseconds();
     ts->tv_sec = (long)sec;
@@ -606,13 +606,13 @@ i64 syscall_clock_gettime(i32 clk_id, void *tp) {
     return 0;
 }
 
-i32 syscall_nanosleep(const struct timespec *req, struct timespec *rem) {
+i32 syscall_nanosleep(const struct galio_timespec *req, struct galio_timespec *rem) {
     if (!req) {
         return -1;
     }
 
-    if (rem && validate_user_buffer(rem, sizeof(struct timespec), 1)) {
-        memset(rem, 0, sizeof(struct timespec));
+    if (rem && validate_user_buffer(rem, sizeof(struct galio_timespec), 1)) {
+        memset(rem, 0, sizeof(struct galio_timespec));
     }
 
     u64 total_ns = (u64)(req->tv_sec * 1000000000ULL + (unsigned long)req->tv_nsec);
@@ -682,7 +682,7 @@ i32 syscall_writev(u32 fd, const void *iov, i32 iovcnt) {
     return -38; /* ENOSYS */
 }
 
-i32 syscall_select(i32 nfds, void *readfds, void *writefds, void *exceptfds, struct timespec *timeout) {
+i32 syscall_select(i32 nfds, void *readfds, void *writefds, void *exceptfds, struct galio_timespec *timeout) {
     (void)nfds;
     (void)readfds;
     (void)writefds;

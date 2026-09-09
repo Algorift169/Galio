@@ -171,11 +171,11 @@ struct timeval {
 #endif
 #define SYS_TIMEVAL_STRUCT_DEFINED
 
-struct timespec {
-    long tv_sec;
-    long tv_nsec;
-};
 
+struct galio_timespec {
+    i64 tv_sec;
+    i64 tv_nsec;
+};
 struct utsname {
     char sysname[65];
     char nodename[65];
@@ -233,7 +233,7 @@ i32 syscall_access(const char *path, i32 mode);
 i32 syscall_fstat(int fd, struct stat *statbuf);
 i32 syscall_readlink(const char *path, char *buf, u32 bufsize);
 i64 syscall_clock_gettime(i32 clk_id, void *tp);
-i32 syscall_nanosleep(const struct timespec *req, struct timespec *rem);
+i32 syscall_nanosleep(const struct galio_timespec *req, struct galio_timespec *rem);
 i64 syscall_ioctl(u32 fd, u32 cmd, void *arg);
 i64 syscall_poll(void *fds, u32 nfds, i32 timeout);
 
@@ -244,7 +244,7 @@ i64 syscall_pread64(u32 fd, void *buf, u32 count, u64 offset);
 i64 syscall_pwrite64(u32 fd, const void *buf, u32 count, u64 offset);
 i32 syscall_readv(u32 fd, void *iov, i32 iovcnt);
 i32 syscall_writev(u32 fd, const void *iov, i32 iovcnt);
-i32 syscall_select(i32 nfds, void *readfds, void *writefds, void *exceptfds, struct timespec *timeout);
+i32 syscall_select(i32 nfds, void *readfds, void *writefds, void *exceptfds, struct galio_timespec *timeout);
 i32 syscall_sched_yield(void);
 i32 syscall_pause(void);
 i32 syscall_socket(i32 domain, i32 type, i32 protocol);

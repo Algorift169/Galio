@@ -66,6 +66,7 @@ DRIFT_SRCS = drift/main.c \
              drift/interpreter/operators/operator.c \
              drift/interpreter/operators/operator_identity.c \
              drift/interpreter/operators/operator_ternary.c
+
 DRIFT_HEADERS = $(shell find drift/include -type f -name '*.h' -print)
 DRIFT_BIN = $(BIN_DIR)/drift
 
@@ -102,8 +103,8 @@ SRCS = kernel/kmain.c \
        kernel/arch/x86/cpu/gdt.c \
        kernel/arch/x86/cpu/tss.c \
        kernel/arch/x86/cpu/idt.c \
-	kernel/process/spinlock.c \
-	kernel/security/security.c \
+       kernel/process/spinlock.c \
+       kernel/security/security.c \
        kernel/arch/x86/cpu/irq.c \
        kernel/arch/x86/cpu/isr.c \
        kernel/mm/paging.c \
@@ -184,9 +185,9 @@ SRCS = kernel/kmain.c \
        ui/src/buttons/gsh.c \
        kernel/pci/pci.c \
        kernel/drivers/net/e1000.c \
-	kernel/dev/device.c \
-	kernel/dev/device_manager.c \
-	kernel/drivers/net/wifi.c \
+       kernel/dev/device.c \
+       kernel/dev/device_manager.c \
+       kernel/drivers/net/wifi.c \
        kernel/drivers/net/rtl8188eu.c \
        kernel/tests/run_tests.c \
        kernel/tests/scheduler_test.c \
@@ -222,16 +223,16 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/wifi_list.c \
        tools/shell/commands/top.c \
        tools/shell/commands/spike.c \
-          tools/compiler/src/gc.c \
-          tools/compiler/src/lexer.c \
-          tools/compiler/src/parser.c \
-          tools/compiler/src/codegen.c \
-          tools/compiler/src/assembler.c \
-          tools/compiler/src/elf_writer.c \
-          tools/compiler/src/libc_galio.c \
-          tools/compiler/src/types.c \
-          tools/shell/commands/gc.c \
-	tools/shell/commands/where.c \
+       tools/compiler/src/gc.c \
+       tools/compiler/src/lexer.c \
+       tools/compiler/src/parser.c \
+       tools/compiler/src/codegen.c \
+       tools/compiler/src/assembler.c \
+       tools/compiler/src/elf_writer.c \
+       tools/compiler/src/libc_galio.c \
+       tools/compiler/src/types.c \
+       tools/shell/commands/gc.c \
+       tools/shell/commands/where.c \
        tools/shell/editor/editor.c
 
 # Link the real Drift runtime into the kernel so gsh uses the same grammar.
@@ -239,16 +240,20 @@ SRCS += $(filter-out drift/main.c drift/platform_host.c,$(DRIFT_SRCS))
 
 # Object files
 C_OBJS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRCS))
+
 # The legacy PIT assembly stub was written for 32-bit protected mode and is
 # not compatible with x86-64 long mode. The timer functionality is already
 # implemented in kernel/drivers/timer/pit.c using the 64-bit-safe ABI.
 GAS_SRCS =
 GAS_OBJS = $(patsubst %.s,$(OBJ_DIR)/%.o,$(GAS_SRCS))
+
 ASM_OBJS = $(OBJ_DIR)/kernel/arch/x86/cpu/asm.o \
            $(OBJ_DIR)/kernel/arch/x86/cpu/isr_asm.o \
            $(OBJ_DIR)/kernel/arch/x86/boot/boot.o
+
 EMBEDDED_OBJS = $(OBJ_DIR)/src/embedded_test.o \
                 $(OBJ_DIR)/src/embedded_initrd.o
+
 OBJS = $(C_OBJS) $(GAS_OBJS) $(ASM_OBJS) $(EMBEDDED_OBJS)
 
 # Binary targets
@@ -277,9 +282,11 @@ $(DRIFT_BIN): $(DRIFT_SRCS) $(DRIFT_HEADERS)
 	$(CC) -std=c99 -Wall -Wextra -pedantic -Idrift/include $(DRIFT_SRCS) -o $@ -lm
 	@echo "Drift interpreter built: $@"
 
-# Explicit object rules for nested paths (must come before generic rule)
+# Explicit object rules for nested paths
 $(OBJ_DIR)/tools/shell/.created:
-	@mkdir -p $(OBJ_DIR)/tools/shell $(OBJ_DIR)/tools/shell/commands $(OBJ_DIR)/tools/shell/editor
+	@mkdir -p $(OBJ_DIR)/tools/shell \
+	           $(OBJ_DIR)/tools/shell/commands \
+	           $(OBJ_DIR)/tools/shell/editor
 
 $(OBJ_DIR)/kernel/drivers/net/%.o: kernel/drivers/net/%.c
 	@mkdir -p $(dir $@)
@@ -339,10 +346,6 @@ $(OBJ_DIR)/kernel/arch/x86/boot/boot.o: kernel/arch/x86/boot/boot.S
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(OBJ_DIR)/kernel/drivers/net/%.o: kernel/drivers/net/%.s
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
-
 # Link kernel
 $(KERNEL_BIN): $(OBJS)
 	@mkdir -p $(dir $@)
@@ -351,6 +354,7 @@ $(KERNEL_BIN): $(OBJS)
 
 # mkiofs tool
 MKIOFS = $(BIN_DIR)/mkiofs
+
 $(MKIOFS): tools/mkiofs/mkiofs.c
 	@mkdir -p $(dir $@)
 	$(CC) -O2 -Wall -Wextra -o $@ $<
@@ -376,7 +380,10 @@ $(KERNEL_ISO): $(KERNEL_BIN) $(INITRD_IMAGE) $(DRIFT_BIN)
 	@cp $(KERNEL_BIN) $(ISO_DIR)/boot/galio.bin
 	@cp $(INITRD_IMAGE) $(ISO_DIR)/boot/initrd.bin
 	@cp $(DRIFT_BIN) $(ISO_DIR)/boot/drift
-	@printf '%s\n' 'set timeout=0' 'set default=0' 'set gfxmode=1024x768x32' 'set gfxpayload=keep' '' \
+	@printf '%s\n' 'set timeout=0' \
+		'set default=0' \
+		'set gfxmode=1024x768x32' \
+		'set gfxpayload=keep' '' \
 		'menuentry "Galio Kernel" {' \
 		'  multiboot /boot/galio.bin' \
 		'  boot' \
@@ -387,15 +394,28 @@ $(KERNEL_ISO): $(KERNEL_BIN) $(INITRD_IMAGE) $(DRIFT_BIN)
 # Embedded objects
 $(OBJ_DIR)/src/embedded_test.o: $(TEST_ELF)
 	@mkdir -p $(dir $@)
-	cd $(BUILD_DIR) && objcopy -I binary -O elf64-x86-64 -B i386:x86-64 $(patsubst $(BUILD_DIR)/%,%,$<) $(patsubst $(BUILD_DIR)/%,%,$@)
+	cd $(BUILD_DIR) && objcopy -I binary -O elf64-x86-64 -B i386:x86-64 \
+		$(patsubst $(BUILD_DIR)/%,%,$<) \
+		$(patsubst $(BUILD_DIR)/%,%,$@)
 
 $(OBJ_DIR)/src/embedded_initrd.o: $(INITRD_IMAGE)
 	@mkdir -p $(dir $@)
-	cd $(BUILD_DIR) && objcopy -I binary -O elf64-x86-64 -B i386:x86-64 $(patsubst $(BUILD_DIR)/%,%,$<) $(patsubst $(BUILD_DIR)/%,%,$@)
+	cd $(BUILD_DIR) && objcopy -I binary -O elf64-x86-64 -B i386:x86-64 \
+		$(patsubst $(BUILD_DIR)/%,%,$<) \
+		$(patsubst $(BUILD_DIR)/%,%,$@)
 
+# 32-bit standalone user ELF
+#
+# IMPORTANT:
+# test_elf.c is linked directly with ld and has no libc/libssp.
+# Disable compiler-generated stack protector code so the linker does not
+# require __stack_chk_fail_local.
 $(OBJ_DIR)/test/test_elf.o: test/test_elf.c
 	@mkdir -p $(dir $@)
-	$(CC) -m32 -march=i686 -O2 -Wall -Wextra -c $< -o $@
+	$(CC) -m32 -march=i686 -O2 -Wall -Wextra \
+		-fno-stack-protector \
+		-fno-pie -fno-pic \
+		-c $< -o $@
 
 $(BIN_DIR)/test_elf.elf: $(OBJ_DIR)/test/test_elf.o
 	@mkdir -p $(dir $@)
@@ -430,8 +450,8 @@ run-net: $(KERNEL_ISO) $(DISK_IMAGE)
 # Run with USB passthrough for real Wi-Fi dongle
 run-usb: $(KERNEL_ISO) $(DISK_IMAGE)
 	qemu-system-x86_64 -cdrom $(KERNEL_ISO) -hda $(DISK_IMAGE) \
-              -netdev user,id=net0,restrict=off \
-              -device e1000,netdev=net0 \
+		-netdev user,id=net0,restrict=off \
+		-device e1000,netdev=net0 \
 		-usb -device usb-host,hostbus=1,hostaddr=2 \
 		-serial stdio \
 		-monitor none \
@@ -446,8 +466,8 @@ debug: all
 
 run-debug: $(KERNEL_ISO) $(DISK_IMAGE)
 	qemu-system-x86_64 -cdrom $(KERNEL_ISO) -hda $(DISK_IMAGE) \
-              -netdev user,id=net0,restrict=off \
-              -device e1000,netdev=net0 \
+		-netdev user,id=net0,restrict=off \
+		-device e1000,netdev=net0 \
 		-s -S \
 		-serial stdio \
 		-monitor stdio \
@@ -470,7 +490,7 @@ help:
 	@echo "Run targets:"
 	@echo "  make run       - Run in QEMU (normal mode)"
 	@echo "  make run-net   - Run with e1000 NIC + USB for Wi-Fi testing"
-	@echo "  make run-usb   - Run with USB passthrough for real Wi-Fi dongle"
+	@echo "  make run-usb   - Run with USB passthrough for real Wi-Fi testing"
 	@echo "  make run-debug - Run with GDB debugging server"
 	@echo ""
 	@echo "Network features:"

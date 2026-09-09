@@ -62,7 +62,7 @@ extern i64 syscall_pread64(u32 fd, void *buf, u32 count, u64 offset);
 extern i64 syscall_pwrite64(u32 fd, const void *buf, u32 count, u64 offset);
 extern i32 syscall_readv(u32 fd, void *iov, i32 iovcnt);
 extern i32 syscall_writev(u32 fd, const void *iov, i32 iovcnt);
-extern i32 syscall_select(i32 nfds, void *readfds, void *writefds, void *exceptfds, struct timespec *timeout);
+extern i32 syscall_select(i32 nfds, void *readfds, void *writefds, void *exceptfds, struct galio_timespec *timeout);
 extern i32 syscall_sched_yield(void);
 extern i32 syscall_pause(void);
 extern i32 syscall_socket(i32 domain, i32 type, i32 protocol);
@@ -448,7 +448,7 @@ static void syscall_handler(registers_t *regs) {
             break;
 
         case SYS_NANOSLEEP:
-            regs->rax = syscall_nanosleep((const struct timespec *)arg1, (struct timespec *)arg2);
+            regs->rax = syscall_nanosleep((const struct galio_timespec *)arg1, (struct galio_timespec *)arg2);
             break;
 
         case SYS_IOCTL:
@@ -516,7 +516,7 @@ static void syscall_handler(registers_t *regs) {
             break;
 
         case SYS_SELECT:
-            regs->rax = syscall_select((i32)arg1, (void *)arg2, (void *)arg3, (void *)arg4, (struct timespec *)arg5);
+            regs->rax = syscall_select((i32)arg1, (void *)arg2, (void *)arg3, (void *)arg4, (struct galio_timespec *)arg5);
             break;
 
         case SYS_SCHED_YIELD:
@@ -1075,7 +1075,7 @@ static void *syscall_brk(void *addr) {
     }
 
     if (!addr) {
-        return (void *)proc->brk;
+        return (void *)(uintptr_t)proc->brk;
     }
 
     uintptr_t new_brk = (uintptr_t)addr;
@@ -1096,7 +1096,7 @@ static void *syscall_brk(void *addr) {
         }
     }
     proc->brk = new_brk;
-    return (void *)proc->brk;
+    return (void *)(uintptr_t)proc->brk;
 }
 
 /* Syscall wrappers for internal use */
