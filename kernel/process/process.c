@@ -602,8 +602,14 @@ void process_preempt(registers_t *regs) {
     regs->rsp = next->regs.rsp;
     regs->eip = next->regs.rip;
     regs->eflags = next->regs.rflags;
-    regs->cs = next->regs.cs;
-    regs->ss = next->regs.user_ss;
+
+    if (next->regs.cs != KERNEL_CS) {
+        regs->cs = next->regs.cs;
+        regs->ss = next->regs.user_ss ? next->regs.user_ss : USER_DS;
+    } else {
+        regs->cs = KERNEL_CS;
+        regs->ss = KERNEL_DS;
+    }
 }
 
 void process_switch(process_t *from, process_t *to) {

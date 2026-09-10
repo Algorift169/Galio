@@ -17,3 +17,8 @@ void display_server_client_set_window_title(u32 client_id, u32 window_id, const 
     (void)client_id;
     display_server_set_window_title(window_id, title);
 }
+
+void display_server_client_move_window(u32 client_id, u32 window_id, int x, int y) {
+    (void)client_id;
+    display_server_move_window(window_id, x, y);
+}

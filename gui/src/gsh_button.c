@@ -8,6 +8,7 @@
 #include "framebuffer.h"
 #include "vga.h"
 #include "shell.h"
+#include "srver/client.h"
 
 static button_t gsh_launch_button;
 static terminal_window_t gsh_window;
@@ -18,12 +19,16 @@ static u8 gsh_hovered = 0u;
 static u8 gsh_drag_pending = 0u;
 static int gsh_pending_x;
 static int gsh_pending_y;
+static u32 gsh_server_client_id = 0u;
+static u32 gsh_server_window_id = 0u;
 
 static const u8 gsh_font[3][7] = {
     {0x00, 0x00, 0x0E, 0x01, 0x0F, 0x11, 0x0F},
     {0x00, 0x00, 0x0F, 0x10, 0x0E, 0x01, 0x1E},
     {0x00, 0x00, 0x11, 0x11, 0x1F, 0x11, 0x11}
 };
+
+#define GSH_DESKTOP_BACKGROUND FB_COLOR(125u, 180u, 255u)
 
 static void draw_gsh_label(void) {
     const u32 scale = 2u;
@@ -50,6 +55,10 @@ void gsh_button_init(void) {
     terminal_window_init(&gsh_window, "gsh", 170u, 90u, 620u, 360u);
     gsh_window_active = 0u;
     gsh_drag_pending = 0u;
+    gsh_server_window_id = 0u;
+    if (gsh_server_client_id == 0u) {
+        gsh_server_client_id = display_server_client_connect();
+    }
 }
 
 void gsh_button_draw(void) {
@@ -86,6 +95,20 @@ void gsh_button_click(void) {
     if (gsh_window_active) {
         return;
     }
+    if (gsh_server_client_id == 0u) {
+        gsh_server_client_id = display_server_client_connect();
+    }
+    if (gsh_server_window_id == 0u) {
+        gsh_server_window_id = display_server_client_create_window(
+            gsh_server_client_id,
+            "gsh",
+            gsh_window.window.x,
+            gsh_window.window.y,
+            gsh_window.window.width,
+            gsh_window.window.height
+        );
+    }
+
     gsh_window_active = 1u;
     gsh_drag_pending = 0u;
     terminal_window_open(&gsh_window);
@@ -102,48 +125,47 @@ void gsh_button_click(void) {
 
 void gsh_button_poll_pointer(int x, int y, u8 buttons) {
     if (!gsh_window_active) return;
-    int old_console_x = gsh_window.console_x;
-    int old_console_y = gsh_window.console_y;
+
     int old_window_x = gsh_window.window.x;
     int old_window_y = gsh_window.window.y;
+    int old_console_x = gsh_window.console_x;
+    int old_console_y = gsh_window.console_y;
+    u32 old_window_width = gsh_window.window.width;
+    u32 old_window_height = gsh_window.window.height;
+
     window_handle_pointer(&gsh_window.window, x, y, buttons);
 
-    if ((buttons & 1u) &&
-        (old_window_x != gsh_window.window.x || old_window_y != gsh_window.window.y)) {
-        int target_x = gsh_window.window.x;
-        int target_y = gsh_window.window.y;
-        int max_x = 1024 - (int)gsh_window.window.width;
-        int max_y = 768 - (int)gsh_window.window.height;
-        if (max_x < 0) max_x = 0;
-        if (max_y < 0) max_y = 0;
-        if (target_x < 0) target_x = 0;
-        if (target_y < 0) target_y = 0;
-        if (target_x > max_x) target_x = max_x;
-        if (target_y > max_y) target_y = max_y;
+    int max_x = 1024 - (int)gsh_window.window.width;
+    int max_y = 768 - (int)gsh_window.window.height;
+    if (max_x < 0) max_x = 0;
+    if (max_y < 0) max_y = 0;
+    if (gsh_window.window.x < 0) gsh_window.window.x = 0;
+    if (gsh_window.window.y < 0) gsh_window.window.y = 0;
+    if (gsh_window.window.x > max_x) gsh_window.window.x = max_x;
+    if (gsh_window.window.y > max_y) gsh_window.window.y = max_y;
 
-        gsh_pending_x = target_x;
-        gsh_pending_y = target_y;
-        gsh_drag_pending = 1u;
-        gsh_window.window.x = old_window_x;
-        gsh_window.window.y = old_window_y;
-        return;
-    }
-
-    if (!(buttons & 1u) && gsh_drag_pending) {
-        gsh_drag_pending = 0u;
-        gsh_window.window.x = gsh_pending_x;
-        gsh_window.window.y = gsh_pending_y;
-        desktop_draw();
+    if (gsh_window.window.x != old_window_x || gsh_window.window.y != old_window_y) {
         terminal_window_sync_layout(&gsh_window);
-        fb_console_relocate(old_console_x, old_console_y,
-                            gsh_window.console_x, gsh_window.console_y,
-                            (int)gsh_window.console_width,
-                            (int)gsh_window.console_height);
-        terminal_window_draw(&gsh_window);
-        fb_console_set_bounds(gsh_window.console_x, gsh_window.console_y,
-                              (int)gsh_window.console_width,
-                              (int)gsh_window.console_height);
-        fb_console_redraw();
+
+        /* Restore the previous bounds to the desktop background instead of the
+         * terminal's interior color, otherwise the old window footprint stays as
+         * a dark block behind the dragged window. */
+        fb_fill_rect((u32)old_window_x, (u32)old_window_y,
+                     old_window_width, old_window_height,
+                     GSH_DESKTOP_BACKGROUND);
+
+        if (gsh_server_window_id != 0u) {
+            display_server_client_move_window(gsh_server_client_id,
+                                              gsh_server_window_id,
+                                              gsh_window.window.x,
+                                              gsh_window.window.y);
+        }
+        if (old_console_x != gsh_window.console_x || old_console_y != gsh_window.console_y) {
+            terminal_window_set_bounds(&gsh_window);
+            fb_console_set_bounds(gsh_window.console_x, gsh_window.console_y,
+                                  (int)gsh_window.console_width,
+                                  (int)gsh_window.console_height);
+        }
         terminal_window_draw(&gsh_window);
         cursor_rebase();
     }

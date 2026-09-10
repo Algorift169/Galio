@@ -4,6 +4,9 @@
 #include "srver/events.h"
 #include "srver/security.h"
 #include "framebuffer.h"
+#include "desktop.h"
+#include "mouse/mouse.h"
+#include "mouse/cursor.h"
 
 #define DISPLAY_SERVER_DEFAULT_BG FB_COLOR(125u, 180u, 255u)
 
@@ -35,7 +38,7 @@ static void display_server_boot_state(void) {
     g_display_server_state.cursor_type = DISPLAY_SERVER_CURSOR_ARROW;
     g_display_server_state.next_window_id = 1u;
     g_display_server_state.next_surface_id = 1u;
-    g_display_server_state.initialized = 1u;
+    g_display_server_state.initialized = 0u;
     g_display_server_state.running = 0u;
     g_display_server_state.redraw_pending = 1u;
 
@@ -50,12 +53,21 @@ void display_server_init(void) {
     }
 
     display_server_boot_state();
+    g_display_server_state.initialized = 1u;
     display_server_resources_init();
     display_server_events_init();
     display_server_security_init();
     display_server_protocol_init();
     display_server_output_init();
-    display_server_renderer_clear(DISPLAY_SERVER_DEFAULT_BG);
+    desktop_init();
+    desktop_set_background(DISPLAY_SERVER_DEFAULT_BG);
+    desktop_draw();
+    mouse_init();
+    cursor_init();
+    g_display_server_state.initialized = 1u;
+    g_display_server_state.desktop_ready = 1u;
+    g_display_server_state.input_ready = 1u;
+    g_display_server_state.redraw_pending = 1u;
 }
 
 void display_server_start(void) {
@@ -78,6 +90,8 @@ void display_server_tick(void) {
         display_server_output_refresh();
         g_display_server_state.redraw_pending = 0u;
     }
+
+    cursor_poll();
 }
 
 void display_server_run_background(void) {
@@ -161,7 +175,10 @@ void display_server_output_init(void) {
 void display_server_output_refresh(void) {
     u32 index;
 
-    display_server_renderer_clear(g_display_server_state.output.background);
+    /* Preserve the wallpaper: the server should repaint the desktop scene
+     * without forcibly clearing the framebuffer first, otherwise the wallpaper
+     * gets temporarily removed and can blink during redraws. */
+    desktop_draw();
     for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
         if (!g_display_server_state.windows[index].closed && g_display_server_state.windows[index].visible) {
             display_server_renderer_fill_rect((u32)g_display_server_state.windows[index].x,
@@ -170,6 +187,10 @@ void display_server_output_refresh(void) {
                                               g_display_server_state.windows[index].height,
                                               FB_COLOR(64u, 64u, 72u));
         }
+    }
+
+    if (g_display_server_state.cursor_visible) {
+        cursor_rebase();
     }
 }
 
@@ -359,7 +380,10 @@ void display_server_move_window(u32 window_id, int x, int y) {
         }
     }
 
-    g_display_server_state.redraw_pending = 1u;
+    /* Keep drag updates local to the client renderer. A full compositor refresh
+     * on every move causes the desktop to flash, while the current client path
+     * already clears and redraws the affected window bounds. */
+    g_display_server_state.redraw_pending = 0u;
 }
 
 void display_server_resize_window(u32 window_id, u32 width, u32 height) {

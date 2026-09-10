@@ -4,9 +4,11 @@
 #include "display_wrapper.h"
 #include "cursor.h"
 #include "gsh_button.h"
+#include "srver/client.h"
 
 static window_t desktop_window;
 static u8 gsh_open = 0u;
+static u32 desktop_client_id = 0u;
 
 void desktop_init(void) {
     window_init(&desktop_window, "Desktop", FB_COLOR(30, 60, 90), 0u, 0u, 1024u, 768u);
@@ -14,6 +16,7 @@ void desktop_init(void) {
     desktop_window.resizeable = 0u;
     desktop_window.visible = 1u;
     desktop_window.closed = 0u;
+    desktop_client_id = display_server_client_connect();
     gsh_button_init();
 }
 
