@@ -11,6 +11,7 @@ static u8 gsh_open = 0u;
 static u32 desktop_client_id = 0u;
 
 void desktop_init(void) {
+    display_wrapper_init();
     window_init(&desktop_window, "Desktop", FB_COLOR(30, 60, 90), 0u, 0u, 1024u, 768u);
     desktop_window.draggable = 0u;
     desktop_window.resizeable = 0u;

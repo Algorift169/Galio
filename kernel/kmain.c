@@ -25,6 +25,7 @@
 #include "gpu.h"
 #include "gdt.h"
 #include "display/server.h"
+#include "display_wrapper.h"
 #include "idt.h"
 #include "irq.h"
 #include "kprintf.h"
@@ -89,6 +90,9 @@ static void vfs_populate_disk_from_initrd(void) {
         "./boot", "./bin", "./sbin", "./dev", "./etc", "./usr/home", "./lib", 
         "./mnt", "./media", "./proc", "./root", "./run", "./srv", "./sys", "./tmp", 
         "./fuse", "./lost+found",
+
+        /* Built-in GUI assets */
+        "./assets", "./assets/wallpapers",
         
         /* /usr subdirectories */
         "./usr", "./usr/bin", "./usr/sbin", "./usr/lib", "./usr/local", 
@@ -144,8 +148,10 @@ static void vfs_populate_disk_from_initrd(void) {
     for (u32 i = 0; i < header->entry_count; i++) {
         vfs_entry_t *entry = &header->entries[i];
         if (!entry->is_dir && entry->size > 0) {
-            /* Skip files that already exist on disk to preserve user data */
-            if (ext2_find_inode(entry->path) != 0) {
+            /* Built-in GUI assets must track the InitRD across rebuilds. */
+            u8 is_wallpaper = strcmp(entry->path, "./assets/wallpapers/wal1.png") == 0;
+            /* Preserve user files, but always refresh the built-in wallpaper. */
+            if (!is_wallpaper && ext2_find_inode(entry->path) != 0) {
                 continue;
             }
 
@@ -153,7 +159,7 @@ static void vfs_populate_disk_from_initrd(void) {
             u8 *content = (u8 *)header + entry->offset;
             
             /* Write file to disk */
-            if (vfs_core_create_file(entry->path, 0)) {
+            if (vfs_core_create_file(entry->path, is_wallpaper ? 1 : 0)) {
                 u32 inode = ext2_find_inode(entry->path);
                 if (inode) {
                     ext2_write_data(inode, content, entry->size);
@@ -342,6 +348,8 @@ void kmain(void *multiboot_ptr) {
 
     extern u8 _binary_initrd_bin_start;
     vfs_init(&_binary_initrd_bin_start);
+    /* Decode built-in desktop assets while the InitRD RAM VFS is active. */
+    display_wrapper_init();
     if (device_manager_init() != 0) {
         kprintf("[DEV] ERROR: Device subsystem initialization failed\n");
     }

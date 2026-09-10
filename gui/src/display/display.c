@@ -5,6 +5,7 @@
 #define GUI_WIDTH 1024
 #define GUI_HEIGHT 768
 
+
 void display_init(void) {
     display_server_init();
 }

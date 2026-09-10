@@ -55,6 +55,7 @@ static vfs_entry_t *build_compat_entry(vfs_dentry_t *dentry, const char *path) {
 }
 
 void vfs_init(void *initrd_addr) {
+    kprintf("[VFS] Mounting InitRD at %p\n", initrd_addr);
     vfs_root = (vfs_header_t *)initrd_addr;
 
     if (!vfs_root) {
@@ -70,6 +71,7 @@ void vfs_init(void *initrd_addr) {
     }
 
     vfs_core_init(initrd_addr);
+    kprintf("[VFS] InitRD core loaded\n");
     kprintf("[VFS] ✓ Filesystem mounted successfully\n");
     kprintf("[VFS] - Magic: 0x%08X\n", vfs_root->magic);
     kprintf("[VFS] - Version: %u\n", vfs_root->version);

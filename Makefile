@@ -170,6 +170,7 @@ SRCS = kernel/kmain.c \
        kernel/drivers/video/gpu.c \
        kernel/drivers/usb/usb.c \
        gui/src/display/display.c \
+       gui/src/png.c \
        gui/src/display/srver/server.c \
        gui/src/display/srver/client.c \
        gui/src/display/srver/resources.c \
@@ -269,6 +270,8 @@ KERNEL_BIN = $(BIN_DIR)/galio.bin
 KERNEL_ISO = $(BIN_DIR)/galio.iso
 
 .PHONY: all clean run disk help drift-source drift-build
+
+WALLPAPER_ASSET = assets/wallpapers/wal1.png
 
 all: $(OBJS) $(KERNEL_BIN) $(KERNEL_ISO) $(DISK_IMAGE) $(DRIFT_BIN)
 	@echo "Build complete!"
@@ -373,9 +376,9 @@ $(MKIOFS): tools/mkiofs/mkiofs.c
 	$(CC) -O2 -Wall -Wextra -o $@ $<
 
 # Initrd image
-$(INITRD_IMAGE): $(MKIOFS)
+$(INITRD_IMAGE): $(MKIOFS) $(WALLPAPER_ASSET)
 	@mkdir -p $(dir $@)
-	./$(MKIOFS) $@
+	./$(MKIOFS) $@ $(WALLPAPER_ASSET)
 
 # Disk image
 $(DISK_IMAGE):

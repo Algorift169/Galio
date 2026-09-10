@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 
 #define VFS_MAGIC 0xDEADBEEF
 #define VFS_VERSION 1
@@ -108,6 +109,11 @@ static file_spec_t files[] = {
     {"./tmp",           NULL, 0, 1},
     {"./fuse",          NULL, 0, 1},
     {"./lost+found",    NULL, 0, 1},
+
+    /* Built-in GUI assets */
+    {"./assets",                NULL, 0, 1},
+    {"./assets/wallpapers",     NULL, 0, 1},
+    {"./assets/wallpapers/wal1.png", NULL, 0, 0},
 
     /* /usr subdirectories */
     {"./usr",           NULL, 0, 1},
@@ -568,15 +574,50 @@ static file_spec_t files[] = {
 static int file_count = sizeof(files) / sizeof(files[0]);
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <output.bin>\n", argv[0]);
+    if (argc != 2 && argc != 3) {
+        fprintf(stderr, "Usage: %s <output.bin> [asset-source]\n", argv[0]);
         return 1;
     }
 
     const char *output_file = argv[1];
+    const char *asset_source = argc == 3 ? argv[2] : "assets/wallpapers/wal1.png";
+    char *asset_data = NULL;
+    FILE *asset_fp = fopen(asset_source, "rb");
+    if (!asset_fp) {
+        fprintf(stderr, "Cannot open asset source: %s\n", asset_source);
+        return 1;
+    }
+    if (fseek(asset_fp, 0, SEEK_END) != 0) {
+        fclose(asset_fp);
+        fprintf(stderr, "Cannot seek asset source: %s\n", asset_source);
+        return 1;
+    }
+    long asset_size = ftell(asset_fp);
+    if (asset_size <= 0 || (unsigned long)asset_size > UINT_MAX) {
+        fclose(asset_fp);
+        fprintf(stderr, "Invalid asset size: %s\n", asset_source);
+        return 1;
+    }
+    rewind(asset_fp);
+    asset_data = malloc((size_t)asset_size);
+    if (!asset_data || fread(asset_data, 1, (size_t)asset_size, asset_fp) != (size_t)asset_size) {
+        free(asset_data);
+        fclose(asset_fp);
+        fprintf(stderr, "Cannot read asset source: %s\n", asset_source);
+        return 1;
+    }
+    fclose(asset_fp);
+    for (int i = 0; i < file_count; i++) {
+        if (strcmp(files[i].path, "./assets/wallpapers/wal1.png") == 0) {
+            files[i].data = asset_data;
+            files[i].size = (unsigned int)asset_size;
+            break;
+        }
+    }
     FILE *fp = fopen(output_file, "wb");
     if (!fp) {
         perror("Cannot open output file");
+        free(asset_data);
         return 1;
     }
 
@@ -659,6 +700,7 @@ int main(int argc, char *argv[]) {
     if (fwrite(&header, sizeof(header), 1, fp) != 1) {
         perror("Failed to write header");
         fclose(fp);
+        free(asset_data);
         return 1;
     }
 
@@ -667,12 +709,14 @@ int main(int argc, char *argv[]) {
             if (fwrite(files[i].data, files[i].size, 1, fp) != 1) {
                 perror("Failed to write file data");
                 fclose(fp);
+                free(asset_data);
                 return 1;
             }
         }
     }
 
     fclose(fp);
+    free(asset_data);
 
     printf("╔════════════════════════════════════════════════════════════════╗\n");
     printf("║           Galio Filesystem Image Generator (mkiofs)            ║\n");

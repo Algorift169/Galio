@@ -150,7 +150,11 @@ static vfs_inode_t *vfs_alloc_inode(void) {
 static u32 vfs_allocate_data(u32 bytes) {
     if (!bytes) return 0;
     if (!vfs_data_ram) return 0xFFFFFFFFu;
-    if (vfs_data_top + bytes > vfs_data_ram_size) return 0xFFFFFFFFu;
+    if (bytes > vfs_data_ram_size - vfs_data_top) {
+        kprintf("[VFS] ERROR: RAM data allocation denied: top=%u size=%u capacity=%u\n",
+                vfs_data_top, bytes, vfs_data_ram_size);
+        return 0xFFFFFFFFu;
+    }
     u32 offset = vfs_data_top; vfs_data_top += bytes; return offset;
 }
 static u8 vfs_reserve_dirents(vfs_inode_t *inode, u32 required) {
@@ -498,7 +502,15 @@ static vfs_dentry_t *vfs_make_node_internal(const char *path, u32 mode, const u8
             if (size > 0) {
                 u32 data_offset = vfs_allocate_data(size);
                 if (data_offset == 0xFFFFFFFFu) return NULL;
-                if (data) memcpy(vfs_data_ram + data_offset, data, size);
+                if (data) {
+                    u32 copied = 0;
+                    while (copied < size) {
+                        u32 chunk = size - copied;
+                        if (chunk > 4096u) chunk = 4096u;
+                        memcpy(vfs_data_ram + data_offset + copied, data + copied, chunk);
+                        copied += chunk;
+                    }
+                }
                 else memset(vfs_data_ram + data_offset, 0, size);
                 inode->blocks[0] = data_offset;
                 inode->block_count = 1;
@@ -542,6 +554,7 @@ static void vfs_init_root(void) {
 // Build the in-memory VFS structure from the initrd header
 static void vfs_build_from_initrd(vfs_header_t *header) {
     if (!header) return;
+    if (header->entry_count > VFS_MAX_FILES) return;
     u32 total_data = 0;
     for (u32 i = 0; i < header->entry_count; i++) if (!header->entries[i].is_dir) total_data += header->entries[i].size;
     vfs_data_ram_size = total_data + VFS_RAMDISK_EXTRA;
