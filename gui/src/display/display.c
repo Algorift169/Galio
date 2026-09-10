@@ -1,37 +1,21 @@
 #include "display/display.h"
-#include "desktop.h"
-#include "framebuffer.h"
+#include "display/server.h"
 #include "mouse/cursor.h"
-#include "mouse/mouse.h"
-#include "vga.h"
 
 #define GUI_WIDTH 1024
 #define GUI_HEIGHT 768
 
 void display_init(void) {
-    vga_clear();
-    display_enter_userland_mode();
+    display_server_init();
 }
 
+
 void display_enter_userland_mode(void) {
-    u32 width;
-    u32 height;
-
-    fb_get_info(&width, &height, NULL, NULL);
-    if (width == 0u) width = GUI_WIDTH;
-    if (height == 0u) height = GUI_HEIGHT;
-
-    vga_clear();
-    desktop_init();
-    desktop_set_background(FB_COLOR(125, 180, 255));
-    desktop_draw();
-
-    mouse_init();
-    cursor_init();
+    display_server_start();
 }
 
 void display_enter_shell_mode(void) {
-    display_enter_userland_mode();
+    display_server_start();
 }
 
 void display_draw_cursor_at(int x, int y) {

@@ -24,6 +24,7 @@
 #include "framebuffer.h"
 #include "gpu.h"
 #include "gdt.h"
+#include "display/server.h"
 #include "idt.h"
 #include "irq.h"
 #include "kprintf.h"
@@ -474,7 +475,7 @@ void kmain(void *multiboot_ptr) {
     enable_interrupts();
 
     for (;;) {
-        cursor_poll();
+        display_server_run_background();
         __asm__ volatile("hlt");
     }
 }

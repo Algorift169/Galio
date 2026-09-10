@@ -25,6 +25,7 @@ INCLUDES = -Iinclude \
            -Itools/shell/editor \
            -Itools/compiler/include \
            -Igui/include \
+           -Igui/src/display \
            -Idrift/include
 
 # Drift is built for both the hosted companion executable and the kernel shell.
@@ -169,6 +170,12 @@ SRCS = kernel/kmain.c \
        kernel/drivers/video/gpu.c \
        kernel/drivers/usb/usb.c \
        gui/src/display/display.c \
+       gui/src/display/srver/server.c \
+       gui/src/display/srver/client.c \
+       gui/src/display/srver/resources.c \
+       gui/src/display/srver/events.c \
+       gui/src/display/srver/protocol.c \
+       gui/src/display/srver/security.c \
        gui/src/terminal_background.c \
        gui/src/terminal_window.c \
        gui/src/gsh_button.c \
