@@ -9,6 +9,7 @@
 #include "vga.h"
 #include "shell.h"
 #include "srver/client.h"
+#include "display_wrapper.h"
 
 static button_t gsh_launch_button;
 static terminal_window_t gsh_window;
@@ -16,9 +17,6 @@ static int gsh_button_x = 20;
 static int gsh_button_y = 680;
 static u8 gsh_window_active = 0u;
 static u8 gsh_hovered = 0u;
-static u8 gsh_drag_pending = 0u;
-static int gsh_pending_x;
-static int gsh_pending_y;
 static u32 gsh_server_client_id = 0u;
 static u32 gsh_server_window_id = 0u;
 
@@ -27,8 +25,6 @@ static const u8 gsh_font[3][7] = {
     {0x00, 0x00, 0x0F, 0x10, 0x0E, 0x01, 0x1E},
     {0x00, 0x00, 0x11, 0x11, 0x1F, 0x11, 0x11}
 };
-
-#define GSH_DESKTOP_BACKGROUND FB_COLOR(125u, 180u, 255u)
 
 static void draw_gsh_label(void) {
     const u32 scale = 2u;
@@ -54,7 +50,6 @@ void gsh_button_init(void) {
     gsh_button_y = 710;
     terminal_window_init(&gsh_window, "gsh", 170u, 90u, 620u, 360u);
     gsh_window_active = 0u;
-    gsh_drag_pending = 0u;
     gsh_server_window_id = 0u;
     if (gsh_server_client_id == 0u) {
         gsh_server_client_id = display_server_client_connect();
@@ -110,7 +105,6 @@ void gsh_button_click(void) {
     }
 
     gsh_window_active = 1u;
-    gsh_drag_pending = 0u;
     terminal_window_open(&gsh_window);
     terminal_window_set_bounds(&gsh_window);
     shell_set_exit_region(gsh_window.window.x + (int)gsh_window.window.width - 18,
@@ -147,12 +141,8 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
     if (gsh_window.window.x != old_window_x || gsh_window.window.y != old_window_y) {
         terminal_window_sync_layout(&gsh_window);
 
-        /* Restore the previous bounds to the desktop background instead of the
-         * terminal's interior color, otherwise the old window footprint stays as
-         * a dark block behind the dragged window. */
-        fb_fill_rect((u32)old_window_x, (u32)old_window_y,
-                     old_window_width, old_window_height,
-                     GSH_DESKTOP_BACKGROUND);
+        display_wrapper_draw_region((u32)old_window_x, (u32)old_window_y,
+                        old_window_width, old_window_height);
 
         if (gsh_server_window_id != 0u) {
             display_server_client_move_window(gsh_server_client_id,
