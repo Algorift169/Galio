@@ -23,9 +23,9 @@
 #include "drivers/msr.h"
 #include "cpu/capabilities.h"
 
-static u8 msr_probe_active;
-static u8 msr_probe_faulted;
-static u64 msr_probe_recovery_rip;
+static volatile u8 msr_probe_active;
+static volatile u8 msr_probe_faulted;
+static volatile u64 msr_probe_recovery_rip;
 
 static u8 msr_index_supported(void) {
     const cpu_capabilities_t *capabilities = cpu_get_capabilities();
@@ -39,7 +39,9 @@ i32 msr_read(u32 index, u64 *value) {
     if (!value || !msr_index_supported())
         return MSR_ERR_UNSUPPORTED;
 
+    msr_probe_active = 0;
     msr_probe_faulted = 0;
+    msr_probe_recovery_rip = 0;
 
     __asm__ volatile(
         "lea 1f(%%rip), %%rax\n\t"
