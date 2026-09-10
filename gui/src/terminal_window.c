@@ -33,14 +33,10 @@ void terminal_window_draw(const terminal_window_t *terminal) {
 void terminal_window_open(terminal_window_t *terminal) {
     if (!terminal) return;
     terminal->visible = 1u;
-    win_border_draw(&terminal->window, terminal->window.border_color,
-                    terminal->window.background);
+    terminal_background_enter();
     fb_fill_rect((u32)terminal->inner_x, (u32)terminal->inner_y,
                  terminal->inner_width, terminal->inner_height,
                  FB_COLOR(64, 0, 16));
-    terminal_background_enter();
-    fb_console_set_bounds(terminal->console_x, terminal->console_y,
-                          (int)terminal->console_width, (int)terminal->console_height);
     terminal_window_set_bounds(terminal);
     win_border_draw(&terminal->window, terminal->window.border_color,
                     terminal->window.background);
