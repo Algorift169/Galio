@@ -20,6 +20,41 @@ static u8 gsh_hovered = 0u;
 static u32 gsh_server_client_id = 0u;
 static u32 gsh_server_window_id = 0u;
 
+static void repaint_exposed_wallpaper(int old_x, int old_y, u32 width, u32 height,
+                                      int new_x, int new_y) {
+    int old_right = old_x + (int)width;
+    int old_bottom = old_y + (int)height;
+    int new_right = new_x + (int)width;
+    int new_bottom = new_y + (int)height;
+    int overlap_left = old_x > new_x ? old_x : new_x;
+    int overlap_top = old_y > new_y ? old_y : new_y;
+    int overlap_right = old_right < new_right ? old_right : new_right;
+    int overlap_bottom = old_bottom < new_bottom ? old_bottom : new_bottom;
+
+    if (overlap_left >= overlap_right || overlap_top >= overlap_bottom) {
+        display_wrapper_draw_region((u32)old_x, (u32)old_y, width, height);
+        return;
+    }
+    if (old_y < overlap_top) {
+        display_wrapper_draw_region((u32)old_x, (u32)old_y, width,
+                                    (u32)(overlap_top - old_y));
+    }
+    if (overlap_bottom < old_bottom) {
+        display_wrapper_draw_region((u32)old_x, (u32)overlap_bottom, width,
+                                    (u32)(old_bottom - overlap_bottom));
+    }
+    if (old_x < overlap_left) {
+        display_wrapper_draw_region((u32)old_x, (u32)overlap_top,
+                                    (u32)(overlap_left - old_x),
+                                    (u32)(overlap_bottom - overlap_top));
+    }
+    if (overlap_right < old_right) {
+        display_wrapper_draw_region((u32)overlap_right, (u32)overlap_top,
+                                    (u32)(old_right - overlap_right),
+                                    (u32)(overlap_bottom - overlap_top));
+    }
+}
+
 static const u8 gsh_font[3][7] = {
     {0x00, 0x00, 0x0E, 0x01, 0x0F, 0x11, 0x0F},
     {0x00, 0x00, 0x0F, 0x10, 0x0E, 0x01, 0x1E},
@@ -143,8 +178,9 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
     if (gsh_window.window.x != old_window_x || gsh_window.window.y != old_window_y) {
         terminal_window_sync_layout(&gsh_window);
 
-        display_wrapper_draw_region((u32)old_window_x, (u32)old_window_y,
-                        old_window_width, old_window_height);
+        repaint_exposed_wallpaper(old_window_x, old_window_y,
+                      old_window_width, old_window_height,
+                      gsh_window.window.x, gsh_window.window.y);
 
         if (gsh_server_window_id != 0u) {
             display_server_client_move_window(gsh_server_client_id,

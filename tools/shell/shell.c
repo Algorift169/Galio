@@ -515,14 +515,12 @@ static void shell_print_cursor(void) {
 }
 
 static void shell_poll_mouse(void) {
-    mouse_poll_position();
-
+    cursor_poll();
     int mouse_x;
     int mouse_y;
     u8 mouse_buttons = mouse_get_buttons();
     mouse_get_position(&mouse_x, &mouse_y);
     gsh_button_poll_pointer(mouse_x, mouse_y, mouse_buttons);
-    cursor_poll();
     if ((mouse_buttons & 1u) && !(shell_mouse_buttons & 1u) &&
         shell_exit_enabled && mouse_x >= shell_exit_x &&
         mouse_x < shell_exit_x + shell_exit_width &&
