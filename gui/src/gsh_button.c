@@ -14,7 +14,7 @@
 static button_t gsh_launch_button;
 static terminal_window_t gsh_window;
 static int gsh_button_x = 20;
-static int gsh_button_y = 680;
+static int gsh_button_y = 20;
 static u8 gsh_window_active = 0u;
 static u8 gsh_hovered = 0u;
 static u32 gsh_server_client_id = 0u;
@@ -44,10 +44,10 @@ static void draw_gsh_label(void) {
 }
 
 void gsh_button_init(void) {
-    button_init(&gsh_launch_button, "gsh", 20u, 710u, 55u, 19u,
+    button_init(&gsh_launch_button, "gsh", 20u, 20u, 55u, 19u,
                 FB_COLOR(190, 42, 48), 0x00FFFFFFu);
     gsh_button_x = 20;
-    gsh_button_y = 710;
+    gsh_button_y = 20;
     terminal_window_init(&gsh_window, "gsh", 170u, 90u, 620u, 360u);
     gsh_window_active = 0u;
     gsh_server_window_id = 0u;
@@ -107,6 +107,8 @@ void gsh_button_click(void) {
     gsh_window_active = 1u;
     terminal_window_open(&gsh_window);
     terminal_window_set_bounds(&gsh_window);
+    terminal_window_draw(&gsh_window);
+    cursor_rebase();
     shell_set_exit_region(gsh_window.window.x + (int)gsh_window.window.width - 18,
                           gsh_window.window.y + (int)gsh_window.window.height - 18,
                           16, 16);
@@ -157,6 +159,7 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
                                   (int)gsh_window.console_height);
         }
         terminal_window_draw(&gsh_window);
+        shell_redraw_terminal();
         cursor_rebase();
     }
 }

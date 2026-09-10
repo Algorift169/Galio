@@ -26,6 +26,7 @@
 #include "common.h"
 
 void shell_run(void);
+void shell_redraw_terminal(void);
 void shell_set_exit_region(int x, int y, int width, int height);
 void shell_clear_exit_region(void);
 int shell_execute_script_command(const char *command, void *context);

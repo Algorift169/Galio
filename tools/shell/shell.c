@@ -427,6 +427,20 @@ static void shell_clear_line(void) {
 }
 
 static void shell_print_buffer(void);
+
+void shell_redraw_terminal(void) {
+    char saved_input[SHELL_BUFFER_SIZE];
+    u32 saved_len = input.len;
+    u32 saved_cursor = input.cursor;
+
+    memcpy(saved_input, input.buffer, sizeof(saved_input));
+    shell_print_prompt();
+    memcpy(input.buffer, saved_input, sizeof(input.buffer));
+    input.len = saved_len;
+    input.cursor = saved_cursor;
+    shell_print_buffer();
+}
+
 static void shell_cancel_input(void)
 {
     keyboard_clear_pending_input();
@@ -1899,7 +1913,7 @@ void shell_run(void) {
     while (!shell_should_exit) {
         shell_poll_keyboard();
         shell_poll_mouse();
-        for (volatile int i = 0; i < 100; i++);
+        for (volatile int i = 0; i < 10; i++);
     }
 
     shell_cursor_restore();
