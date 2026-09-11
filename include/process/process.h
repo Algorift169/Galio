@@ -128,6 +128,8 @@ u32 process_create_user_elf(const char *path);
 u32 process_create_kernel_service(const char *path);
 void process_set_boot_current(void);
 process_t *process_current(void);
+u8 process_exception_precheck(void);
+void process_exception_handle(registers_t *regs);
 void process_yield(void);
 void process_switch(process_t *from, process_t *to);
 void process_exit(i32 code);

@@ -5,6 +5,7 @@
 #include "terminal_background.h"
 #include "framebuffer.h"
 #include "fb_console.h"
+#include "display_wrapper.h"
 
 void terminal_window_init(terminal_window_t *terminal, const char *title, u32 x, u32 y, u32 width, u32 height) {
     if (!terminal) return;
@@ -34,9 +35,6 @@ void terminal_window_open(terminal_window_t *terminal) {
     if (!terminal) return;
     terminal->visible = 1u;
     terminal_background_enter();
-    fb_fill_rect((u32)terminal->inner_x, (u32)terminal->inner_y,
-                 terminal->inner_width, terminal->inner_height,
-                 FB_COLOR(64, 0, 16));
     terminal_window_set_bounds(terminal);
     win_border_draw(&terminal->window, terminal->window.border_color,
                     terminal->window.background);
@@ -44,6 +42,15 @@ void terminal_window_open(terminal_window_t *terminal) {
 
 void terminal_window_close(terminal_window_t *terminal) {
     if (!terminal) return;
+
+    /* Restore the wallpaper region that the terminal window previously covered.
+     * Leaving the stale grey rectangle visible is the UI symptom seen after
+     * the GSH shell exits. */
+    display_wrapper_draw_region((u32)terminal->window.x,
+                                 (u32)terminal->window.y,
+                                 terminal->window.width,
+                                 terminal->window.height);
+
     terminal->visible = 0u;
     fb_console_clear_bounds();
     vga_clear_bounds();
@@ -59,8 +66,12 @@ void terminal_window_set_bounds(const terminal_window_t *terminal) {
 
 void terminal_window_sync_layout(terminal_window_t *terminal) {
     if (!terminal) return;
+
     terminal->inner_x = terminal->window.x + 12;
     terminal->inner_y = terminal->window.y + 22;
+    terminal->inner_width = terminal->window.width - 24u;
+    terminal->inner_height = terminal->window.height - 30u;
+
     terminal->console_x = terminal->inner_x / 8;
     terminal->console_y = terminal->inner_y / 16;
     terminal->console_width = terminal->inner_width / 8u;

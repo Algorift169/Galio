@@ -1043,8 +1043,24 @@ u8 shell_dir_command(const char *args, const char *current_dir, u8 replace, u8 p
 }
 /* Parse and execute command */
 /* Parse and execute command */
+static u8 shell_exception_precheck(const char *command) {
+    if (!command || !process_exception_precheck()) {
+        return 0;
+    }
+    return 1;
+}
+
 static void shell_execute_command(void) {
     if (input.len == 0) return;
+
+    if (!shell_exception_precheck(input.buffer)) {
+        SHELL_COLOR_ERR();
+        kprintf("Exception guard: command rejected; current process context is invalid\n");
+        SHELL_COLOR_RESET();
+        if (!shell_script_mode) shell_print_prompt();
+        input.len = 0;
+        return;
+    }
 
     if (input.len >= SHELL_BUFFER_SIZE) {
         input.len = SHELL_BUFFER_SIZE - 1;

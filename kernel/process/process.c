@@ -458,6 +458,37 @@ process_t *process_current(void) {
     return current_process;
 }
 
+u8 process_exception_precheck(void) {
+    process_t *proc = process_current();
+    if (!proc || proc->state == PROCESS_ZOMBIE || proc->pid == 0 || proc->pid == 0xFFFFFFFFu) {
+        return 0;
+    }
+    return 1;
+}
+
+void process_exception_handle(registers_t *regs) {
+    process_t *proc = process_current();
+    if (!proc || proc->state == PROCESS_ZOMBIE || proc->pid == 0 || proc->pid == 0xFFFFFFFFu) {
+        return;
+    }
+
+    kprintf("EXCEPTION_ISOLATE: PID=%u caused %s; soft-killing that process.\n",
+            proc->pid, regs && regs->interrupt_number < 32 ?
+            "a CPU exception" : "an invalid fault");
+
+    proc->exit_code = (u32)(regs ? regs->interrupt_number : 0);
+    proc->pending_signals = 0;
+    proc->waiting_for_pid = -1;
+    proc->state = PROCESS_ZOMBIE;
+
+    if (proc->parent_pid != 0 && proc->parent_pid != proc->pid) {
+        process_send_signal(proc->parent_pid, SIGCHLD);
+    }
+
+    process_reap(proc);
+    process_yield();
+}
+
 void process_yield(void) {
     if (current_process) {
         process_handle_pending_signals(current_process);

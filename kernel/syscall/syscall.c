@@ -227,6 +227,13 @@ static u8 copy_user_string(char *dst, const char *src, u32 dst_size) {
  * numbers; they must not be documented or treated as working capabilities.
  */
 static void syscall_handler(registers_t *regs) {
+    if (!process_exception_precheck()) {
+        if (regs) {
+            regs->rax = (u64)-1;
+        }
+        return;
+    }
+
     /* For INT 0x80, we need to distinguish syscall number from interrupt_number */
     /* The actual syscall number is in EAX */
     u64 syscall_num = regs->rax;

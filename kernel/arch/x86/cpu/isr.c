@@ -138,17 +138,15 @@ void isr_handler(registers_t *regs) {
         }
 
         process_t *current = process_current();
-        if ((regs->cs & 3) == 3 && current) {
-            kprintf("Delivering SIGSEGV to PID=%u\n", current->pid);
-            process_send_signal(current->pid, SIGSEGV);
+        if (current && current->pid != 0 && current->pid != 0xFFFFFFFFu) {
+            kprintf("KERNEL_EXCEPTION: PID=%u managed and isolated by scheduler recovery.\n",
+                    current->pid);
+            process_exception_handle(regs);
             return;
         }
 
-        kprintf("KERNEL PANIC: Unhandled exception in kernel mode. Halting.\n");
-        __asm__ volatile("cli");
-        while(1) {
-            __asm__ volatile("hlt");
-        }
+        kprintf("KERNEL_EXCEPTION: no process context; dropping fault into scheduler recovery.\n");
+        return;
     }
 
     if (handlers[int_no] != NULL) {
