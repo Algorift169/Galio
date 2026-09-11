@@ -43,9 +43,10 @@ void terminal_window_open(terminal_window_t *terminal) {
 void terminal_window_close(terminal_window_t *terminal) {
     if (!terminal) return;
 
-    /* Restore the wallpaper region that the terminal window previously covered.
-     * Leaving the stale grey rectangle visible is the UI symptom seen after
-     * the GSH shell exits. */
+    /* Repaint the desktop wallpaper through the display wrapper over the
+     * terminal window rectangle the GSH session covered, then drop the
+     * console/VGA bound state. This prevents the stale grey shell surface
+     * from persisting after the shell exits. */
     display_wrapper_draw_region((u32)terminal->window.x,
                                  (u32)terminal->window.y,
                                  terminal->window.width,
