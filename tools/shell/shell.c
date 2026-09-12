@@ -259,6 +259,50 @@ static u8 shell_is_drift_statement(const char *line)
            strncmp(line, "when(", 5) == 0;
 }
 
+static u8 shell_command_name_known(const char *command)
+{
+    const char *cursor;
+    char name[64];
+    size_t len = 0;
+
+    if (command == NULL || *command == '\0') {
+        return 0;
+    }
+
+    cursor = command;
+    while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n') {
+        cursor++;
+    }
+
+    if (*cursor == '/' || *cursor == '.') {
+        return 1;
+    }
+
+    while (cursor[len] != '\0' && cursor[len] != ' ' && cursor[len] != '\t' &&
+           cursor[len] != '\r' && cursor[len] != '\n') {
+        len++;
+    }
+
+    if (len == 0 || len >= sizeof(name)) {
+        return 0;
+    }
+
+    memcpy(name, cursor, len);
+    name[len] = '\0';
+
+    return strcmp(name, "help") == 0 || strcmp(name, "ls") == 0 ||
+           strcmp(name, "dir") == 0 || strcmp(name, "mkdir") == 0 ||
+           strcmp(name, "rmdir") == 0 || strcmp(name, "pwd") == 0 ||
+           strcmp(name, "goto") == 0 || strcmp(name, "back") == 0 ||
+           strcmp(name, "echo") == 0 || strcmp(name, "reboot") == 0 ||
+           strcmp(name, "restart") == 0 || strcmp(name, "shutdown") == 0 ||
+           strcmp(name, "shut-down") == 0 || strcmp(name, "poweroff") == 0 ||
+           strcmp(name, "uname") == 0 || strcmp(name, "refresh") == 0 ||
+           strcmp(name, "gui") == 0 || strcmp(name, "gsh") == 0 ||
+           strcmp(name, "drift") == 0 || strcmp(name, "top") == 0 ||
+           strcmp(name, "exit") == 0 || strcmp(name, "quit") == 0;
+}
+
 static int shell_execute_logical_line(const char *line) {
     char segment[SHELL_BUFFER_SIZE];
     int length = 0;
@@ -1795,19 +1839,37 @@ static void shell_execute_command(void) {
 
 int shell_execute_script_command(const char *command, void *context) {
     u8 previous_mode = shell_script_mode;
+    u8 previous_drift_mode = shell_drift_mode;
     u32 length;
     (void)context;
     if (!command) return -1;
     length = strlen(command);
     if (length == 0) return 0;
+
+    /* Guard the parser's generic Drift->shell command fallback. An
+       identifier-only line like 'bad' is accepted as a command statement by the
+       parser and then handed back to the shell command handler. That nested
+       command line is not a valid built-in, script path, or known shell form, so
+       it must be rejected before re-entering the command parser and causing the
+       command statement loop. */
+    if (!shell_command_name_known(command)) {
+        SHELL_COLOR_ERR();
+        kprintf("Unknown command: %s\nType 'help' for available commands\n", command);
+        SHELL_COLOR_RESET();
+        return 1;
+    }
+
     if (length >= SHELL_BUFFER_SIZE) length = SHELL_BUFFER_SIZE - 1;
     memcpy(input.buffer, command, length);
     input.buffer[length] = 0;
     input.len = length;
     input.cursor = length;
+
     shell_script_mode = 1;
+    shell_drift_mode = 0;
     shell_execute_command();
     shell_script_mode = previous_mode;
+    shell_drift_mode = previous_drift_mode;
     return shell_should_exit ? 1 : shell_last_status;
 }
 
