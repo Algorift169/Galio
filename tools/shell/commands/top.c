@@ -29,6 +29,8 @@
 #include "vga.h"
 #include "string.h"
 
+#define TOP_MAX_PROCESSES 32u
+
 static const char *process_state_name(process_state_t state) {
     switch (state) {
         case PROCESS_READY: return "READY";
@@ -131,8 +133,8 @@ static void top_sort_processes(process_info_t *processes, u32 *cpus, u32 count, 
 static void print_process_table(const process_info_t *current, u32 current_count,
                                 const process_info_t *previous, u32 previous_count,
                                 u32 now, top_sort_t sort) {
-    process_info_t sorted[MAX_PROCESSES];
-    u32 cpus[MAX_PROCESSES];
+    process_info_t sorted[TOP_MAX_PROCESSES];
+    u32 cpus[TOP_MAX_PROCESSES];
     u64 total_delta = 0;
     u32 running = 0;
     u32 sleeping = 0;
@@ -150,10 +152,23 @@ static void print_process_table(const process_info_t *current, u32 current_count
     }
     top_sort_processes(sorted, cpus, current_count, sort);
 
+    /* Keep the entire report in the same string/manual writer stream;
+     * the old code mixed kprintf() with vga_puts(), which can cross-talk
+     * through the framebuffer console cursor and cause the shell terminal
+     * to wander away from its bounded GSH box. */
     vga_puts("Galio Top\n");
-    kprintf("Tasks: %u total | %u running | %u sleeping | %u kernel\n",
-             current_count, running, sleeping, kernel);
-    kprintf("CPU: sample %u ticks | refresh 1s\n", now - top_previous_time);
+    vga_puts("Tasks: ");
+    top_put_padded_u32(current_count, 3);
+    vga_puts(" total | ");
+    top_put_padded_u32(running, 3);
+    vga_puts(" running | ");
+    top_put_padded_u32(sleeping, 3);
+    vga_puts(" sleeping | ");
+    top_put_padded_u32(kernel, 3);
+    vga_puts(" kernel\n");
+    vga_puts("CPU: sample ");
+    top_put_padded_u32(now - top_previous_time, 5);
+    vga_puts(" ticks | refresh 1s\n");
     vga_puts("PID   PPID  STATE   CPU%   MEMORY   TYPE  COMMAND\n");
     vga_puts("-------------------------------------------------------------\n");
     for (u32 i = 0; i < current_count && i < 18; i++) {
@@ -202,11 +217,15 @@ static u8 top_should_exit(top_sort_t *sort, u8 *refresh) {
 }
 
 u8 shell_top_command(const char *args, const char *current_dir) {
-    process_info_t previous[MAX_PROCESSES];
-    process_info_t current[MAX_PROCESSES];
+    process_info_t previous[TOP_MAX_PROCESSES];
+    process_info_t current[TOP_MAX_PROCESSES];
     u32 previous_count = 0;
     u32 next_sample;
     top_sort_t sort = TOP_SORT_CPU;
+    int start_x = 0;
+    int start_y = 0;
+    int width = 80;
+    int height = 25;
     (void)current_dir;
     if (args && *args != '\0') {
         const char *trim = args;
@@ -219,10 +238,18 @@ u8 shell_top_command(const char *args, const char *current_dir) {
         }
     }
 
+    /* Preserve the active shell terminal's live bounded region.  The old
+     * command forced the cursor back to (0,0), which bypasses the terminal
+     * window's left/top origin whenever framebuffer console bounds are active.
+     * That makes the table write disappear behind the active terminal's
+     * visible rectangle. */
+    vga_get_bounds(&start_x, &start_y, &width, &height);
+
     keyboard_reset_state();
     keyboard_clear_pending_input();
     vga_disable_hardware_cursor();
     vga_clear_no_update();
+    vga_set_cursor_position(start_x, start_y);
     next_sample = pit_get_ticks();
     top_previous_time = next_sample;
     for (;;) {
@@ -233,8 +260,8 @@ u8 shell_top_command(const char *args, const char *current_dir) {
 
         u32 now = pit_get_ticks();
         if (refresh || (u32)(now - next_sample) < 0x80000000u) {
-            u32 current_count = process_snapshot(current, MAX_PROCESSES);
-            vga_set_cursor_position(0, 0);
+            u32 current_count = process_snapshot(current, TOP_MAX_PROCESSES);
+            vga_set_cursor_position(start_x, start_y);
             print_process_table(current, current_count, previous, previous_count, now, sort);
             for (u32 i = 0; i < current_count; i++) previous[i] = current[i];
             previous_count = current_count;
