@@ -167,11 +167,19 @@ void cursor_poll(void)
         gsh_button_set_hovered(1u);
     }
 
-    if ((buttons & 1u) &&
-        !(previous_buttons & 1u) &&
-        gsh_button_contains(cursor_x, cursor_y)) {
+    /* Press-edge detection for the mouse button handshake. We only fire on
+       the transition from not-pressed to pressed, which prevents the shell
+       launcher from retriggering while the user is dragging/holding. */
+    u8 left_pressed = (buttons & 0x01u) && !(previous_buttons & 0x01u);
+    u8 right_pressed = (buttons & 0x02u) && !(previous_buttons & 0x02u);
 
+    if (left_pressed && gsh_button_contains(cursor_x, cursor_y)) {
         gsh_button_click();
+    } else if (right_pressed) {
+        /* Surface a stable right-click branch without letting the right
+           button masquerade as a left-button activation. Desktop runners can
+           attach a context-open path here if needed. */
+        desktop_handle_click(x, y);
     }
 
     previous_buttons = buttons;
