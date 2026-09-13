@@ -22,3 +22,8 @@ void display_server_client_move_window(u32 client_id, u32 window_id, int x, int 
     (void)client_id;
     display_server_move_window(window_id, x, y);
 }
+
+void display_server_client_destroy_window(u32 client_id, u32 window_id) {
+    (void)client_id;
+    display_server_destroy_window(window_id);
+}

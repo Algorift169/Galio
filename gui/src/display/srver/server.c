@@ -336,10 +336,29 @@ void display_server_destroy_window(u32 window_id) {
         if (g_display_server_state.windows[index].id == window_id) {
             g_display_server_state.windows[index].closed = 1u;
             g_display_server_state.windows[index].visible = 0u;
+            g_display_server_state.windows[index].focused = 0u;
             g_display_server_state.windows[index].surface_id = DISPLAY_SERVER_SURFACE_ID_NONE;
+            g_display_server_state.windows[index].owner_client = DISPLAY_SERVER_CLIENT_ID_NONE;
+            g_display_server_state.windows[index].state = DISPLAY_SERVER_WINDOW_STATE_HIDDEN;
+            g_display_server_state.windows[index].title[0] = '\0';
             g_display_server_state.window_count--;
             break;
         }
+    }
+
+    for (index = 0u; index < DISPLAY_SERVER_MAX_SURFACES; index++) {
+        if (g_display_server_state.surfaces[index].owner_window == window_id) {
+            g_display_server_state.surfaces[index].initialized = 0u;
+            g_display_server_state.surfaces[index].visible = 0u;
+            g_display_server_state.surfaces[index].owner_window = 0u;
+            g_display_server_state.surfaces[index].owner_client = 0u;
+            g_display_server_state.surface_count--;
+        }
+    }
+
+    if (g_display_server_state.active_window_id == window_id) {
+        g_display_server_state.active_window_id = DISPLAY_SERVER_WINDOW_ID_NONE;
+        g_display_server_state.active_client_id = DISPLAY_SERVER_CLIENT_ID_NONE;
     }
 
     g_display_server_state.redraw_pending = 1u;

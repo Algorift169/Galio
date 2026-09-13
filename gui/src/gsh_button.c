@@ -150,6 +150,12 @@ void gsh_button_click(void) {
     shell_run();
     shell_clear_exit_region();
     terminal_window_close(&gsh_window);
+
+    if (gsh_server_window_id != 0u) {
+        display_server_client_destroy_window(gsh_server_client_id, gsh_server_window_id);
+        gsh_server_window_id = 0u;
+    }
+
     cursor_refresh_desktop();
     gsh_window_active = 0u;
 }
