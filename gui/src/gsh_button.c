@@ -140,10 +140,11 @@ void gsh_button_click(void) {
     }
 
     gsh_window_active = 1u;
+    cursor_deactivate();
     terminal_window_open(&gsh_window);
     terminal_window_set_bounds(&gsh_window);
     terminal_window_draw(&gsh_window);
-    cursor_rebase();
+    cursor_show();
     shell_set_exit_region(gsh_window.window.x + (int)gsh_window.window.width - 18,
                           gsh_window.window.y + (int)gsh_window.window.height - 18,
                           16, 16);

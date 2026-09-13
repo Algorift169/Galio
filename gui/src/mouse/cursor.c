@@ -250,18 +250,24 @@ void cursor_get_position(int *x, int *y)
 
 void cursor_deactivate(void)
 {
+    if (cursor_visible) {
+        restore_cursor_background();
+    }
     cursor_visible = 0u;
 }
 
 void cursor_hide(void)
 {
-    cursor_visible = 0u;
+    cursor_deactivate();
 }
 
 void cursor_show(void)
 {
-    cursor_visible = 1u;
+    if (cursor_visible) {
+        return;
+    }
 
+    cursor_visible = 1u;
     save_cursor_background();
     draw_cursor();
 }
