@@ -27,8 +27,7 @@ void terminal_window_init(terminal_window_t *terminal, const char *title, u32 x,
 void terminal_window_draw(const terminal_window_t *terminal) {
     if (!terminal || !terminal->visible) return;
     win_border_draw(&terminal->window, terminal->window.border_color, terminal->window.background);
-    vga_set_bounds(terminal->console_x, terminal->console_y,
-                   (int)terminal->console_width, (int)terminal->console_height);
+    terminal_window_set_bounds(terminal);
 }
 
 void terminal_window_open(terminal_window_t *terminal) {

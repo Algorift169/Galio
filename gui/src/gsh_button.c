@@ -172,8 +172,6 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
 
     int old_window_x = gsh_window.window.x;
     int old_window_y = gsh_window.window.y;
-    int old_console_x = gsh_window.console_x;
-    int old_console_y = gsh_window.console_y;
     u32 old_window_width = gsh_window.window.width;
     u32 old_window_height = gsh_window.window.height;
 
@@ -201,12 +199,12 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
                                               gsh_window.window.x,
                                               gsh_window.window.y);
         }
-        if (old_console_x != gsh_window.console_x || old_console_y != gsh_window.console_y) {
-            terminal_window_set_bounds(&gsh_window);
-            fb_console_set_bounds(gsh_window.console_x, gsh_window.console_y,
-                                  (int)gsh_window.console_width,
-                                  (int)gsh_window.console_height);
-        }
+
+        terminal_window_set_bounds(&gsh_window);
+        shell_set_exit_region(gsh_window.window.x + (int)gsh_window.window.width - 18,
+                              gsh_window.window.y + (int)gsh_window.window.height - 18,
+                              16, 16);
+
         terminal_window_draw(&gsh_window);
         shell_redraw_terminal();
         cursor_rebase();
