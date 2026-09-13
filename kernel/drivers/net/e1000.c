@@ -44,6 +44,7 @@
 
 #define E1000_VENDOR_ID 0x8086
 #define E1000_DEVICE_ID 0x100E
+#define E1000_MMIO_VBASE 0xD0100000u // Virtual base for MMIO mapping
 
 /* Registers */
 #define REG_CTRL    0x00000
@@ -138,10 +139,25 @@ static net_device_t *e1000_irq_device;
 static volatile u8 e1000_rx_pending;
 static volatile u8 e1000_tx_pending;
 
+// This function maps a physical memory region into the kernel's virtual address
+// space starting at E1000_MMIO_VBASE. It uses paging_map_kernel to create the 
+// necessary page table entries for the specified physical address range.
 static void *map_physical_region(u64 phys, u32 size) {
-    (void)size;
-    if (phys > 0xFFFFFFFFu) return NULL;
-    return (void *)(uintptr_t)phys;
+    u32 pages;
+
+    if (phys > 0xFFFFFFFFu || size == 0) return NULL;
+
+    pages = (u32)((size + PAGE_SIZE - 1) / PAGE_SIZE);
+
+    for (u32 i = 0; i < pages; i++) {
+        uintptr_t vaddr = E1000_MMIO_VBASE + (uintptr_t)i * PAGE_SIZE;
+        uintptr_t paddr = (uintptr_t)phys + (uintptr_t)i * PAGE_SIZE;
+
+        paging_map_kernel(vaddr, paddr,
+                          PAGE_PRESENT | PAGE_RW | PAGE_NOCACHE);
+    }
+
+    return (void *)(uintptr_t)E1000_MMIO_VBASE;
 }
 
 static inline void mmio_write32(void *base, u32 offset, u32 val) {
