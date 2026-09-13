@@ -63,7 +63,7 @@ void scheduler_tick(registers_t *regs) {
 void scheduler_init(void) {
     pit_install_callback(scheduler_tick);
     kprintf("Scheduler initialized (preemptive mode)\n");
-    kprintf("  - Timer running at 100Hz with time slice %u\n", PROCESS_TIME_SLICE);
+    kprintf("  - Timer running at 1000Hz with time slice %u\n", PROCESS_TIME_SLICE);
     kprintf("  - Context switches on yield() or when a process exhausts its slice\n");
 }
 

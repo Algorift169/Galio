@@ -507,15 +507,18 @@ void process_yield(void) {
     }
 
     if (!next) {
-        /* A waiting or exited process must not continue running itself. */
+        /* A waiting or exited process must not continue running itself.  The
+           idle process remains the scheduler's fallback target even when it is
+           currently marked RUNNING, so zombies and waiting tasks can hand
+           control back to the scheduler safely. */
         if (current_process && (current_process->state == PROCESS_WAITING ||
                     current_process->state == PROCESS_ZOMBIE)) {
             process_t *idle = process_get(1);
-            if (idle && idle->state == PROCESS_READY) {
+            if (idle && idle != current_process && idle->pid != 0 && idle->pid != 0xFFFFFFFFu) {
                 next = idle;
             }
         }
-        
+
         if (!next) {
             next = current_process;  /* Run same process */
         }

@@ -323,8 +323,8 @@ void kmain(void *multiboot_ptr) {
     kprintf("Installing system call handler...\n");
     syscall_init();
 
-    kprintf("Initializing timer (100 Hz)...\n");
-    pit_init(100);
+    kprintf("Initializing timer (1000 Hz)...\n");
+    pit_init(1000);
     /* Initialize wall-clock from CMOS/RTC if available */
     kernel_time_initialize();
 

@@ -111,7 +111,7 @@ static inline s64 galio_ktime_to_ns(galio_ktime_t kt)
  * 2. Jiffies
  * ========================================================= */
 
-#define GALIO_HZ           100u   /* PIT configured at 100 Hz */
+#define GALIO_HZ           1000u   /* PIT configured at 1000 Hz by default */
 #define GALIO_MSEC_PER_HZ  (1000u / GALIO_HZ)
 
 /* jiffies_read() and jiffies_64 */

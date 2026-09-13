@@ -26,7 +26,7 @@
  *
  * The jiffies counter is a globally shared tick value incremented on each timer
  * interrupt. This implementation builds the abstraction on top of the PIT driver
- * (pit_get_ticks()), which increments at GALIO_HZ (100) per second.
+ * (pit_get_ticks()), which increments at GALIO_HZ (1000) per second.
  */
 
 #include "time/galio_time.h"

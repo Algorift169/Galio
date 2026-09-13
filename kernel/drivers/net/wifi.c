@@ -32,7 +32,7 @@
 #include "drivers/usb.h"
 
 #define WIFI_SCAN_CACHE_MAX 32
-#define PIT_TICKS_PER_SECOND 100
+#define PIT_TICKS_PER_SECOND 1000
 #define WIFI_SCAN_TIMEOUT_SECONDS 3
 
 static wifi_scan_result_t wifi_scan_cache[WIFI_SCAN_CACHE_MAX];
