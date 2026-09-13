@@ -7,12 +7,13 @@
 #define AUX 0x20
 #define INBUF 0x02
 #define OUTBUF 0x01
-#define MOUSE_EVENT_QUEUE_SIZE 128u
+#define MOUSE_EVENT_QUEUE_SIZE 128u // Maximum number of mouse events to queue before dropping old events
 
 static int mouse_x = 512;
 static int mouse_y = 384;
 static u8 packet[4];
 static u8 packet_index;
+static u8 packet_length = 4u; // The PS/2 mouse can send 3-byte packets for standard mice and 4-byte packets for mice with a scroll wheel. The default is set to 4 bytes to accommodate the scroll wheel data.
 static u8 buttons;
 static s8 scroll_delta;
 static u64 sequence;
@@ -53,11 +54,24 @@ static void mouse_enqueue_event(s8 dx, s8 dy, u8 next_buttons, s8 wheel) {
 
 void mouse_init(void) {
     wait_input(); outb(CMD, 0xA8);
-    send_aux(0xF6); send_aux(0xF4);
-    mouse_x = 512; mouse_y = 384; packet_index = 0; buttons = 0; scroll_delta = 0;
+    send_aux(0xF6);
+    send_aux(0xF4);
+
+    /* Force the wheel-capable 4-byte packet format that the parser expects.
+       Without this, fast motion will desynchronize the packet stream and the
+       cursor will visibly shake or fall back as bytes are misread. */
+    send_aux(0xF3);
+    send_aux(0xC8);
+    send_aux(0xF3);
+    send_aux(0x64);
+    send_aux(0xF3);
+    send_aux(0x50);
+
+    mouse_x = 512; mouse_y = 384; packet_index = 0; packet_length = 4u; buttons = 0; scroll_delta = 0;
     mouse_event_head = 0u;
     mouse_event_tail = 0u;
     mouse_event_sequence = 0u;
+    mouse_flush_port(); // Clear any pending data in the mouse port to avoid processing stale events.
 }
 
 void mouse_poll_position(void) {
@@ -85,13 +99,17 @@ void mouse_poll_position(void) {
         s8 dx = (s8)packet[1];
         s8 dy = (s8)packet[2];
         buttons = packet[0] & 0x07u;
-        s8 wheel = (s8)packet[3];
+        s8 wheel = 0;
 
-        /* Use the packet delta directly instead of the earlier over-quantized
-           carry path. Direct movement is the least surprising to the user and
-           removes the visible "falls back / slow drag" artifact. */
-        mouse_x += dx * 2;
-        mouse_y -= dy * 2;
+        if (packet_length >= 4u) {
+            wheel = (s8)packet[3];
+        }
+
+        /* Keep the native packet deltas instead of doubling them. The GUI
+           cursor should track the hardware reports directly so faster motion
+           stays stable and does not lag or snap backward. */
+        mouse_x += dx;
+        mouse_y -= dy;
 
         if (mouse_x < 0) mouse_x = 0;
         if (mouse_y < 0) mouse_y = 0;
