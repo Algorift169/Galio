@@ -174,6 +174,7 @@ SRCS = kernel/kmain.c \
        gui/src/display/srver/server.c \
        gui/src/display/srver/client.c \
        gui/src/display/srver/resources.c \
+       gui/src/display/srver/focus.c \
        gui/src/display/srver/events.c \
        gui/src/display/srver/protocol.c \
        gui/src/display/srver/security.c \

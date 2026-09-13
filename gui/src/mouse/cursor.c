@@ -4,6 +4,7 @@
 #include "desktop.h"
 #include "gsh_button.h"
 #include "framebuffer.h"
+#include "srver/server.h"
 
 static int cursor_x;
 static int cursor_y;
@@ -173,8 +174,11 @@ void cursor_poll(void)
     u8 left_pressed = (buttons & 0x01u) && !(previous_buttons & 0x01u);
     u8 right_pressed = (buttons & 0x02u) && !(previous_buttons & 0x02u);
 
-    if (left_pressed && gsh_button_contains(cursor_x, cursor_y)) {
-        gsh_button_click();
+    if (left_pressed) {
+        display_server_focus_at_point(cursor_x, cursor_y);
+        if (gsh_button_contains(cursor_x, cursor_y)) {
+            gsh_button_click();
+        }
     } else if (right_pressed) {
         /* Surface a stable right-click branch without letting the right
            button masquerade as a left-button activation. Desktop runners can

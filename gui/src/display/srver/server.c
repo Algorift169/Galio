@@ -7,6 +7,7 @@
 #include "desktop.h"
 #include "mouse/mouse.h"
 #include "mouse/cursor.h"
+#include "keyboard.h"
 
 #define DISPLAY_SERVER_DEFAULT_BG FB_COLOR(125u, 180u, 255u)
 
@@ -127,6 +128,10 @@ void display_server_handle_mouse_event(int x, int y, u8 buttons) {
 void display_server_set_desktop_background(u32 color) {
     g_display_server_state.output.background = color;
     g_display_server_state.redraw_pending = 1u;
+}
+
+u32 display_server_get_active_window_id(void) {
+    return g_display_server_state.active_window_id;
 }
 
 u32 display_server_create_surface(u32 client_id, u32 window_id, u32 width, u32 height) {
@@ -299,7 +304,7 @@ u32 display_server_create_window(u32 client_id, const char *title, int x, int y,
             g_display_server_state.windows[index].width = width;
             g_display_server_state.windows[index].height = height;
             g_display_server_state.windows[index].visible = 1u;
-            g_display_server_state.windows[index].focused = 1u;
+            g_display_server_state.windows[index].focused = 0u;
             g_display_server_state.windows[index].state = DISPLAY_SERVER_WINDOW_STATE_NORMAL;
             g_display_server_state.windows[index].closed = 0u;
             g_display_server_state.windows[index].surface_id = display_server_create_surface(client_id, g_display_server_state.windows[index].id, width, height);
@@ -314,9 +319,8 @@ u32 display_server_create_window(u32 client_id, const char *title, int x, int y,
             }
 
             g_display_server_state.window_count++;
-            g_display_server_state.active_window_id = g_display_server_state.windows[index].id;
-            g_display_server_state.active_client_id = client_id;
             window_id = g_display_server_state.windows[index].id;
+            display_server_focus_window(window_id);
             g_display_server_state.redraw_pending = 1u;
             break;
         }
@@ -426,6 +430,8 @@ void display_server_resize_window(u32 window_id, u32 width, u32 height) {
 void display_server_focus_window(u32 window_id) {
     u32 index;
 
+    keyboard_clear_pending_input();
+
     if (!display_server_resource_validate_window(window_id)) {
         return;
     }
@@ -435,10 +441,12 @@ void display_server_focus_window(u32 window_id) {
             g_display_server_state.windows[index].focused = 1u;
             g_display_server_state.active_window_id = window_id;
             g_display_server_state.active_client_id = g_display_server_state.windows[index].owner_client;
-        } else {
+        } else if (!g_display_server_state.windows[index].closed) {
             g_display_server_state.windows[index].focused = 0u;
         }
     }
+
+    g_display_server_state.redraw_pending = 1u;
 }
 
 void display_server_show_window(u32 window_id) {

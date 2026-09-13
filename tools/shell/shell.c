@@ -1879,6 +1879,10 @@ static void shell_poll_keyboard(void) {
     u8 is_pressed;
     u8 extended;
 
+    if (!gsh_button_is_input_enabled()) {
+        return;
+    }
+
     if (keyboard_take_ctrl_c()) {
         shell_cancel_input();
         return;

@@ -9,6 +9,7 @@ void gsh_button_set_position(int x, int y);
 u8 gsh_button_contains(int x, int y);
 void gsh_button_set_hovered(u8 hovered);
 void gsh_button_click(void);
+u8 gsh_button_is_input_enabled(void);
 void gsh_button_poll_pointer(int x, int y, u8 buttons);
 
 #endif /* GUI_GSH_BUTTON_H */

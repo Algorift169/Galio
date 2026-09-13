@@ -8,8 +8,7 @@ void button_init(button_t *button,
                  u32 width,
                  u32 height,
                  u32 bg_color,
-                 u32 text_color)
-{
+                 u32 text_color){
     if (!button) return;
     button->x = (int)x;
     button->y = (int)y;

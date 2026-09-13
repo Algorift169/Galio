@@ -168,6 +168,7 @@ void display_server_run_background(void);
 u8 display_server_is_running(void);
 void display_server_handle_mouse_event(int x, int y, u8 buttons);
 void display_server_set_desktop_background(u32 color);
+u32 display_server_get_active_window_id(void);
 
 u32 display_server_connect_client(void);
 void display_server_disconnect_client(u32 client_id);
@@ -177,6 +178,8 @@ void display_server_set_window_title(u32 window_id, const char *title);
 void display_server_move_window(u32 window_id, int x, int y);
 void display_server_resize_window(u32 window_id, u32 width, u32 height);
 void display_server_focus_window(u32 window_id);
+void display_server_focus_desktop(void);
+u8 display_server_focus_at_point(int x, int y);
 void display_server_show_window(u32 window_id);
 void display_server_hide_window(u32 window_id);
 void display_server_surface_damage(u32 window_id, u32 x, u32 y, u32 width, u32 height);

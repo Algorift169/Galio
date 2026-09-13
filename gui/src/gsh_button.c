@@ -9,6 +9,7 @@
 #include "vga.h"
 #include "shell.h"
 #include "srver/client.h"
+#include "srver/server.h"
 #include "display_wrapper.h"
 
 static button_t gsh_launch_button;
@@ -119,6 +120,11 @@ u8 gsh_button_contains(int x, int y) {
 
 void gsh_button_set_hovered(u8 hovered) {
     gsh_hovered = hovered ? 1u : 0u;
+}
+
+u8 gsh_button_is_input_enabled(void) {
+    return gsh_window_active && gsh_server_window_id != 0u &&
+           display_server_get_active_window_id() == gsh_server_window_id;
 }
 
 void gsh_button_click(void) {
