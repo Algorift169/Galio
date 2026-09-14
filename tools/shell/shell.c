@@ -189,9 +189,17 @@ static int shell_has_logical_operator(const char *line) {
     for (i = 0; line[i]; i++) {
         if (line[i] == '\'' && !in_double_quote) in_single_quote = !in_single_quote;
         if (line[i] == '"' && !in_single_quote) in_double_quote = !in_double_quote;
-        if (!in_single_quote && !in_double_quote &&
-            (line[i] == ';' || (line[i] == '&' && line[i + 1] == '&') ||
-             (line[i] == '|' && line[i + 1] == '|'))) return 1;
+        if (!in_single_quote && !in_double_quote) {
+            if (line[i] == ';' || (line[i] == '&' && line[i + 1] == '&') ||
+                (line[i] == '|' && line[i + 1] == '|')) return 1;
+            if ((i == 0 || line[i - 1] == ' ' || line[i - 1] == '\t') &&
+                ((strncmp(line + i, "and", 3) == 0 &&
+                  (line[i + 3] == 0 || line[i + 3] == ' ' || line[i + 3] == '\t')) ||
+                 (strncmp(line + i, "or", 2) == 0 &&
+                  (line[i + 2] == 0 || line[i + 2] == ' ' || line[i + 2] == '\t')))) {
+                return 1;
+            }
+        }
     }
     return 0;
 }
@@ -291,26 +299,41 @@ static u8 shell_command_name_known(const char *command)
     memcpy(name, cursor, len);
     name[len] = '\0';
 
-    return strcmp(name, "help") == 0 || strcmp(name, "ls") == 0 ||
-           strcmp(name, "dir") == 0 || strcmp(name, "mkdir") == 0 ||
-           strcmp(name, "rmdir") == 0 || strcmp(name, "pwd") == 0 ||
-           strcmp(name, "cd") == 0 || strcmp(name, "goto") == 0 ||
-           strcmp(name, "back") == 0 ||
-           strcmp(name, "echo") == 0 || strcmp(name, "reboot") == 0 ||
-           strcmp(name, "restart") == 0 || strcmp(name, "shutdown") == 0 ||
-           strcmp(name, "shut-down") == 0 || strcmp(name, "poweroff") == 0 ||
-           strcmp(name, "uname") == 0 || strcmp(name, "refresh") == 0 ||
-           strcmp(name, "gui") == 0 || strcmp(name, "gsh") == 0 ||
-           strcmp(name, "drift") == 0 || strcmp(name, "top") == 0 ||
-           strcmp(name, "exit") == 0 || strcmp(name, "quit") == 0;
+    if (strncmp(name, "SYS_", 4) == 0) return 1;
+
+        return strcmp(name, "help") == 0 || strcmp(name, "ls") == 0 ||
+            strcmp(name, "tree") == 0 || strcmp(name, "dir") == 0 ||
+            strcmp(name, "mkdir") == 0 || strcmp(name, "rmdir") == 0 ||
+            strcmp(name, "pwd") == 0 || strcmp(name, "cd") == 0 ||
+            strcmp(name, "goto") == 0 || strcmp(name, "back") == 0 ||
+            strcmp(name, "echo") == 0 || strcmp(name, "clear") == 0 ||
+            strcmp(name, "where") == 0 || strcmp(name, "new") == 0 ||
+            strcmp(name, "file") == 0 || strcmp(name, "write") == 0 ||
+            strcmp(name, "show") == 0 || strcmp(name, "recycle") == 0 ||
+            strcmp(name, "delete") == 0 || strcmp(name, "clean") == 0 ||
+            strcmp(name, "net") == 0 || strcmp(name, "ifconfig") == 0 ||
+            strcmp(name, "ip") == 0 || strcmp(name, "wifi-list") == 0 ||
+            strcmp(name, "syscall") == 0 || strcmp(name, "sysinfo") == 0 ||
+            strcmp(name, "cpu-spike") == 0 || strcmp(name, "top") == 0 ||
+            strcmp(name, "gc") == 0 || strcmp(name, "pkg") == 0 ||
+            strcmp(name, "run") == 0 || strcmp(name, "source") == 0 ||
+            strcmp(name, "cpufreq") == 0 || strcmp(name, "jobs") == 0 ||
+            strcmp(name, "fg") == 0 || strcmp(name, "rex") == 0 ||
+            strcmp(name, "reboot") == 0 || strcmp(name, "restart") == 0 ||
+            strcmp(name, "shutdown") == 0 || strcmp(name, "shut-down") == 0 ||
+            strcmp(name, "poweroff") == 0 || strcmp(name, "uname") == 0 ||
+            strcmp(name, "date") == 0 || strcmp(name, "time") == 0 ||
+            strcmp(name, "refresh") == 0 || strcmp(name, "gui") == 0 ||
+            strcmp(name, "gsh") == 0 || strcmp(name, "drift") == 0 ||
+            strcmp(name, "exit") == 0 || strcmp(name, "quit") == 0;
 }
 
 static int shell_execute_logical_line(const char *line) {
-    char segment[SHELL_BUFFER_SIZE];
-    int length = 0;
-    int operator_kind = 0;
-    int previous_status = 0;
-    int found_operator = 0;
+    char segments[16][SHELL_BUFFER_SIZE];
+    u8 operators[15];
+    u32 segment_count = 0;
+    u32 operator_count = 0;
+    u32 length = 0;
     int in_single_quote = 0;
     int in_double_quote = 0;
     u32 i;
@@ -320,44 +343,88 @@ static int shell_execute_logical_line(const char *line) {
     for (i = 0;; i++) {
         char current = line[i];
         char next = line[i + 1];
-        int boundary = 0;
-        int next_operator = 0;
+        u8 operator_kind = 0;
+        u32 operator_length = 0;
 
         if (current == '\'' && !in_double_quote) in_single_quote = !in_single_quote;
         if (current == '"' && !in_single_quote) in_double_quote = !in_double_quote;
         if (!in_single_quote && !in_double_quote) {
-            if (current == ';') { boundary = 1; next_operator = 1; }
-            else if (current == '&' && next == '&') { boundary = 1; next_operator = 2; }
-            else if (current == '|' && next == '|') { boundary = 1; next_operator = 3; }
-            else if (current == 0) boundary = 1;
+            if (current == ';') { operator_kind = 1; operator_length = 1; }
+            else if (current == '&' && next == '&') { operator_kind = 2; operator_length = 2; }
+            else if (current == '|' && next == '|') { operator_kind = 3; operator_length = 2; }
+            else if ((i == 0 || line[i - 1] == ' ' || line[i - 1] == '\t') &&
+                     strncmp(line + i, "and", 3) == 0 &&
+                     (line[i + 3] == 0 || line[i + 3] == ' ' || line[i + 3] == '\t')) {
+                operator_kind = 2;
+                operator_length = 3;
+            } else if ((i == 0 || line[i - 1] == ' ' || line[i - 1] == '\t') &&
+                       strncmp(line + i, "or", 2) == 0 &&
+                       (line[i + 2] == 0 || line[i + 2] == ' ' || line[i + 2] == '\t')) {
+                operator_kind = 3;
+                operator_length = 2;
+            }
         }
 
-        if (boundary) {
-            int should_execute = !found_operator || operator_kind == 1 ||
-                                 (operator_kind == 2 && previous_status == 0) ||
-                                 (operator_kind == 3 && previous_status != 0);
-            int leading = 0;
-            while (length > 0 && (segment[length - 1] == ' ' || segment[length - 1] == '\t')) length--;
-            while (leading < length && (segment[leading] == ' ' || segment[leading] == '\t')) leading++;
-            if (leading > 0) {
-                memmove(segment, segment + leading, (size_t)(length - leading));
-                length -= leading;
+        if (operator_kind || current == 0) {
+            u32 start = 0;
+            while (start < length && (segments[segment_count][start] == ' ' ||
+                                      segments[segment_count][start] == '\t')) start++;
+            while (length > start && (segments[segment_count][length - 1] == ' ' ||
+                                      segments[segment_count][length - 1] == '\t')) length--;
+            if (start > 0) {
+                memmove(segments[segment_count], segments[segment_count] + start,
+                        length - start);
+                length -= start;
             }
-            segment[length] = 0;
-            if (length > 0 && should_execute) {
-                previous_status = shell_execute_script_command(segment, NULL);
-            }
+            segments[segment_count][length] = 0;
+            segment_count++;
             if (current == 0) break;
-            found_operator = 1;
-            operator_kind = next_operator;
+            if (operator_count < 15) operators[operator_count++] = operator_kind;
             length = 0;
-            if (next_operator == 2 || next_operator == 3) i++;
+            i += operator_length - 1;
             continue;
         }
 
-        if (length < (int)sizeof(segment) - 1) segment[length++] = current;
+        if (length < SHELL_BUFFER_SIZE - 1 && segment_count < 16) {
+            segments[segment_count][length++] = current;
+        }
     }
-    return found_operator;
+
+    u32 segment = 0;
+    u32 operation = 0;
+    while (segment < segment_count) {
+        u8 or_satisfied = 0;
+
+        while (segment < segment_count) {
+            int execute_group = !or_satisfied;
+            int status = execute_group ?
+                shell_execute_script_command(segments[segment], NULL) : 0;
+            segment++;
+
+            while (operation < operator_count && operators[operation] == 2) {
+                operation++;
+                if (segment < segment_count) {
+                    if (execute_group && status == 0) {
+                        status = shell_execute_script_command(segments[segment], NULL);
+                    }
+                    segment++;
+                }
+            }
+
+            if (operation >= operator_count) break;
+            if (operators[operation] == 3) {
+                or_satisfied = (execute_group && status == 0) ? 1u : 0u;
+                operation++;
+                continue;
+            }
+
+            if (operators[operation] == 1) {
+                operation++;
+            }
+            break;
+        }
+    }
+    return 1;
 }
 
 static void shell_print_options_error(const char *command, const gsh_options_t *parsed) {

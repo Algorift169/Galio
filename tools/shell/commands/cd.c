@@ -86,6 +86,12 @@ static void find_directory(vfs_dentry_t *dentry, cd_search_t *search) {
 
 static u8 resolve_directory(const char *current_dir, const char *token,
                             char *resolved, u32 resolved_size) {
+    if (!has_path_separator(token) && strcmp(token, ".") != 0 &&
+        strcmp(token, "..") != 0) {
+        path_resolve(current_dir, token, resolved, resolved_size);
+        if (vfs_is_dir(resolved)) return 1;
+    }
+
     if (resolve_parent_walk(current_dir, token, resolved, resolved_size)) {
         return 1;
     }
@@ -205,38 +211,11 @@ u8 shell_goto_command(const char *args, char *current_dir, u32 current_dir_size,
         return 0;
     }
 
-    if (has_path_separator(token) || strcmp(token, ".") == 0 ||
-        strcmp(token, "..") == 0) {
-        path_resolve(current_dir, token, resolved, sizeof(resolved));
-        if (!vfs_is_dir(resolved)) {
-            kprintf("[GOTO] Directory not found: %s\n", token);
-            return 0;
-        }
-        if (reject_unprivileged_root(resolved, privileged, "goto")) return 0;
-        return set_current_directory(resolved, current_dir, current_dir_size);
-    }
-
-    vfs_dentry_t *start = privileged ? vfs_core_root() :
-                              vfs_core_lookup(current_dir, 0);
-    if (!start) {
-        kprintf("[GOTO] Directory not found: %s\n", token);
+    if (!resolve_directory(current_dir, token, resolved, sizeof(resolved))) {
+        kprintf("[GOTO] Directory not found or ambiguous: %s\n", token);
         return 0;
     }
 
-    cd_search_t search = {.name = token, .first = {0}, .count = 0};
-    find_directory(start, &search);
-    if (search.count == 0) {
-        kprintf("[GOTO] Directory not found: %s\n", token);
-        return 0;
-    }
-    if (search.count > 1) {
-        kprintf("[GOTO] Ambiguous directory '%s'; matches:\n", token);
-        search.count = 0;
-        search.print_matches = 1;
-        find_directory(start, &search);
-        return 0;
-    }
-
-    if (reject_unprivileged_root(search.first, privileged, "goto")) return 0;
-    return set_current_directory(search.first, current_dir, current_dir_size);
+    if (reject_unprivileged_root(resolved, privileged, "goto")) return 0;
+    return set_current_directory(resolved, current_dir, current_dir_size);
 }
