@@ -417,7 +417,7 @@ static void shell_print_prompt(void) {
     }
     SHELL_COLOR_CMD();
     fb_console_set_foreground(0x00F5E6D3u);
-    kprintf("[ %s @ galio ]:~ %s :$ ", host, dir);
+    kprintf("[ %s @ galio ]:~ %s >>", host, dir);
     SHELL_COLOR_RESET();
     fb_console_set_foreground(0x00FFFFFFu);
     vga_get_hardware_cursor(&shell_input_origin_x, &shell_input_origin_y);

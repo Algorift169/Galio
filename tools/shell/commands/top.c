@@ -30,7 +30,6 @@
 #include "string.h"
 
 #define TOP_MAX_PROCESSES 32u
-#define TOP_REFRESH_TICKS 100u // Refresh every 100 ticks (1 second if PIT is at 100Hz)
 
 static const char *process_state_name(process_state_t state) {
     switch (state) {
@@ -212,11 +211,6 @@ static u8 top_should_exit(top_sort_t *sort, u8 *refresh) {
         if (ascii == 'm') *sort = TOP_SORT_MEMORY;
         if (ascii == 'n') *sort = TOP_SORT_PID;
         if (ascii == 'r') *refresh = 1;
-        if (ascii == 'q') {
-            keyboard_clear_pending_input();
-            vga_enable_hardware_cursor();
-            return 1;
-        }
     }
 
     return 0;
@@ -265,14 +259,14 @@ u8 shell_top_command(const char *args, const char *current_dir) {
         }
 
         u32 now = pit_get_ticks();
-        if (refresh || now >= next_sample) {
+        if (refresh || (u32)(now - next_sample) < 0x80000000u) {
             u32 current_count = process_snapshot(current, TOP_MAX_PROCESSES);
             vga_set_cursor_position(start_x, start_y);
             print_process_table(current, current_count, previous, previous_count, now, sort);
             for (u32 i = 0; i < current_count; i++) previous[i] = current[i];
             previous_count = current_count;
             top_previous_time = now;
-            next_sample = now + TOP_REFRESH_TICKS;
+            next_sample = now + 100;
         } else {
             __asm__ volatile("hlt" ::: "memory");
         }
