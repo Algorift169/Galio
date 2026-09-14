@@ -3,6 +3,7 @@
 #include "mouse/mouse.h"
 #include "desktop.h"
 #include "gsh_button.h"
+#include "panel.h"
 #include "framebuffer.h"
 #include "srver/server.h"
 
@@ -176,7 +177,8 @@ void cursor_poll(void)
 
     if (left_pressed) {
         display_server_focus_at_point(cursor_x, cursor_y);
-        if (gsh_button_contains(cursor_x, cursor_y)) {
+        if (!panel_handle_click(cursor_x, cursor_y) &&
+            gsh_button_contains(cursor_x, cursor_y)) {
             gsh_button_click();
         }
     } else if (right_pressed) {

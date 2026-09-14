@@ -81,7 +81,7 @@ static void draw_gsh_label(void) {
 
 void gsh_button_init(void) {
     button_init(&gsh_launch_button, "GSH", 20u, 20u, 28u, 19u,
-                FB_COLOR(190, 42, 48), 0x00FFFFFFu);
+                FB_COLOR(18, 28, 42), 0x00FFFFFFu);
     gsh_button_x = 20;
     gsh_button_y = 20;
     terminal_window_init(&gsh_window, "gsh", 170u, 90u, 620u, 360u);
@@ -93,7 +93,7 @@ void gsh_button_init(void) {
 }
 
 void gsh_button_draw(void) {
-    u32 background = gsh_hovered ? FB_COLOR(220, 55, 60) : gsh_launch_button.background;
+    u32 background = gsh_hovered ? FB_COLOR(42, 62, 78) : gsh_launch_button.background;
     fb_fill_rect((u32)gsh_button_x, (u32)gsh_button_y,
                  gsh_launch_button.width, gsh_launch_button.height, background);
     fb_draw_rect((u32)gsh_button_x, (u32)gsh_button_y,

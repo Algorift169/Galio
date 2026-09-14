@@ -4,6 +4,7 @@
 #include "display_wrapper.h"
 #include "cursor.h"
 #include "gsh_button.h"
+#include "panel.h"
 #include "srver/client.h"
 
 static window_t desktop_window;
@@ -19,14 +20,17 @@ void desktop_init(void) {
     desktop_window.closed = 0u;
     desktop_client_id = display_server_client_connect();
     gsh_button_init();
+    panel_init();
 }
 
 void desktop_draw(void) {
     display_wrapper_draw();
+    panel_draw();
     gsh_button_draw();
 }
 
 void desktop_handle_click(int x, int y) {
+    if (panel_handle_click(x, y)) return;
     if (x >= 20 && x <= 200 && y >= 680 && y <= 740) {
         gsh_open = 1u;
         gsh_button_click();

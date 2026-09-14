@@ -181,8 +181,10 @@ SRCS = kernel/kmain.c \
        gui/src/terminal_background.c \
        gui/src/terminal_window.c \
        gui/src/gsh_button.c \
+       gui/src/panel/panel.c \
        gui/tools/background.c \
        gui/tools/window.c \
+       gui/tools/drawline.c \
        gui/tools/win-border.c \
        gui/tools/desktop.c \
        gui/tools/display_wrapper.c \

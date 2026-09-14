@@ -94,7 +94,14 @@ void power_system_reset(void)
 
 void power_system_shutdown(void)
 {
-    kprintf("[POWER] shutdown requested - halting system\n");
+    kprintf("[POWER] shutdown requested - powering off\n");
+
+    /* QEMU exposes the ACPI power-management control register at 0x604.
+     * Keep the legacy ports as fallbacks for other emulators/firmware. */
+    outw(0x604, 0x2000);
+    outw(0xB004, 0x2000);
+    outw(0x4004, 0x3400);
+
     asm volatile("cli");
     while (1) {
         asm volatile("hlt");
