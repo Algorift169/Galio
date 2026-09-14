@@ -230,6 +230,7 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/wifi_list.c \
        tools/shell/commands/top.c \
        tools/shell/commands/spike.c \
+       tools/shell/commands/cd.c \
        tools/compiler/src/gc.c \
        tools/compiler/src/lexer.c \
        tools/compiler/src/parser.c \

@@ -288,16 +288,21 @@ static void fb_console_render_scrollback_view(void) {
     }
 
     u32 history_rows = console_scroll_offset < console_rows ? console_scroll_offset : console_rows;
+    u32 first_row = console_bounds_enabled ? console_bounds_y : 0u;
+    u32 last_row = console_bounds_enabled ? console_bounds_y + console_bounds_height : console_rows;
+    u32 first_column = console_bounds_enabled ? console_bounds_x : 0u;
+    u32 last_column = console_bounds_enabled ? console_bounds_x + console_bounds_width : console_columns;
 
-    for (u32 row = 0; row < console_rows; row++) {
-        for (u32 column = 0; column < console_columns; column++) {
+    for (u32 row = first_row; row < last_row; row++) {
+        for (u32 column = first_column; column < last_column; column++) {
             u16 cell;
-            if (row < history_rows) {
-                u32 lines_back = console_scroll_offset - row;
+            u32 relative_row = row - first_row;
+            if (relative_row < history_rows) {
+                u32 lines_back = console_scroll_offset - relative_row;
                 u32 idx = (console_scrollback_head + FB_CONSOLE_SCROLLBACK_LINES - lines_back) % FB_CONSOLE_SCROLLBACK_LINES;
                 cell = console_scrollback[idx][column];
             } else {
-                u32 live_row = row - history_rows;
+                u32 live_row = first_row + relative_row - history_rows;
                 cell = console_live_snapshot[live_row][column];
             }
             fb_console_draw_cell(column, row, cell);

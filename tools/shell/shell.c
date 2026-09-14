@@ -51,6 +51,7 @@
 #include "ip.h"
 #include "pkg.h"
 #include "where.h"
+#include "cd.h"
 #include "editor.h"
 #include "process.h"
 #include "syscall_cmd.h"
@@ -293,7 +294,8 @@ static u8 shell_command_name_known(const char *command)
     return strcmp(name, "help") == 0 || strcmp(name, "ls") == 0 ||
            strcmp(name, "dir") == 0 || strcmp(name, "mkdir") == 0 ||
            strcmp(name, "rmdir") == 0 || strcmp(name, "pwd") == 0 ||
-           strcmp(name, "goto") == 0 || strcmp(name, "back") == 0 ||
+           strcmp(name, "cd") == 0 || strcmp(name, "goto") == 0 ||
+           strcmp(name, "back") == 0 ||
            strcmp(name, "echo") == 0 || strcmp(name, "reboot") == 0 ||
            strcmp(name, "restart") == 0 || strcmp(name, "shutdown") == 0 ||
            strcmp(name, "shut-down") == 0 || strcmp(name, "poweroff") == 0 ||
@@ -1557,6 +1559,8 @@ static void shell_execute_command(void) {
         kprintf(" |________________________________________________________|\n");
         kprintf(" | pwd      - Print current directory                     |\n");
         kprintf(" |________________________________________________________|\n");
+        kprintf(" |  cd       - Change directory (cd = home, rex cd = root) |\n");
+        kprintf(" |________________________________________________________|\n");
         kprintf(" | goto     - Change directory (usage: goto <path>)       |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" | back  - Go back to previous dir (usage: back [dirname])|\n");
@@ -1652,27 +1656,33 @@ static void shell_execute_command(void) {
         SHELL_COLOR_OUT();
         kprintf("%s\n", current_dir);
         SHELL_COLOR_RESET();
-    } else if (strncmp(input.buffer, "goto ", 5) == 0) {
-        const char *dirname = input.buffer + 5;
-        char fullpath[DIR_PATH_SIZE];
-        shell_resolve_path(current_dir, dirname, fullpath);
-
-        if (shell_requires_rex_for_root_access(fullpath)) {
-            SHELL_COLOR_ERR();
-            kprintf("Permission denied: use 'rex goto .' to access root\n");
-            SHELL_COLOR_RESET();
-        } else if (vfs_is_dir(fullpath)) {
+    } else if (strncmp(input.buffer, "cd ", 3) == 0 ||
+               strcmp(input.buffer, "cd") == 0) {
+        const char *dirname = input.buffer + 2;
+        char previous_dir[DIR_PATH_SIZE];
+        strncpy(previous_dir, current_dir, sizeof(previous_dir) - 1);
+        previous_dir[sizeof(previous_dir) - 1] = 0;
+        if (shell_cd_command(dirname, current_dir, DIR_PATH_SIZE,
+                     shell_rex_command)) {
             if (dir_history.sp < DIR_HISTORY_SIZE) {
-                strncpy(dir_history.stack[dir_history.sp], current_dir, DIR_PATH_SIZE - 1);
+                strncpy(dir_history.stack[dir_history.sp], previous_dir, DIR_PATH_SIZE - 1);
                 dir_history.stack[dir_history.sp][DIR_PATH_SIZE - 1] = 0;
                 dir_history.sp++;
             }
-            strncpy(current_dir, fullpath, 255);
-            current_dir[255] = 0;
-        } else {
-            SHELL_COLOR_ERR();
-            kprintf("Directory not found: %s\n", fullpath);
-            SHELL_COLOR_RESET();
+        }
+    } else if (strncmp(input.buffer, "goto ", 5) == 0 ||
+               strcmp(input.buffer, "goto") == 0) {
+        const char *dirname = input.buffer + 4;
+        char previous_dir[DIR_PATH_SIZE];
+        strncpy(previous_dir, current_dir, sizeof(previous_dir) - 1);
+        previous_dir[sizeof(previous_dir) - 1] = 0;
+        if (shell_goto_command(dirname, current_dir, DIR_PATH_SIZE,
+                       shell_rex_command)) {
+            if (dir_history.sp < DIR_HISTORY_SIZE) {
+                strncpy(dir_history.stack[dir_history.sp], previous_dir, DIR_PATH_SIZE - 1);
+                dir_history.stack[dir_history.sp][DIR_PATH_SIZE - 1] = 0;
+                dir_history.sp++;
+            }
         }
     } else if (strncmp(input.buffer, "back", 4) == 0) {
         const char *target = input.buffer + 4;
@@ -1680,6 +1690,13 @@ static void shell_execute_command(void) {
 
         if (*target == 0) {
             if (dir_history.sp > 0) {
+                if (strcmp(dir_history.stack[dir_history.sp - 1], ROOT_DIR) == 0 &&
+                    !shell_rex_command) {
+                    SHELL_COLOR_ERR();
+                    kprintf("Permission denied: use 'rex back' to access root\n");
+                    SHELL_COLOR_RESET();
+                    return;
+                }
                 dir_history.sp--;
                 strncpy(current_dir, dir_history.stack[dir_history.sp], 255);
                 current_dir[255] = 0;
@@ -1687,7 +1704,7 @@ static void shell_execute_command(void) {
                 char parent[DIR_PATH_SIZE];
                 path_parent(current_dir, parent, DIR_PATH_SIZE);
                 if (strcmp(parent, current_dir) != 0 && strcmp(current_dir, ROOT_DIR) != 0) {
-                    if (strcmp(parent, ROOT_DIR) == 0) {
+                    if (strcmp(parent, ROOT_DIR) == 0 && !shell_rex_command) {
                         SHELL_COLOR_ERR();
                         kprintf("Permission denied: use 'rex goto .' to access root\n");
                         SHELL_COLOR_RESET();
@@ -1702,7 +1719,8 @@ static void shell_execute_command(void) {
                 }
             }
         } else {
-            if (strcmp(target, ".") == 0 || strcmp(target, "./") == 0) {
+            if ((strcmp(target, ".") == 0 || strcmp(target, "./") == 0) &&
+                !shell_rex_command) {
                 SHELL_COLOR_ERR();
                 kprintf("Permission denied: use 'rex goto .' to access root\n");
                 SHELL_COLOR_RESET();
