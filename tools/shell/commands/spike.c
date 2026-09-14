@@ -32,11 +32,25 @@
 #define SPIKE_HEIGHT 12
 #define SPIKE_SAMPLE_TICKS 100
 
-static u8 spike_should_exit(void) {
+static u8 spike_should_exit(u8 *ctrl_down) {
     if (keyboard_take_ctrl_c()) {
         keyboard_clear_pending_input();
         return 1;
     }
+
+    u8 scancode;
+    u8 is_pressed;
+    u8 extended;
+    while (keyboard_read_event(&scancode, &is_pressed, &extended)) {
+        (void)extended;
+        if (scancode == 0x1D) {
+            *ctrl_down = is_pressed;
+        } else if (is_pressed && scancode == 0x2E && *ctrl_down) {
+            keyboard_clear_pending_input();
+            return 1;
+        }
+    }
+
     return 0;
 }
 
@@ -71,6 +85,7 @@ static void spike_draw(const u8 *samples, u32 count) {
 
 u8 shell_spike_command(const char *args, const char *current_dir) {
     u8 samples[SPIKE_WIDTH] = {0};
+    u8 ctrl_down = 0;
     u32 count = 0;
     u32 next_sample;
     (void)current_dir;
@@ -90,11 +105,12 @@ u8 shell_spike_command(const char *args, const char *current_dir) {
 
     keyboard_reset_state();
     keyboard_clear_pending_input();
+    enable_interrupts();
     next_sample = pit_get_ticks();
     spike_draw(samples, 0);
 
     for (;;) {
-        if (spike_should_exit()) {
+        if (spike_should_exit(&ctrl_down)) {
             vga_set_color(0x0F);
             kprintf("Stopping cpu-spike\n");
             return 1;
