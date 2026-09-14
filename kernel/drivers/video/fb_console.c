@@ -287,11 +287,12 @@ static void fb_console_render_scrollback_view(void) {
         fb_console_capture_live_snapshot();
     }
 
-    u32 history_rows = console_scroll_offset < console_rows ? console_scroll_offset : console_rows;
     u32 first_row = console_bounds_enabled ? console_bounds_y : 0u;
     u32 last_row = console_bounds_enabled ? console_bounds_y + console_bounds_height : console_rows;
     u32 first_column = console_bounds_enabled ? console_bounds_x : 0u;
     u32 last_column = console_bounds_enabled ? console_bounds_x + console_bounds_width : console_columns;
+    u32 visible_rows = last_row - first_row;
+    u32 history_rows = console_scroll_offset < visible_rows ? console_scroll_offset : visible_rows;
 
     for (u32 row = first_row; row < last_row; row++) {
         for (u32 column = first_column; column < last_column; column++) {
@@ -320,6 +321,15 @@ static void scroll_console(void) {
     u32 last_column = console_bounds_enabled ? console_bounds_x + console_bounds_width : console_columns;
     if (last_row <= first_row + 1u) return;
 
+    for (u32 column = first_column; column < last_column; column++) {
+        console_scrollback[console_scrollback_head][column] =
+            console_cells[first_row][column];
+    }
+    console_scrollback_head = (console_scrollback_head + 1u) % FB_CONSOLE_SCROLLBACK_LINES;
+    if (console_scrollback_count < FB_CONSOLE_SCROLLBACK_LINES) {
+        console_scrollback_count++;
+    }
+
     for (u32 row = first_row; row + 1u < last_row; row++) {
         for (u32 column = first_column; column < last_column; column++) {
             console_cells[row][column] = console_cells[row + 1u][column];
@@ -327,14 +337,6 @@ static void scroll_console(void) {
     }
     for (u32 column = first_column; column < last_column; column++) {
         console_cells[last_row - 1u][column] = (u16)' ';
-    }
-
-    for (u32 x = first_column; x < last_column; x++) {
-        console_scrollback[console_scrollback_head][x] = console_cells[0][x];
-    }
-    console_scrollback_head = (console_scrollback_head + 1u) % FB_CONSOLE_SCROLLBACK_LINES;
-    if (console_scrollback_count < FB_CONSOLE_SCROLLBACK_LINES) {
-        console_scrollback_count++;
     }
 
     if (console_scroll_offset != 0u) {
