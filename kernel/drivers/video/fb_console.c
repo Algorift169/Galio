@@ -37,7 +37,7 @@ static u16 console_relocate_cells[FB_CONSOLE_MAX_ROWS][FB_CONSOLE_MAX_COLUMNS];
 static u8 glyph_row(char character, u32 row) {
     if (row >= 16) return 0;
     
-    static const u8 font[256][16] = {
+    static const u8 font[128][16] = {
         /* 0x00 */ {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
         /* 0x01 */ {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
         /* 0x02 */ {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -165,6 +165,7 @@ static u8 glyph_row(char character, u32 row) {
         /* | */ {0x00,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
         /* } */ {0x00,0x70,0x18,0x18,0x0C,0x18,0x18,0x18,0x70,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
         /* ~ */ {0x00,0x3B,0x6E,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+        /* DEL */ {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
     };
     
     if ((unsigned char)character < 128) return font[(unsigned char)character][row];
@@ -178,22 +179,26 @@ static void draw_cursor(void) {
 }
 
 static void draw_glyph(u32 x, u32 y, char character, u32 background) {
-    fb_fill_rect(x, y, console_cell_width, console_cell_height, background);
+    /* Fill background */
+    if (console_cell_width > 0 && console_cell_height > 0) {
+        fb_fill_rect(x, y, console_cell_width, console_cell_height, background);
+    }
+    
+    /* Draw character bitmap directly */
     for (u32 row = 0; row < 16u; row++) {
         u8 bits = glyph_row(character, row);
+        u32 py = y + row;
         for (u32 column = 0; column < 8u; column++) {
             if (bits & (1u << (7u - column))) {
-                fb_fill_rect(x + column * FB_CONSOLE_GLYPH_SCALE,
-                             y + row * FB_CONSOLE_GLYPH_SCALE,
-                             FB_CONSOLE_GLYPH_SCALE,
-                             FB_CONSOLE_GLYPH_SCALE,
-                             console_foreground);
+                u32 px = x + column;
+                fb_fill_rect(px, py, 1, 1, console_foreground);
             }
         }
     }
 }
 
 static void draw_character(char character) {
+    if (console_column >= console_columns || console_row >= console_rows) return;
     u32 x = console_column * console_cell_width;
     u32 y = console_row * console_cell_height;
     console_cells[console_row][console_column] = (u16)(character | (0x0Fu << 8u));

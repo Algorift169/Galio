@@ -44,6 +44,7 @@
 
 #define E1000_VENDOR_ID 0x8086
 #define E1000_DEVICE_ID 0x100E
+#define E1000_MMIO_BASE 0xD1000000u
 
 /* Registers */
 #define REG_CTRL    0x00000
@@ -139,9 +140,19 @@ static volatile u8 e1000_rx_pending;
 static volatile u8 e1000_tx_pending;
 
 static void *map_physical_region(u64 phys, u32 size) {
-    (void)size;
-    if (phys > 0xFFFFFFFFu) return NULL;
-    return (void *)(uintptr_t)phys;
+    if (!size || phys > 0xFFFFFFFFu ||
+        phys + size - 1 > 0xFFFFFFFFu) {
+        return NULL;
+    }
+
+    u32 pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+    for (u32 i = 0; i < pages; i++) {
+        paging_map_kernel(E1000_MMIO_BASE + i * PAGE_SIZE,
+                          (u32)phys + i * PAGE_SIZE,
+                          PAGE_PRESENT | PAGE_RW | PAGE_NOCACHE);
+    }
+
+    return (void *)(uintptr_t)E1000_MMIO_BASE;
 }
 
 static inline void mmio_write32(void *base, u32 offset, u32 val) {
