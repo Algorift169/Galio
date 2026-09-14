@@ -57,20 +57,20 @@ static void repaint_exposed_wallpaper(int old_x, int old_y, u32 width, u32 heigh
 }
 
 static const u8 gsh_font[3][7] = {
-    {0x00, 0x00, 0x0E, 0x01, 0x0F, 0x11, 0x0F},
+    {0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0E},
     {0x00, 0x00, 0x0F, 0x10, 0x0E, 0x01, 0x1E},
     {0x00, 0x00, 0x11, 0x11, 0x1F, 0x11, 0x11}
 };
 
 static void draw_gsh_label(void) {
-    const u32 scale = 2u;
-    const u32 label_x = (u32)gsh_button_x + 10u;
-    const u32 label_y = (u32)gsh_button_y + 3u;
+    const u32 scale = 1u;
+    const u32 label_x = (u32)gsh_button_x + 5u;
+    const u32 label_y = (u32)gsh_button_y + 6u;
     for (u32 letter = 0u; letter < 3u; letter++) {
         for (u32 row = 0u; row < 7u; row++) {
             for (u32 column = 0u; column < 5u; column++) {
                 if (gsh_font[letter][row] & (1u << (4u - column))) {
-                    fb_fill_rect(label_x + letter * 12u + column * scale,
+                    fb_fill_rect(label_x + letter * 6u + column * scale,
                                  label_y + row * scale, scale, scale,
                                  0x00FFFFFFu);
                 }
@@ -80,7 +80,7 @@ static void draw_gsh_label(void) {
 }
 
 void gsh_button_init(void) {
-    button_init(&gsh_launch_button, "gsh", 20u, 20u, 55u, 19u,
+    button_init(&gsh_launch_button, "GSH", 20u, 20u, 28u, 19u,
                 FB_COLOR(190, 42, 48), 0x00FFFFFFu);
     gsh_button_x = 20;
     gsh_button_y = 20;
