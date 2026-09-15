@@ -46,7 +46,8 @@ static u8 spike_should_exit(u8 *ctrl_down) {
         (void)extended;
         if (scancode == 0x1D) {
             *ctrl_down = is_pressed;
-        } else if (is_pressed && scancode == 0x2E && *ctrl_down) {
+        } else if (is_pressed && scancode == 0x2E &&
+               (*ctrl_down || keyboard_ctrl_pressed())) {
             keyboard_clear_pending_input();
             return 1;
         }
@@ -113,9 +114,11 @@ u8 shell_spike_command(const char *args, const char *current_dir) {
     cursor_show();
 
     for (;;) {
+        cursor_poll();
         if (spike_should_exit(&ctrl_down)) {
             vga_set_color(0x0F);
             kprintf("Stopping cpu-spike\n");
+            cursor_show();
             return 1;
         }
 

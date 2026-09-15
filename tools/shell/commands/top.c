@@ -179,7 +179,7 @@ static void print_process_table(const process_info_t *current, u32 current_count
     vga_puts("q/Ctrl+C quit | r refresh | p CPU | m memory | n PID\n");
 }
 
-static u8 top_should_exit(top_sort_t *sort, u8 *refresh) {
+static u8 top_should_exit(top_sort_t *sort, u8 *refresh, u8 *ctrl_down) {
     u8 scancode = 0;
     u8 is_pressed = 0;
     u8 extended = 0;
@@ -197,17 +197,24 @@ static u8 top_should_exit(top_sort_t *sort, u8 *refresh) {
         }
 
         if (scancode == 0x1D) {
+            *ctrl_down = is_pressed;
             continue;
         }
 
-        if (scancode == 0x2E && keyboard_ctrl_pressed()) {
+        if (scancode == 0x2E && (*ctrl_down || keyboard_ctrl_pressed())) {
             keyboard_clear_pending_input();
             kprintf("\nStopping top\n");
             vga_enable_hardware_cursor();
+            cursor_show();
             return 1;
         }
 
         u8 ascii = scancode_to_ascii(scancode);
+        if (ascii == 'q') {
+            vga_enable_hardware_cursor();
+            cursor_show();
+            return 1;
+        }
         if (ascii == 'p') *sort = TOP_SORT_CPU;
         if (ascii == 'm') *sort = TOP_SORT_MEMORY;
         if (ascii == 'n') *sort = TOP_SORT_PID;
@@ -222,6 +229,7 @@ u8 shell_top_command(const char *args, const char *current_dir) {
     process_info_t current[TOP_MAX_PROCESSES];
     u32 previous_count = 0;
     u32 next_sample;
+    u8 ctrl_down = 0;
     top_sort_t sort = TOP_SORT_CPU;
     int start_x = 0;
     int start_y = 0;
@@ -256,8 +264,9 @@ u8 shell_top_command(const char *args, const char *current_dir) {
     next_sample = pit_get_ticks();
     top_previous_time = next_sample;
     for (;;) {
+        cursor_poll();
         u8 refresh = 0;
-        if (top_should_exit(&sort, &refresh)) {
+        if (top_should_exit(&sort, &refresh, &ctrl_down)) {
             return 1;
         }
 
