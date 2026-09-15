@@ -66,6 +66,8 @@
 #include "cpufreq_cmd.h"
 #include "gc.h"
 #include "script.h"
+#include "clock.h"
+#include "panel.h"
 
 u8 shell_net_command(const char *args, const char *current_dir);
 u8 shell_pkg_command(const char *args, const char *current_dir);
@@ -2076,6 +2078,9 @@ void shell_run(void) {
     enable_interrupts();
 
     while (!shell_should_exit) {
+        if (clock_tick()) {
+            panel_draw_clock();
+        }
         shell_poll_keyboard();
         shell_poll_mouse();
         for (volatile int i = 0; i < 10; i++);
