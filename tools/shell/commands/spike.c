@@ -28,6 +28,7 @@
 #include "kprintf.h"
 #include "string.h"
 #include "mouse/cursor.h"
+#include "gsh_button.h"
 
 #define SPIKE_WIDTH 72
 #define SPIKE_HEIGHT 12
@@ -90,6 +91,8 @@ u8 shell_spike_command(const char *args, const char *current_dir) {
     u8 ctrl_down = 0;
     u32 count = 0;
     u32 next_sample;
+    u32 terminal_id;
+    u32 terminal_event;
     (void)current_dir;
 
     if (args) {
@@ -112,13 +115,22 @@ u8 shell_spike_command(const char *args, const char *current_dir) {
     cursor_deactivate();
     spike_draw(samples, 0);
     cursor_show();
+    terminal_id = gsh_button_get_active_window_id();
+    terminal_event = gsh_button_get_terminal_event();
+    gsh_button_set_monitor_active(1u);
 
     for (;;) {
         cursor_poll();
+        if (gsh_button_get_active_window_id() != terminal_id ||
+            gsh_button_get_terminal_event() != terminal_event) {
+            gsh_button_set_monitor_active(0u);
+            return 1;
+        }
         if (spike_should_exit(&ctrl_down)) {
             vga_set_color(0x0F);
             kprintf("Stopping cpu-spike\n");
             cursor_show();
+            gsh_button_set_monitor_active(0u);
             return 1;
         }
 

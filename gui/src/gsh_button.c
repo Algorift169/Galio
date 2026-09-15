@@ -30,6 +30,8 @@ static terminal_window_t gsh_extra_windows[GSH_MAX_EXTRA_WINDOWS];
 static u32 gsh_extra_window_ids[GSH_MAX_EXTRA_WINDOWS];
 static terminal_window_t *gsh_active_terminal = &gsh_window;
 static u8 gsh_pointer_buttons = 0u;
+static u8 gsh_monitor_active = 0u;
+static u32 gsh_terminal_event = 0u;
 
 static void repaint_exposed_wallpaper(int old_x, int old_y, u32 width, u32 height,
                                       int new_x, int new_y) {
@@ -190,6 +192,8 @@ void gsh_button_init(void) {
     gsh_window_active = 0u;
     gsh_launch_pressed = 0u;
     gsh_pointer_buttons = 0u;
+    gsh_monitor_active = 0u;
+    gsh_terminal_event = 0u;
     gsh_window_id = 0u;
     gsh_server_window_id = 0u;
     gsh_active_terminal = &gsh_window;
@@ -236,6 +240,18 @@ u8 gsh_button_is_input_enabled(void) {
            display_server_get_active_window_id() == gsh_server_window_id;
 }
 
+u32 gsh_button_get_active_window_id(void) {
+    return gsh_server_window_id;
+}
+
+u32 gsh_button_get_terminal_event(void) {
+    return gsh_terminal_event;
+}
+
+void gsh_button_set_monitor_active(u8 active) {
+    gsh_monitor_active = active ? 1u : 0u;
+}
+
 static void gsh_open_extra_window(void) {
     u32 index;
     int x;
@@ -257,6 +273,7 @@ static void gsh_open_extra_window(void) {
         gsh_save_terminal_content(&gsh_extra_windows[index]);
         gsh_active_terminal = &gsh_extra_windows[index];
         gsh_server_window_id = gsh_extra_window_ids[index];
+        gsh_terminal_event++;
         display_server_focus_window(gsh_server_window_id);
         terminal_window_set_bounds(gsh_active_terminal);
         shell_set_exit_region(gsh_active_terminal->window.x +
@@ -264,7 +281,7 @@ static void gsh_open_extra_window(void) {
                               gsh_active_terminal->window.y +
                               (int)gsh_active_terminal->window.height - 18,
                               16, 16);
-        shell_redraw_terminal();
+        if (!gsh_monitor_active) shell_redraw_terminal();
         cursor_show();
         return;
     }
@@ -300,7 +317,9 @@ static void gsh_focus_terminal(terminal_window_t *terminal, u32 window_id) {
 
     gsh_active_terminal = terminal;
     gsh_server_window_id = window_id;
+    gsh_terminal_event++;
     display_server_focus_window(window_id);
+    cursor_deactivate();
     gsh_draw_terminal_content(terminal);
     terminal_window_set_bounds(terminal);
     gsh_restore_terminal_cursor(terminal);
@@ -341,6 +360,7 @@ static u8 gsh_close_active_window(int x, int y) {
     if (best_id == 0u) return 0u;
 
     gsh_save_terminal_content(terminal);
+    cursor_deactivate();
     terminal_window_close(terminal);
     display_server_client_destroy_window(gsh_server_client_id, window_id);
     if (terminal == &gsh_window) {
@@ -353,7 +373,8 @@ static u8 gsh_close_active_window(int x, int y) {
             }
         }
     }
-    redraw_other_gsh_windows(terminal);
+    desktop_draw();
+    redraw_other_gsh_windows((terminal_window_t *)0);
     gsh_focus_terminal(gsh_terminal_for_window_id(best_id), best_id);
     return 1u;
 }
@@ -385,6 +406,7 @@ static u8 gsh_focus_existing_window(void) {
 void gsh_button_click(void) {
     if (gsh_window_active) {
         if (gsh_launch_pressed) return;
+        gsh_save_active_content();
         gsh_open_extra_window();
         if (gsh_active_terminal != &gsh_window) {
             return;
@@ -425,6 +447,7 @@ void gsh_button_click(void) {
     shell_run();
     shell_clear_exit_region();
     gsh_save_terminal_content(gsh_active_terminal);
+    cursor_deactivate();
     terminal_window_close(gsh_active_terminal);
 
     if (gsh_server_window_id != 0u) {
@@ -432,8 +455,9 @@ void gsh_button_click(void) {
         gsh_server_window_id = 0u;
     }
 
-    redraw_other_gsh_windows(gsh_active_terminal);
-    cursor_refresh_desktop();
+    desktop_draw();
+    redraw_other_gsh_windows((terminal_window_t *)0);
+    cursor_show();
     gsh_window_active = 0u;
     gsh_active_terminal = &gsh_window;
 }
@@ -480,6 +504,7 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
     if (terminal->window.y > max_y) terminal->window.y = max_y;
 
     if (terminal->window.x != old_window_x || terminal->window.y != old_window_y) {
+        cursor_deactivate();
         gsh_save_terminal_content(terminal);
         terminal_window_sync_layout(terminal);
 
@@ -502,7 +527,7 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
 
         gsh_draw_terminal_content(terminal);
         gsh_restore_terminal_cursor(terminal);
-        cursor_rebase();
+        cursor_show();
     }
 
     gsh_pointer_buttons = buttons;

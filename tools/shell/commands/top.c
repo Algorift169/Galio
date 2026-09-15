@@ -29,6 +29,7 @@
 #include "vga.h"
 #include "string.h"
 #include "mouse/cursor.h"
+#include "gsh_button.h"
 
 #define TOP_MAX_PROCESSES 32u
 
@@ -235,6 +236,8 @@ u8 shell_top_command(const char *args, const char *current_dir) {
     int start_y = 0;
     int width = 80;
     int height = 25;
+    u32 terminal_id;
+    u32 terminal_event;
     (void)current_dir;
     if (args && *args != '\0') {
         const char *trim = args;
@@ -263,14 +266,24 @@ u8 shell_top_command(const char *args, const char *current_dir) {
     cursor_show();
     next_sample = pit_get_ticks();
     top_previous_time = next_sample;
+    terminal_id = gsh_button_get_active_window_id();
+    terminal_event = gsh_button_get_terminal_event();
+    gsh_button_set_monitor_active(1u);
     for (;;) {
         cursor_poll();
+        if (gsh_button_get_active_window_id() != terminal_id ||
+            gsh_button_get_terminal_event() != terminal_event) {
+            gsh_button_set_monitor_active(0u);
+            return 1;
+        }
         u8 refresh = 0;
         if (top_should_exit(&sort, &refresh, &ctrl_down)) {
+            gsh_button_set_monitor_active(0u);
             return 1;
         }
 
         u32 now = pit_get_ticks();
+        vga_get_bounds(&start_x, &start_y, &width, &height);
         if (refresh || (u32)(now - next_sample) < 0x80000000u) {
             u32 current_count = process_snapshot(current, TOP_MAX_PROCESSES);
             cursor_deactivate();
