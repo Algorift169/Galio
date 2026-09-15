@@ -12,6 +12,8 @@
 #include "srver/server.h"
 #include "display_wrapper.h"
 
+#define GSH_BUTTON_TEXT_COLOR FB_COLOR(105u, 145u, 165u)
+
 static button_t gsh_launch_button;
 static terminal_window_t gsh_window;
 static int gsh_button_x = 20;
@@ -72,7 +74,7 @@ static void draw_gsh_label(void) {
                 if (gsh_font[letter][row] & (1u << (4u - column))) {
                     fb_fill_rect(label_x + letter * 6u + column * scale,
                                  label_y + row * scale, scale, scale,
-                                 0x00FFFFFFu);
+                                 GSH_BUTTON_TEXT_COLOR);
                 }
             }
         }

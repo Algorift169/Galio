@@ -15,6 +15,11 @@
 #define PANEL_BUTTON_Y 6u
 #define PANEL_BUTTON_WIDTH 28u
 #define PANEL_BUTTON_HEIGHT 19u
+#define PANEL_SYSTEM_MONITOR_X 650
+#define PANEL_FILE_X 758
+#define PANEL_EDIT_X 802
+#define PANEL_GSH_X 846
+#define PANEL_HELP_X 882
 
 static button_t shutdown_button;
 static u8 panel_ready;
@@ -76,18 +81,22 @@ void panel_draw_clock(void) {
 
     clock_format_datetime(date, time);
 
-    fb_fill_rect(686u, 8u, 198u, 14u, PANEL_COLOR);
-    panel_put_text(690, 12, "DATE", PANEL_LINE_COLOR);
-    panel_put_text(720, 12, date, PANEL_TEXT_COLOR);
-    panel_put_text(800, 12, "TIME", PANEL_LINE_COLOR);
-    panel_put_text(830, 12, time, PANEL_TEXT_COLOR);
+    fb_fill_rect(8u, 8u, 198u, 14u, PANEL_COLOR);
+    panel_put_text(12, 12, "DATE", PANEL_LINE_COLOR);
+    panel_put_text(42, 12, date, PANEL_TEXT_COLOR);
+    panel_put_text(122, 12, "TIME", PANEL_LINE_COLOR);
+    panel_put_text(152, 12, time, PANEL_TEXT_COLOR);
 }
 
 void panel_init(void) {
     button_init(&shutdown_button, "SHUTDOWN", PANEL_BUTTON_X, PANEL_BUTTON_Y,
                 PANEL_BUTTON_WIDTH, PANEL_BUTTON_HEIGHT,
                 PANEL_BUTTON_COLOR, PANEL_TEXT_COLOR);
-    gsh_button_set_position(498, 6);
+    panel_system_monitor_button_init(PANEL_SYSTEM_MONITOR_X, 6);
+    panel_file_button_init(PANEL_FILE_X, 6);
+    panel_edit_button_init(PANEL_EDIT_X, 6);
+    panel_help_button_init(PANEL_HELP_X, 6);
+    gsh_button_set_position(PANEL_GSH_X, 6);
     panel_ready = 1u;
 }
 
@@ -96,12 +105,39 @@ void panel_draw(void) {
     fb_fill_rect(0u, 0u, 1024u, PANEL_HEIGHT, PANEL_COLOR);
     gui_draw_border(0, 0, 1024u, PANEL_HEIGHT, PANEL_LINE_COLOR);
     panel_draw_clock();
+    panel_system_monitor_button_draw();
+    panel_file_button_draw();
+    panel_edit_button_draw();
+    panel_help_button_draw();
     button_draw(&shutdown_button);
-    panel_put_text((int)PANEL_BUTTON_X + 2, (int)PANEL_BUTTON_Y + 6, "SHUT", PANEL_TEXT_COLOR);
+    panel_put_text(PANEL_SYSTEM_MONITOR_X + 6, 12, "SYSTEM MONITOR", PANEL_LINE_COLOR);
+    panel_put_text(PANEL_FILE_X + 11, 12, "FILE", PANEL_LINE_COLOR);
+    panel_put_text(PANEL_EDIT_X + 11, 12, "EDIT", PANEL_LINE_COLOR);
+    panel_put_text(PANEL_HELP_X + 10, 12, "HELP", PANEL_LINE_COLOR);
+    panel_put_text((int)PANEL_BUTTON_X + 2, (int)PANEL_BUTTON_Y + 6, "SHUT", PANEL_LINE_COLOR);
 }
 
 u8 panel_handle_click(int x, int y) {
-    if (!panel_ready || !button_contains(&shutdown_button, x, y)) return 0u;
-    power_system_shutdown();
-    return 1u;
+    if (!panel_ready) return 0u;
+    if (button_contains(&shutdown_button, x, y)) {
+        power_system_shutdown();
+        return 1u;
+    }
+    if (panel_system_monitor_button_contains(x, y)) {
+        panel_system_monitor_button_click();
+        return 1u;
+    }
+    if (panel_file_button_contains(x, y)) {
+        panel_file_button_click();
+        return 1u;
+    }
+    if (panel_edit_button_contains(x, y)) {
+        panel_edit_button_click();
+        return 1u;
+    }
+    if (panel_help_button_contains(x, y)) {
+        panel_help_button_click();
+        return 1u;
+    }
+    return 0u;
 }

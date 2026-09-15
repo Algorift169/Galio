@@ -187,6 +187,10 @@ SRCS = kernel/kmain.c \
        gui/src/terminal_window.c \
        gui/src/gsh_button.c \
        gui/src/panel/panel.c \
+       gui/src/panel/system_monitor_button.c \
+       gui/src/panel/file_button.c \
+       gui/src/panel/edit_button.c \
+       gui/src/panel/help_button.c \
        gui/tools/clock.c \
        gui/tools/background.c \
        gui/tools/window.c \
