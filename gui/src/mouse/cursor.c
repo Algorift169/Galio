@@ -176,7 +176,9 @@ void cursor_poll(void)
     u8 right_pressed = (buttons & 0x02u) && !(previous_buttons & 0x02u);
 
     if (left_pressed) {
+            if (cursor_y >= 32) {
         display_server_focus_at_point(cursor_x, cursor_y);
+            }
         if (!panel_handle_click(cursor_x, cursor_y) &&
             gsh_button_contains(cursor_x, cursor_y)) {
             gsh_button_click();

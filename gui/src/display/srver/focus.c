@@ -16,7 +16,6 @@ void display_server_focus_desktop(void) {
 
     g_display_server_state.active_window_id = DISPLAY_SERVER_WINDOW_ID_NONE;
     g_display_server_state.active_client_id = DISPLAY_SERVER_CLIENT_ID_NONE;
-    g_display_server_state.redraw_pending = 1u;
 }
 
 u8 display_server_focus_at_point(int x, int y) {
@@ -33,7 +32,6 @@ u8 display_server_focus_at_point(int x, int y) {
         }
 
         if (x >= window->x &&
-            x < (int)(window->x + (int)window->width) &&
             y >= window->y &&
             y < (int)(window->y + (int)window->height)) {
             if (window->z_order >= best_z_order) {

@@ -451,8 +451,6 @@ void display_server_focus_window(u32 window_id) {
             g_display_server_state.windows[index].focused = 0u;
         }
     }
-
-    g_display_server_state.redraw_pending = 1u;
 }
 
 void display_server_show_window(u32 window_id) {
