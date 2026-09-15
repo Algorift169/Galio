@@ -28,6 +28,7 @@
 #include "keyboard.h"
 #include "vga.h"
 #include "string.h"
+#include "mouse/cursor.h"
 
 #define TOP_MAX_PROCESSES 32u
 
@@ -248,8 +249,10 @@ u8 shell_top_command(const char *args, const char *current_dir) {
     keyboard_reset_state();
     keyboard_clear_pending_input();
     vga_disable_hardware_cursor();
+    cursor_deactivate();
     vga_clear_no_update();
     vga_set_cursor_position(start_x, start_y);
+    cursor_show();
     next_sample = pit_get_ticks();
     top_previous_time = next_sample;
     for (;;) {
@@ -261,8 +264,10 @@ u8 shell_top_command(const char *args, const char *current_dir) {
         u32 now = pit_get_ticks();
         if (refresh || (u32)(now - next_sample) < 0x80000000u) {
             u32 current_count = process_snapshot(current, TOP_MAX_PROCESSES);
+            cursor_deactivate();
             vga_set_cursor_position(start_x, start_y);
             print_process_table(current, current_count, previous, previous_count, now, sort);
+            cursor_show();
             for (u32 i = 0; i < current_count; i++) previous[i] = current[i];
             previous_count = current_count;
             top_previous_time = now;

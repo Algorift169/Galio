@@ -33,6 +33,7 @@ void window_init(window_t *window,
     window->resizeable = 1u;
     window->visible = 1u;
     window->closed = 0u;
+    window->dragging = 0u;
     window->drag_offset_x = 0;
     window->drag_offset_y = 0;
     window->last_mouse_x = -1;
@@ -78,15 +79,17 @@ u8 window_contains(const window_t *window, int x, int y) {
 void window_handle_pointer(window_t *window, int mouse_x, int mouse_y, u8 buttons) {
     if (!window || !window->visible || window->closed) return;
 
-    if (buttons & 0x01u) {
-        if (window->last_mouse_x >= 0 && window->last_mouse_y >= 0) {
-            int dx = mouse_x - window->last_mouse_x;
-            int dy = mouse_y - window->last_mouse_y;
-            if (window->drag_offset_x != 0 || window->drag_offset_y != 0) {
-                window->x += dx;
-                window->y += dy;
-            }
-        }
+    if ((buttons & 0x01u) && !window->dragging && window->draggable &&
+        mouse_x >= window->x && mouse_x < (int)(window->x + (int)window->width) &&
+        mouse_y >= window->y && mouse_y < window->y + 20) {
+        window->drag_offset_x = mouse_x - window->x;
+        window->drag_offset_y = mouse_y - window->y;
+        window->dragging = 1u;
+    }
+
+    if ((buttons & 0x01u) && window->dragging) {
+        window->x = mouse_x - window->drag_offset_x;
+        window->y = mouse_y - window->drag_offset_y;
         if (mouse_x >= (int)(window->x + window->width - 18u) &&
             mouse_y >= (int)(window->y + window->height - 18u) &&
             window->resizeable) {
@@ -97,14 +100,8 @@ void window_handle_pointer(window_t *window, int mouse_x, int mouse_y, u8 button
         }
     }
 
-    if (window->drag_offset_x == 0 && window->drag_offset_y == 0 &&
-        mouse_x >= window->x && mouse_x < (int)(window->x + (int)window->width) &&
-        mouse_y >= window->y && mouse_y < (int)(window->y + 20)) {
-        window->drag_offset_x = mouse_x - window->x;
-        window->drag_offset_y = mouse_y - window->y;
-    }
-
     if (!(buttons & 0x01u)) {
+        window->dragging = 0u;
         window->drag_offset_x = 0;
         window->drag_offset_y = 0;
     }

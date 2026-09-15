@@ -27,6 +27,7 @@
 #include "vga.h"
 #include "kprintf.h"
 #include "string.h"
+#include "mouse/cursor.h"
 
 #define SPIKE_WIDTH 72
 #define SPIKE_HEIGHT 12
@@ -41,7 +42,7 @@ static u8 spike_should_exit(u8 *ctrl_down) {
     u8 scancode;
     u8 is_pressed;
     u8 extended;
-    while (keyboard_read_event(&scancode, &is_pressed, &extended)) {
+    while (keyboard_read_shell_event(&scancode, &is_pressed, &extended)) {
         (void)extended;
         if (scancode == 0x1D) {
             *ctrl_down = is_pressed;
@@ -107,7 +108,9 @@ u8 shell_spike_command(const char *args, const char *current_dir) {
     keyboard_clear_pending_input();
     enable_interrupts();
     next_sample = pit_get_ticks();
+    cursor_deactivate();
     spike_draw(samples, 0);
+    cursor_show();
 
     for (;;) {
         if (spike_should_exit(&ctrl_down)) {
@@ -131,6 +134,8 @@ u8 shell_spike_command(const char *args, const char *current_dir) {
             for (u32 i = 1; i < SPIKE_WIDTH; i++) samples[i - 1] = samples[i];
             samples[SPIKE_WIDTH - 1] = process_get_cpu_usage();
         }
+        cursor_deactivate();
         spike_draw(samples, count);
+        cursor_show();
     }
 }

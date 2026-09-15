@@ -25,6 +25,7 @@ void display_server_tick(void);
 void display_server_run_background(void);
 void display_server_handle_mouse_event(int x, int y, u8 buttons);
 void display_server_set_desktop_background(u32 color);
+void display_server_cycle_window(int direction);
 u8 display_server_is_running(void);
 
 #endif /* GUI_DISPLAY_SERVER_H */

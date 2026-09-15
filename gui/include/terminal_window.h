@@ -4,6 +4,9 @@
 #include "common.h"
 #include "window.h"
 
+#define TERMINAL_WINDOW_MAX_COLUMNS 80u
+#define TERMINAL_WINDOW_MAX_ROWS 25u
+
 typedef struct {
     window_t window;
     int inner_x;
@@ -16,6 +19,10 @@ typedef struct {
     u32 console_height;
     u8 visible;
     u8 initialized;
+    u8 content_valid;
+    int console_cursor_x;
+    int console_cursor_y;
+    u16 console_cells[TERMINAL_WINDOW_MAX_COLUMNS * TERMINAL_WINDOW_MAX_ROWS];
 } terminal_window_t;
 
 void terminal_window_init(terminal_window_t *terminal, const char *title, u32 x, u32 y, u32 width, u32 height);

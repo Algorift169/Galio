@@ -178,6 +178,7 @@ void display_server_set_window_title(u32 window_id, const char *title);
 void display_server_move_window(u32 window_id, int x, int y);
 void display_server_resize_window(u32 window_id, u32 width, u32 height);
 void display_server_focus_window(u32 window_id);
+void display_server_cycle_window(int direction);
 void display_server_focus_desktop(void);
 u8 display_server_focus_at_point(int x, int y);
 void display_server_show_window(u32 window_id);

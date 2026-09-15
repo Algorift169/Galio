@@ -16,6 +16,7 @@ typedef struct {
     u8 resizeable;
     u8 visible;
     u8 closed;
+    u8 dragging;
     int drag_offset_x;
     int drag_offset_y;
     int last_mouse_x;

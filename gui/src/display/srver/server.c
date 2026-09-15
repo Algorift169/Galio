@@ -16,6 +16,28 @@
 display_server_state_t g_display_server_state;
 display_server_state_t g_display_server = {0};
 
+static void display_server_focus_top_window(void) {
+    u32 index;
+    u32 top_window = DISPLAY_SERVER_WINDOW_ID_NONE;
+    u32 top_z_order = 0u;
+
+    for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
+        if (!g_display_server_state.windows[index].closed &&
+            g_display_server_state.windows[index].visible &&
+            g_display_server_state.windows[index].state != DISPLAY_SERVER_WINDOW_STATE_MINIMIZED &&
+            g_display_server_state.windows[index].z_order >= top_z_order) {
+            top_window = g_display_server_state.windows[index].id;
+            top_z_order = g_display_server_state.windows[index].z_order;
+        }
+    }
+
+    if (top_window != DISPLAY_SERVER_WINDOW_ID_NONE) {
+        display_server_focus_window(top_window);
+    } else {
+        display_server_focus_desktop();
+    }
+}
+
 static void display_server_boot_state(void) {
     u32 width = FB_DEFAULT_WIDTH;
     u32 height = FB_DEFAULT_HEIGHT;
@@ -160,6 +182,8 @@ u32 display_server_create_surface(u32 client_id, u32 window_id, u32 width, u32 h
             g_display_server_state.surfaces[index].dirty = 1u;
             g_display_server_state.surfaces[index].initialized = 1u;
             g_display_server_state.surface_count++;
+            display_server_client_t *client = display_server_resources_find_client(client_id);
+            if (client) client->surface_count++;
             surface_id = g_display_server_state.surfaces[index].id;
             break;
         }
@@ -184,20 +208,43 @@ void display_server_output_init(void) {
 }
 
 void display_server_output_refresh(void) {
+    u32 draw_order[DISPLAY_SERVER_MAX_WINDOWS];
+    u32 draw_count = 0u;
     u32 index;
+    u32 order;
 
     /* Preserve the wallpaper: the server should repaint the desktop scene
      * without forcibly clearing the framebuffer first, otherwise the wallpaper
      * gets temporarily removed and can blink during redraws. */
     desktop_draw();
     for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
-        if (!g_display_server_state.windows[index].closed && g_display_server_state.windows[index].visible) {
-            display_server_renderer_fill_rect((u32)g_display_server_state.windows[index].x,
-                                              (u32)g_display_server_state.windows[index].y,
-                                              g_display_server_state.windows[index].width,
-                                              g_display_server_state.windows[index].height,
-                                              FB_COLOR(64u, 64u, 72u));
+        if (!g_display_server_state.windows[index].closed &&
+            g_display_server_state.windows[index].visible &&
+            g_display_server_state.windows[index].state != DISPLAY_SERVER_WINDOW_STATE_MINIMIZED) {
+            draw_order[draw_count++] = index;
         }
+    }
+
+    for (order = 0u; order < draw_count; order++) {
+        u32 lowest_order = order;
+        for (index = order + 1u; index < draw_count; index++) {
+            if (g_display_server_state.windows[draw_order[index]].z_order <
+                g_display_server_state.windows[draw_order[lowest_order]].z_order) {
+                lowest_order = index;
+            }
+        }
+        if (lowest_order != order) {
+            u32 swap = draw_order[order];
+            draw_order[order] = draw_order[lowest_order];
+            draw_order[lowest_order] = swap;
+        }
+    }
+
+    for (order = 0u; order < draw_count; order++) {
+        display_server_window_t *window = &g_display_server_state.windows[draw_order[order]];
+        display_server_renderer_fill_rect((u32)window->x, (u32)window->y,
+                                          window->width, window->height,
+                                          FB_COLOR(64u, 64u, 72u));
     }
 
     if (g_display_server_state.cursor_visible) {
@@ -268,16 +315,9 @@ void display_server_disconnect_client(u32 client_id) {
     }
 
     for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
-        if (g_display_server_state.windows[index].owner_client == client_id) {
-            g_display_server_state.windows[index].visible = 0u;
-            g_display_server_state.windows[index].closed = 1u;
-        }
-    }
-
-    for (index = 0u; index < DISPLAY_SERVER_MAX_SURFACES; index++) {
-        if (g_display_server_state.surfaces[index].owner_client == client_id) {
-            g_display_server_state.surfaces[index].initialized = 0u;
-            g_display_server_state.surfaces[index].visible = 0u;
+        if (!g_display_server_state.windows[index].closed &&
+            g_display_server_state.windows[index].owner_client == client_id) {
+            display_server_destroy_window(g_display_server_state.windows[index].id);
         }
     }
 
@@ -314,7 +354,12 @@ u32 display_server_create_window(u32 client_id, const char *title, int x, int y,
             g_display_server_state.windows[index].state = DISPLAY_SERVER_WINDOW_STATE_NORMAL;
             g_display_server_state.windows[index].closed = 0u;
             g_display_server_state.windows[index].surface_id = display_server_create_surface(client_id, g_display_server_state.windows[index].id, width, height);
-            g_display_server_state.windows[index].z_order = g_display_server_state.window_count;
+            if (g_display_server_state.windows[index].surface_id == DISPLAY_SERVER_SURFACE_ID_NONE) {
+                g_display_server_state.windows[index].closed = 1u;
+                g_display_server_state.windows[index].visible = 0u;
+                continue;
+            }
+            g_display_server_state.windows[index].z_order = 0u;
             if (title) {
                 u32 title_len = 0u;
                 while (title_len < DISPLAY_SERVER_TITLE_LEN - 1u && title[title_len] != '\0') {
@@ -325,6 +370,8 @@ u32 display_server_create_window(u32 client_id, const char *title, int x, int y,
             }
 
             g_display_server_state.window_count++;
+            display_server_client_t *client = display_server_resources_find_client(client_id);
+            if (client) client->window_count++;
             window_id = g_display_server_state.windows[index].id;
             display_server_focus_window(window_id);
             g_display_server_state.redraw_pending = 1u;
@@ -337,6 +384,8 @@ u32 display_server_create_window(u32 client_id, const char *title, int x, int y,
 
 void display_server_destroy_window(u32 window_id) {
     u32 index;
+    u32 owner_client = DISPLAY_SERVER_CLIENT_ID_NONE;
+    u8 was_active = 0u;
 
     if (!display_server_resource_validate_window(window_id)) {
         return;
@@ -344,6 +393,8 @@ void display_server_destroy_window(u32 window_id) {
 
     for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
         if (g_display_server_state.windows[index].id == window_id) {
+            owner_client = g_display_server_state.windows[index].owner_client;
+            was_active = g_display_server_state.active_window_id == window_id;
             g_display_server_state.windows[index].closed = 1u;
             g_display_server_state.windows[index].visible = 0u;
             g_display_server_state.windows[index].focused = 0u;
@@ -352,17 +403,24 @@ void display_server_destroy_window(u32 window_id) {
             g_display_server_state.windows[index].state = DISPLAY_SERVER_WINDOW_STATE_HIDDEN;
             g_display_server_state.windows[index].title[0] = '\0';
             g_display_server_state.window_count--;
+            display_server_client_t *client = display_server_resources_find_client(owner_client);
+            if (client && client->window_count > 0u) {
+                client->window_count--;
+            }
             break;
         }
     }
 
     for (index = 0u; index < DISPLAY_SERVER_MAX_SURFACES; index++) {
         if (g_display_server_state.surfaces[index].owner_window == window_id) {
+            display_server_client_t *client = display_server_resources_find_client(
+                g_display_server_state.surfaces[index].owner_client);
             g_display_server_state.surfaces[index].initialized = 0u;
             g_display_server_state.surfaces[index].visible = 0u;
             g_display_server_state.surfaces[index].owner_window = 0u;
             g_display_server_state.surfaces[index].owner_client = 0u;
             g_display_server_state.surface_count--;
+            if (client && client->surface_count > 0u) client->surface_count--;
         }
     }
 
@@ -370,6 +428,8 @@ void display_server_destroy_window(u32 window_id) {
         g_display_server_state.active_window_id = DISPLAY_SERVER_WINDOW_ID_NONE;
         g_display_server_state.active_client_id = DISPLAY_SERVER_CLIENT_ID_NONE;
     }
+
+    if (was_active) display_server_focus_top_window();
 
     g_display_server_state.redraw_pending = 1u;
 }
@@ -435,6 +495,7 @@ void display_server_resize_window(u32 window_id, u32 width, u32 height) {
 
 void display_server_focus_window(u32 window_id) {
     u32 index;
+    u32 highest_z_order = 0u;
 
     keyboard_clear_pending_input();
 
@@ -443,13 +504,93 @@ void display_server_focus_window(u32 window_id) {
     }
 
     for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
+        if (!g_display_server_state.windows[index].closed &&
+            g_display_server_state.windows[index].z_order > highest_z_order) {
+            highest_z_order = g_display_server_state.windows[index].z_order;
+        }
+    }
+
+    for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
         if (g_display_server_state.windows[index].id == window_id) {
+            if (!g_display_server_state.windows[index].visible ||
+                g_display_server_state.windows[index].state == DISPLAY_SERVER_WINDOW_STATE_MINIMIZED) {
+                return;
+            }
             g_display_server_state.windows[index].focused = 1u;
+            g_display_server_state.windows[index].z_order = highest_z_order + 1u;
             g_display_server_state.active_window_id = window_id;
             g_display_server_state.active_client_id = g_display_server_state.windows[index].owner_client;
         } else if (!g_display_server_state.windows[index].closed) {
             g_display_server_state.windows[index].focused = 0u;
         }
+    }
+    g_display_server_state.redraw_pending = 1u;
+}
+
+void display_server_cycle_window(int direction) {
+    u32 index;
+    u32 current_z_order = 0u;
+    u32 next_window = DISPLAY_SERVER_WINDOW_ID_NONE;
+    u32 next_z_order = direction >= 0 ? (u32)-1 : 0u;
+    u8 has_active = 0u;
+
+    for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
+        display_server_window_t *window = &g_display_server_state.windows[index];
+        if (window->id == g_display_server_state.active_window_id) {
+            current_z_order = window->z_order;
+            has_active = 1u;
+            break;
+        }
+    }
+
+    for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
+        display_server_window_t *window = &g_display_server_state.windows[index];
+        if (window->closed || !window->visible ||
+            window->state == DISPLAY_SERVER_WINDOW_STATE_MINIMIZED ||
+            (has_active && window->id == g_display_server_state.active_window_id)) {
+            continue;
+        }
+
+        if (direction >= 0) {
+            if ((has_active && window->z_order > current_z_order &&
+                 window->z_order < next_z_order) ||
+                (!has_active && window->z_order < next_z_order)) {
+                next_window = window->id;
+                next_z_order = window->z_order;
+            }
+        } else if ((!has_active || window->z_order < current_z_order) &&
+                   window->z_order >= next_z_order) {
+            next_window = window->id;
+            next_z_order = window->z_order;
+        }
+    }
+
+    if (next_window == DISPLAY_SERVER_WINDOW_ID_NONE) {
+        for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
+            display_server_window_t *window = &g_display_server_state.windows[index];
+            if (window->closed || !window->visible ||
+                window->state == DISPLAY_SERVER_WINDOW_STATE_MINIMIZED ||
+                (has_active && window->id == g_display_server_state.active_window_id)) {
+                continue;
+            }
+            if (direction >= 0) {
+                if (next_window == DISPLAY_SERVER_WINDOW_ID_NONE ||
+                    window->z_order < next_z_order) {
+                    next_window = window->id;
+                    next_z_order = window->z_order;
+                }
+            } else if (next_window == DISPLAY_SERVER_WINDOW_ID_NONE ||
+                       window->z_order > next_z_order) {
+                next_window = window->id;
+                next_z_order = window->z_order;
+            }
+        }
+    }
+
+    if (next_window == DISPLAY_SERVER_WINDOW_ID_NONE) {
+        display_server_focus_top_window();
+    } else {
+        display_server_focus_window(next_window);
     }
 }
 
@@ -468,6 +609,8 @@ void display_server_show_window(u32 window_id) {
         }
     }
 
+    display_server_focus_window(window_id);
+
     g_display_server_state.redraw_pending = 1u;
 }
 
@@ -484,6 +627,10 @@ void display_server_hide_window(u32 window_id) {
             g_display_server_state.windows[index].state = DISPLAY_SERVER_WINDOW_STATE_HIDDEN;
             break;
         }
+    }
+
+    if (g_display_server_state.active_window_id == window_id) {
+        display_server_focus_top_window();
     }
 
     g_display_server_state.redraw_pending = 1u;

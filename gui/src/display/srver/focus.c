@@ -21,18 +21,20 @@ void display_server_focus_desktop(void) {
 u8 display_server_focus_at_point(int x, int y) {
     u32 index;
     u32 best_index = DISPLAY_SERVER_MAX_WINDOWS;
-    u32 best_z_order = 0u;
+        u32 best_z_order = 0u;
     u8 found = 0u;
 
     for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
         display_server_window_t *window = &g_display_server_state.windows[index];
 
-        if (window->closed || !window->visible) {
+        if (window->closed || !window->visible ||
+            window->state == DISPLAY_SERVER_WINDOW_STATE_MINIMIZED) {
             continue;
         }
 
         if (x >= window->x &&
             y >= window->y &&
+                x < (int)(window->x + (int)window->width) &&
             y < (int)(window->y + (int)window->height)) {
             if (window->z_order >= best_z_order) {
                 best_z_order = window->z_order;
