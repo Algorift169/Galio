@@ -1,0 +1,17 @@
+TODO:
+
+A file manager with full filesystem tree displayed:
+
+======================================================================
+home lf rgt            New-folder New-file edit [search bar]     [][][] <- exit buttons
+              Go  view  copy  cut  paste  
+======================================================================
+| main file tree | inside main dir components|file items             |
+|--------------------------------------------------------------------|
+|                |                           |                       |
+|                |                           |                       |
+|                |                           |                       |
+|                |                           |                       |
+|                |                           |                       | 
+|                |                           |                       |
+======================================================================

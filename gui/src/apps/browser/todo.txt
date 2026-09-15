@@ -1,0 +1,5 @@
+TODO:
+
+We need the internet communicator here, a browser application. 
+name: 
+    havent decided yet leave it ":)

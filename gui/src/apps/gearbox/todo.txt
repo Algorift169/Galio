@@ -1,0 +1,10 @@
+TODO:
+
+a pop down menu from power button on panel, to control _>
+1. brightness
+2. sound 
+3. open settings
+4. sleep
+5. shut down
+6. internet
+7. enthernet

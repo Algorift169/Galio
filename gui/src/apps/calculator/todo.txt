@@ -1,0 +1,3 @@
+TODO:
+
+a basic calculator to calculate all wasted hour behind this project.
