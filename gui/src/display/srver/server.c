@@ -3,8 +3,10 @@
 #include "srver/resources.h"
 #include "srver/events.h"
 #include "srver/security.h"
+#include "clock.h"
 #include "framebuffer.h"
 #include "desktop.h"
+#include "panel.h"
 #include "mouse/mouse.h"
 #include "mouse/cursor.h"
 #include "keyboard.h"
@@ -85,6 +87,10 @@ void display_server_start(void) {
 void display_server_tick(void) {
     if (!g_display_server_state.running) {
         return;
+    }
+
+    if (clock_tick()) {
+        panel_draw_clock();
     }
 
     if (g_display_server_state.redraw_pending) {

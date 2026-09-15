@@ -141,7 +141,7 @@ static void kernel_time_apply_offset(void) {
 
 void kernel_time_update(void) {
     uptime_ticks++;
-    if (uptime_ticks % 100u == 0u) {
+    if (uptime_ticks % 1000u == 0u) {
         base_epoch_seconds++;
         s64 adjusted = (s64)base_epoch_seconds + (s64)timezone_offset_seconds;
         if (adjusted < 0) {
@@ -210,11 +210,11 @@ u32 kernel_time_get_epoch_seconds(void) {
 }
 
 u32 kernel_time_get_uptime_seconds(void) {
-    return uptime_ticks / 100u;
+    return uptime_ticks / 1000u;
 }
 
 u32 kernel_time_get_microseconds(void) {
-    return (uptime_ticks % 100u) * 10000u;
+    return (uptime_ticks % 1000u) * 1000u;
 }
 
 void kernel_time_set_boot_seconds(u32 seconds) {

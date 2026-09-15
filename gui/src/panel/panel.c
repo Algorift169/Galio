@@ -1,9 +1,9 @@
 #include "panel.h"
 #include "button.h"
+#include "clock.h"
 #include "drawline.h"
 #include "framebuffer.h"
 #include "gsh_button.h"
-#include "kernel_time.h"
 #include "power/power.h"
 
 #define PANEL_HEIGHT 32u
@@ -70,33 +70,13 @@ static void panel_put_text(int x, int y, const char *text, u32 color) {
     }
 }
 
-static void panel_draw_datetime(void) {
-    DateTime now = kernel_time_get_datetime();
+void panel_draw_clock(void) {
     char date[11];
     char time[9];
 
-    date[0] = (char)('0' + (now.year / 1000u) % 10u);
-    date[1] = (char)('0' + (now.year / 100u) % 10u);
-    date[2] = (char)('0' + (now.year / 10u) % 10u);
-    date[3] = (char)('0' + now.year % 10u);
-    date[4] = '-';
-    date[5] = (char)('0' + now.month / 10u);
-    date[6] = (char)('0' + now.month % 10u);
-    date[7] = '-';
-    date[8] = (char)('0' + now.day / 10u);
-    date[9] = (char)('0' + now.day % 10u);
-    date[10] = 0;
+    clock_format_datetime(date, time);
 
-    time[0] = (char)('0' + now.hour / 10u);
-    time[1] = (char)('0' + now.hour % 10u);
-    time[2] = ':';
-    time[3] = (char)('0' + now.minute / 10u);
-    time[4] = (char)('0' + now.minute % 10u);
-    time[5] = ':';
-    time[6] = (char)('0' + now.second / 10u);
-    time[7] = (char)('0' + now.second % 10u);
-    time[8] = 0;
-
+    fb_fill_rect(686u, 8u, 198u, 14u, PANEL_COLOR);
     panel_put_text(690, 12, "DATE", PANEL_LINE_COLOR);
     panel_put_text(720, 12, date, PANEL_TEXT_COLOR);
     panel_put_text(800, 12, "TIME", PANEL_LINE_COLOR);
@@ -115,7 +95,7 @@ void panel_draw(void) {
     if (!panel_ready) return;
     fb_fill_rect(0u, 0u, 1024u, PANEL_HEIGHT, PANEL_COLOR);
     gui_draw_border(0, 0, 1024u, PANEL_HEIGHT, PANEL_LINE_COLOR);
-    panel_draw_datetime();
+    panel_draw_clock();
     button_draw(&shutdown_button);
     panel_put_text((int)PANEL_BUTTON_X + 2, (int)PANEL_BUTTON_Y + 6, "SHUT", PANEL_TEXT_COLOR);
 }
