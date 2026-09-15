@@ -7,19 +7,38 @@
 #include "fb_console.h"
 #include "display_wrapper.h"
 
+static void terminal_window_update_console_geometry(terminal_window_t *terminal) {
+    int console_pixel_x;
+    int console_pixel_y;
+    int right_border_x;
+    int bottom_border_y;
+
+    if (!terminal) return;
+
+    terminal->inner_x = terminal->window.x + 12;
+    terminal->inner_y = terminal->window.y + 22;
+    terminal->inner_width = terminal->window.width - 24u;
+    terminal->inner_height = terminal->window.height - 30u;
+
+    console_pixel_x = ((terminal->inner_x + 7) / 8) * 8;
+    console_pixel_y = ((terminal->inner_y + 15) / 16) * 16;
+    right_border_x = terminal->window.x + (int)terminal->window.width - 12;
+    bottom_border_y = terminal->window.y + (int)terminal->window.height - 14;
+
+    terminal->console_x = console_pixel_x / 8;
+    terminal->console_y = console_pixel_y / 16;
+    terminal->console_width = right_border_x > console_pixel_x
+        ? (u32)(right_border_x - console_pixel_x) / 8u : 0u;
+    terminal->console_height = bottom_border_y > console_pixel_y
+        ? (u32)(bottom_border_y - console_pixel_y) / 16u : 0u;
+}
+
 void terminal_window_init(terminal_window_t *terminal, const char *title, u32 x, u32 y, u32 width, u32 height) {
     if (!terminal) return;
     window_init(&terminal->window, title ? title : "terminal", FB_COLOR(64, 0, 16), x, y, width, height);
     terminal->window.draggable = 1u;
     terminal->window.resizeable = 0u;
-    terminal->inner_x = (int)x + 12;
-    terminal->inner_y = (int)y + 22;
-    terminal->inner_width = width - 24u;
-    terminal->inner_height = height - 30u;
-    terminal->console_x = terminal->inner_x / 8;
-    terminal->console_y = terminal->inner_y / 16;
-    terminal->console_width = terminal->inner_width / 8u;
-    terminal->console_height = terminal->inner_height / 16u;
+    terminal_window_update_console_geometry(terminal);
     terminal->visible = 1u;
     terminal->initialized = 1u;
 }
@@ -66,16 +85,7 @@ void terminal_window_set_bounds(const terminal_window_t *terminal) {
 
 void terminal_window_sync_layout(terminal_window_t *terminal) {
     if (!terminal) return;
-
-    terminal->inner_x = terminal->window.x + 12;
-    terminal->inner_y = terminal->window.y + 22;
-    terminal->inner_width = terminal->window.width - 24u;
-    terminal->inner_height = terminal->window.height - 30u;
-
-    terminal->console_x = terminal->inner_x / 8;
-    terminal->console_y = terminal->inner_y / 16;
-    terminal->console_width = terminal->inner_width / 8u;
-    terminal->console_height = terminal->inner_height / 16u;
+    terminal_window_update_console_geometry(terminal);
 }
 
 u8 terminal_window_contains(const terminal_window_t *terminal, int x, int y) {
