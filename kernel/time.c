@@ -21,6 +21,7 @@
  */
 
 #include "kernel_time.h"
+#include "time/galio_time.h"
 #include "drivers/pit.h"
 #include "drivers/rtc.h"
 #include "kprintf.h"
@@ -141,7 +142,7 @@ static void kernel_time_apply_offset(void) {
 
 void kernel_time_update(void) {
     uptime_ticks++;
-    if (uptime_ticks % 1000u == 0u) {
+    if (uptime_ticks % GALIO_HZ == 0u) {
         base_epoch_seconds++;
         s64 adjusted = (s64)base_epoch_seconds + (s64)timezone_offset_seconds;
         if (adjusted < 0) {
@@ -154,7 +155,7 @@ void kernel_time_update(void) {
 
 static void kernel_time_tick(registers_t *regs) {
     (void)regs;
-    kernel_time_update();
+    galio_clockevents_tick();
 }
 
 void kernel_time_initialize(void) {
@@ -210,11 +211,11 @@ u32 kernel_time_get_epoch_seconds(void) {
 }
 
 u32 kernel_time_get_uptime_seconds(void) {
-    return uptime_ticks / 1000u;
+    return uptime_ticks / GALIO_HZ;
 }
 
 u32 kernel_time_get_microseconds(void) {
-    return (uptime_ticks % 1000u) * 1000u;
+    return (uptime_ticks % GALIO_HZ) * (1000000u / GALIO_HZ);
 }
 
 void kernel_time_set_boot_seconds(u32 seconds) {

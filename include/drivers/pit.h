@@ -25,6 +25,7 @@
 
 #include "common.h"
 #include "cpu.h"
+#include "time/config.h"
 
 typedef void (*timer_callback_t)(registers_t *regs);
 

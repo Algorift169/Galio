@@ -28,7 +28,7 @@
 #include "time/galio_time.h"
 #include <stddef.h>
 
-#define PIT_FREQUENCY 1193182
+#define PIT_INPUT_FREQUENCY 1193182u
 #define PIT_CHANNEL0  0x40
 #define PIT_CONTROL   0x43
 
@@ -49,7 +49,18 @@ static void pit_handler(registers_t *regs) {
 }
 
 void pit_init(u32 frequency) {
-    u16 divisor = PIT_FREQUENCY / frequency;
+    if (frequency == 0u) {
+        frequency = GALIO_HZ;
+    }
+
+    u32 divisor_value = PIT_INPUT_FREQUENCY / frequency;
+    if (divisor_value == 0u) {
+        divisor_value = 1u;
+    }
+    if (divisor_value > 0xFFFFu) {
+        divisor_value = 0xFFFFu;
+    }
+    u16 divisor = (u16)divisor_value;
 
     kprintf("PIT: Setting frequency to %u Hz (divisor %u)\n", frequency, divisor);
 

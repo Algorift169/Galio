@@ -51,6 +51,7 @@
 #include "string.h"
 #include <string.h>
 #include "kernel_time.h"
+#include "time/galio_time.h"
 #include "pci.h"
 #include "net/net.h"
 #include "net/wifi.h"
@@ -323,10 +324,16 @@ void kmain(void *multiboot_ptr) {
     kprintf("Installing system call handler...\n");
     syscall_init();
 
-    kprintf("Initializing timer (1000 Hz)...\n");
-    pit_init(1000);
-    /* Initialize wall-clock from CMOS/RTC if available */
+    kprintf("Initializing timer (%u Hz)...\n", GALIO_HZ);
+    /* Initialize wall-clock and timer queues before enabling PIT IRQs. */
     kernel_time_initialize();
+    galio_jiffies_init();
+    galio_clocksource_init();
+    galio_clockevents_init();
+    galio_ktimer_subsystem_init();
+    galio_hrtimer_subsystem_init();
+    galio_timekeeping_init();
+    pit_init(GALIO_HZ);
 
     if (dhcp_start() == 0) {
         kprintf("DHCP: lease acquired\n");
