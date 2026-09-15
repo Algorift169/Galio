@@ -32,6 +32,7 @@ extern void heap_test(void);
 extern void security_test(void);
 extern void cpufreq_test(void);
 extern void framebuffer_test(void);
+extern void dma_test(void);
 
 void run_kernel_tests(void) {
     kprintf("\n========================================\n");
@@ -47,6 +48,7 @@ void run_kernel_tests(void) {
     security_test();
     cpufreq_test();
     framebuffer_test();
+    dma_test();
 
     kprintf("========================================\n");
     kprintf("[KTEST] Kernel self-tests completed\n");

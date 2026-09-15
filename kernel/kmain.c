@@ -52,6 +52,7 @@
 #include <string.h>
 #include "kernel_time.h"
 #include "time/galio_time.h"
+#include "kernel/dma/dma.h"
 #include "pci.h"
 #include "net/net.h"
 #include "net/wifi.h"
@@ -299,6 +300,8 @@ void kmain(void *multiboot_ptr) {
     fb_init_from_multiboot(multiboot_ptr);
     kprintf("Initializing heap...\n");
     heap_init();
+    dma_init();
+    dma_self_test();
 
     /* UI shell is intentionally disabled; the system boots directly into fullscreen gsh after auth. */
 

@@ -25,6 +25,7 @@
 #include "lib/string.h"
 #include "arch/x86/cpu.h"
 #include "mm/heap.h"
+#include "kernel/dma/dma.h"
 
 /* internal lists */
 static pci_device_t *pci_dev_list = NULL;
@@ -142,6 +143,10 @@ static void pci_enumerate_bus(void) {
                 pd->class_id = pci_read_config_u8(bus, dev, fn, 0x0B);
                 pd->header_type = pci_read_config_u8(bus, dev, fn, 0x0E);
                 pd->irq_line = pci_read_config_u8(bus, dev, fn, 0x3C);
+                dma_device_init(&pd->dma, 0xFFFFFFFFull, 0u, 1u,
+                                DMA_DEVICE_SUPPORTS_TO_DEVICE |
+                                DMA_DEVICE_SUPPORTS_FROM_DEVICE |
+                                DMA_DEVICE_SUPPORTS_BIDIRECTIONAL);
                 /* read BARs */
                 for (int i = 0; i < 6; i++) {
                     u32 bar = pci_read_config_u32(bus, dev, fn, 0x10 + i * 4);

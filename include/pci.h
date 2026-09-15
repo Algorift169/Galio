@@ -24,6 +24,7 @@
 #define PCI_H
 
 #include "common.h"
+#include "kernel/dma/dma_types.h"
 
 /* PCI config ports */
 #define PCI_CONFIG_ADDRESS 0xCF8
@@ -42,6 +43,7 @@ typedef struct pci_device {
     u64 bars[6];
     u8 bar_is_mem[6];
     u8 irq_line;
+    dma_device_t dma;
     struct pci_device *next;
 } pci_device_t;
 

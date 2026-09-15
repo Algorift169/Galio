@@ -112,7 +112,12 @@ SRCS = kernel/kmain.c \
        kernel/mm/pmem.c \
        kernel/mm/heap.c \
        kernel/mm/memory.c \
-       kernel/mm/dma.c \
+       kernel/dma/dma.c \
+       kernel/dma/dma_alloc.c \
+       kernel/dma/dma_map.c \
+       kernel/dma/dma_sync.c \
+       kernel/dma/dma_debug.c \
+       kernel/dma/dma_compat.c \
        kernel/mm/shmem.c \
        kernel/process/process.c \
        kernel/process/scheduler.c \
@@ -209,6 +214,7 @@ SRCS = kernel/kmain.c \
        kernel/tests/security_test.c \
        kernel/tests/cpufreq_test.c \
        kernel/tests/framebuffer_test.c \
+       kernel/tests/dma_test.c \
        init/init.c \
        tools/shell/shell.c \
        tools/shell/script.c \

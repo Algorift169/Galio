@@ -21,6 +21,7 @@
  */
 
 #include "heap.h"
+#include "mm/dma.h"
 #include "pmem.h"
 #include "paging.h"
 #include "kprintf.h"
@@ -150,17 +151,11 @@ void vfree(void *ptr) {
 }
 
 void *dma_alloc(size_t size) {
-    if (size == 0) return NULL;
-    size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-    u32 frames = size / PAGE_SIZE;
-    u32 phys = pmem_alloc(frames);
-    return phys ? (void *)phys : NULL;
+    return dma_alloc_coherent((u32)size, NULL);
 }
 
 void dma_free(void *ptr, size_t size) {
-    if (!ptr || size == 0) return;
-    size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-    pmem_free((uintptr_t)ptr, size / PAGE_SIZE);
+    dma_free_coherent(ptr, 0u, (u32)size);
 }
 
 void slab_cache_init(slab_cache_t *cache, size_t object_size, u32 object_count) {
