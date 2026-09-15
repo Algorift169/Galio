@@ -1,6 +1,7 @@
 #include "gsh_button.h"
 #include "button.h"
 #include "window.h"
+#include "win-border.h"
 #include "terminal_window.h"
 #include "desktop.h"
 #include "mouse/cursor.h"
@@ -109,6 +110,7 @@ static void gsh_draw_terminal_content(terminal_window_t *terminal) {
     if (!terminal || !terminal->visible) return;
     terminal_window_draw(terminal);
     gsh_restore_terminal_content(terminal);
+    win_border_draw_outline(&terminal->window, terminal->window.border_color);
 }
 
 static void redraw_other_gsh_windows(const terminal_window_t *active_terminal) {
