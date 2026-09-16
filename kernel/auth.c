@@ -407,15 +407,15 @@ void auth_bootstrap(void) {
 
         if (auth_save_to_disk() == 0) {
             vga_set_color(0x0A);
-            kprintf("[AUTH] Credentials saved to disk.\n");
+            //kprintf("[AUTH] Credentials saved to disk.\n");
         } else {
             vga_set_color(0x0C);
-            kprintf("[AUTH] Warning: could not persist credentials to disk.\n");
+            //kprintf("[AUTH] Warning: could not persist credentials to disk.\n");
             vga_set_color(0x0A);
         }
 
-        kprintf("\n[AUTH] Kernel account registered for user '%s'.\n", kernel_auth.username);
-        kprintf("[AUTH] Use 'rex' in the shell to run privileged commands.\n\n");
+        //kprintf("\n[AUTH] Kernel account registered for user '%s'.\n", kernel_auth.username);
+        //kprintf("[AUTH] Use 'rex' in the shell to run privileged commands.\n\n");
         return;
     }
 }
