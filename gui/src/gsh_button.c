@@ -4,6 +4,7 @@
 #include "win-border.h"
 #include "terminal_window.h"
 #include "desktop.h"
+#include "panel.h"
 #include "mouse/cursor.h"
 #include "fb_console.h"
 #include "framebuffer.h"
@@ -44,9 +45,12 @@ static void repaint_exposed_wallpaper(int old_x, int old_y, u32 width, u32 heigh
     int overlap_top = old_y > new_y ? old_y : new_y;
     int overlap_right = old_right < new_right ? old_right : new_right;
     int overlap_bottom = old_bottom < new_bottom ? old_bottom : new_bottom;
+    int panel_top = 0;
+    int panel_bottom = 32;
 
     if (overlap_left >= overlap_right || overlap_top >= overlap_bottom) {
         display_wrapper_draw_region((u32)old_x, (u32)old_y, width, height);
+        if (old_y < panel_bottom && old_bottom > panel_top) panel_draw();
         return;
     }
     if (old_y < overlap_top) {
@@ -66,6 +70,10 @@ static void repaint_exposed_wallpaper(int old_x, int old_y, u32 width, u32 heigh
         display_wrapper_draw_region((u32)overlap_right, (u32)overlap_top,
                                     (u32)(old_right - overlap_right),
                                     (u32)(overlap_bottom - overlap_top));
+    }
+
+    if (overlap_top < panel_bottom && overlap_bottom > panel_top) {
+        panel_draw();
     }
 }
 
