@@ -7,9 +7,18 @@
 #include "panel.h"
 #include "srver/client.h"
 
+extern void apps_container_one_init(int x, int y);
+extern void apps_container_one_set_app_count(u32 app_count);
+extern void apps_container_one_draw(void);
+
 static window_t desktop_window;
 static u8 gsh_open = 0u;
 static u32 desktop_client_id = 0u;
+
+static void desktop_init_app_container(void) {
+    apps_container_one_init(120, 680);
+    apps_container_one_set_app_count(0u);
+}
 
 void desktop_init(void) {
     display_wrapper_init();
@@ -21,11 +30,13 @@ void desktop_init(void) {
     desktop_client_id = display_server_client_connect();
     gsh_button_init();
     panel_init();
+    desktop_init_app_container();
 }
 
 void desktop_draw(void) {
     display_wrapper_draw();
     panel_draw();
+    apps_container_one_draw();
     gsh_button_draw();
 }
 

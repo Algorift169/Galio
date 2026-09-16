@@ -185,6 +185,9 @@ SRCS = kernel/kmain.c \
        gui/src/display/srver/security.c \
        gui/src/terminal_background.c \
        gui/src/terminal_window.c \
+       gui/src/apps/apps-container/all-app.c \
+       gui/src/apps/apps-container/alp.c \
+       gui/src/apps/apps-container/container_one.c \
        gui/src/gsh_button.c \
        gui/src/panel/panel.c \
        gui/src/panel/system_monitor_button.c \

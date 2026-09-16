@@ -15,6 +15,8 @@
 #include "srver/resources.h"
 #include "display_wrapper.h"
 
+extern void apps_container_one_draw(void);
+
 #define GSH_BUTTON_TEXT_COLOR FB_COLOR(105u, 145u, 165u)
 #define GSH_MAX_EXTRA_WINDOWS 3u
 
@@ -76,6 +78,8 @@ static void repaint_exposed_wallpaper(int old_x, int old_y, u32 width, u32 heigh
         panel_draw();
         gsh_button_draw();
     }
+
+    apps_container_one_draw();
 }
 
 static u32 gsh_window_id_for_terminal(const terminal_window_t *terminal);
@@ -369,8 +373,6 @@ static u8 gsh_close_active_window(int x, int y) {
         if (window && window->z_order >= best_z) best_id = window->id;
     }
 
-    if (best_id == 0u) return 0u;
-
     gsh_save_terminal_content(terminal);
     cursor_deactivate();
     terminal_window_close(terminal);
@@ -387,7 +389,15 @@ static u8 gsh_close_active_window(int x, int y) {
     }
     desktop_draw();
     redraw_other_gsh_windows((terminal_window_t *)0);
-    gsh_focus_terminal(gsh_terminal_for_window_id(best_id), best_id);
+
+    if (best_id != 0u) {
+        gsh_focus_terminal(gsh_terminal_for_window_id(best_id), best_id);
+    } else {
+        gsh_window_active = 0u;
+        gsh_server_window_id = 0u;
+        gsh_active_terminal = &gsh_window;
+        shell_clear_exit_region();
+    }
     return 1u;
 }
 
