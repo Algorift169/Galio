@@ -74,10 +74,12 @@ static void repaint_exposed_wallpaper(int old_x, int old_y, u32 width, u32 heigh
 
     if (overlap_top < panel_bottom && overlap_bottom > panel_top) {
         panel_draw();
+        gsh_button_draw();
     }
 }
 
 static u32 gsh_window_id_for_terminal(const terminal_window_t *terminal);
+
 
 static void gsh_save_terminal_content(terminal_window_t *terminal) {
     int cursor_x;
