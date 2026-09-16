@@ -219,6 +219,7 @@ SRCS = kernel/kmain.c \
        kernel/tests/cpufreq_test.c \
        kernel/tests/framebuffer_test.c \
        kernel/tests/dma_test.c \
+       kernel/tests/top_spike_stability_test.c \
        init/init.c \
        tools/shell/shell.c \
        tools/shell/script.c \

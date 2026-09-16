@@ -29,9 +29,15 @@
 #include "vga.h"
 #include "string.h"
 #include "mouse/cursor.h"
+#include "mouse/mouse.h"
 #include "gsh_button.h"
 
 #define TOP_MAX_PROCESSES 32u
+#define TOP_REFRESH_TICKS 100u
+
+u8 top_refresh_due(u32 now, u32 next_sample, u8 refresh) {
+    return refresh || ((u32)(now - next_sample) >= TOP_REFRESH_TICKS);
+}
 
 static const char *process_state_name(process_state_t state) {
     switch (state) {
@@ -270,7 +276,15 @@ u8 shell_top_command(const char *args, const char *current_dir) {
     terminal_event = gsh_button_get_terminal_event();
     gsh_button_set_monitor_active(1u);
     for (;;) {
+        int mouse_x;
+        int mouse_y;
+        u8 mouse_buttons;
+
         cursor_poll();
+        mouse_get_position(&mouse_x, &mouse_y);
+        mouse_buttons = mouse_get_buttons();
+        gsh_button_poll_pointer(mouse_x, mouse_y, mouse_buttons);
+
         if (gsh_button_get_active_window_id() != terminal_id ||
             gsh_button_get_terminal_event() != terminal_event) {
             gsh_button_set_monitor_active(0u);
@@ -284,7 +298,7 @@ u8 shell_top_command(const char *args, const char *current_dir) {
 
         u32 now = pit_get_ticks();
         vga_get_bounds(&start_x, &start_y, &width, &height);
-        if (refresh || (u32)(now - next_sample) < 0x80000000u) {
+        if (top_refresh_due(now, next_sample, refresh)) {
             u32 current_count = process_snapshot(current, TOP_MAX_PROCESSES);
             cursor_deactivate();
             vga_set_cursor_position(start_x, start_y);
@@ -293,9 +307,11 @@ u8 shell_top_command(const char *args, const char *current_dir) {
             for (u32 i = 0; i < current_count; i++) previous[i] = current[i];
             previous_count = current_count;
             top_previous_time = now;
-            next_sample = now + 100;
+            next_sample = now + TOP_REFRESH_TICKS;
         } else {
+            process_accounting_set_idle(1);
             __asm__ volatile("hlt" ::: "memory");
+            process_accounting_set_idle(0);
         }
     }
 }

@@ -316,8 +316,8 @@ static u8 shell_command_name_known(const char *command)
             strcmp(name, "net") == 0 || strcmp(name, "ifconfig") == 0 ||
             strcmp(name, "ip") == 0 || strcmp(name, "wifi-list") == 0 ||
             strcmp(name, "syscall") == 0 || strcmp(name, "sysinfo") == 0 ||
-            strcmp(name, "cpu-spike") == 0 || strcmp(name, "top") == 0 ||
-            strcmp(name, "gc") == 0 || strcmp(name, "pkg") == 0 ||
+            strcmp(name, "cpu-spike") == 0 || strcmp(name, "gc") == 0 ||
+            strcmp(name, "pkg") == 0 ||
             strcmp(name, "run") == 0 || strcmp(name, "source") == 0 ||
             strcmp(name, "cpufreq") == 0 || strcmp(name, "jobs") == 0 ||
             strcmp(name, "fg") == 0 || strcmp(name, "rex") == 0 ||
@@ -1477,14 +1477,6 @@ static void shell_execute_command(void) {
         SHELL_COLOR_OUT();
         shell_spike_command(input.buffer + 9, current_dir);
         SHELL_COLOR_RESET();
-    } else if (strncmp(input.buffer, "top ", 4) == 0) {
-        SHELL_COLOR_OUT();
-        shell_top_command(input.buffer + 4, current_dir);
-        SHELL_COLOR_RESET();
-    } else if (strcmp(input.buffer, "top") == 0) {
-        SHELL_COLOR_OUT();
-        shell_top_command("", current_dir);
-        SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "gc ", 3) == 0) {
         SHELL_COLOR_OUT();
         char *args = input.buffer + 3;
@@ -1611,7 +1603,6 @@ static void shell_execute_command(void) {
         kprintf(" |________________________________________________________|\n");
         kprintf(" |  cpufreq  - CPU frequency policy and statistics                 |\n");
         kprintf(" |________________________________________________________|\n");
-        kprintf(" |  top      - Live process monitor (Ctrl+C to stop)      |\n");
         kprintf(" |  cpu-spike - Live CPU usage graph (Ctrl+C to stop)     |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" | delete   - Permanently delete (usage: delete <path1> [path2])|\n");

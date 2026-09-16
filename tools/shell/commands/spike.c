@@ -28,11 +28,16 @@
 #include "kprintf.h"
 #include "string.h"
 #include "mouse/cursor.h"
+#include "mouse/mouse.h"
 #include "gsh_button.h"
 
 #define SPIKE_WIDTH 72
 #define SPIKE_HEIGHT 12
 #define SPIKE_SAMPLE_TICKS 100
+
+u8 spike_sample_due(u32 now, u32 next_sample) {
+    return (u32)(now - next_sample) >= SPIKE_SAMPLE_TICKS;
+}
 
 static u8 spike_should_exit(u8 *ctrl_down) {
     if (keyboard_take_ctrl_c()) {
@@ -120,7 +125,15 @@ u8 shell_spike_command(const char *args, const char *current_dir) {
     gsh_button_set_monitor_active(1u);
 
     for (;;) {
+        int mouse_x;
+        int mouse_y;
+        u8 mouse_buttons;
+
         cursor_poll();
+        mouse_get_position(&mouse_x, &mouse_y);
+        mouse_buttons = mouse_get_buttons();
+        gsh_button_poll_pointer(mouse_x, mouse_y, mouse_buttons);
+
         if (gsh_button_get_active_window_id() != terminal_id ||
             gsh_button_get_terminal_event() != terminal_event) {
             gsh_button_set_monitor_active(0u);
@@ -135,7 +148,7 @@ u8 shell_spike_command(const char *args, const char *current_dir) {
         }
 
         u32 now = pit_get_ticks();
-        if ((u32)(now - next_sample) < SPIKE_SAMPLE_TICKS) {
+        if (!spike_sample_due(now, next_sample)) {
             process_accounting_set_idle(1);
             __asm__ volatile("hlt" ::: "memory");
             process_accounting_set_idle(0);
