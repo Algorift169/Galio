@@ -65,6 +65,7 @@ u8 fb_is_initialized(void);
 void fb_set_mode(u32 width, u32 height, u32 bpp);
 void fb_clear(u32 color);
 void fb_put_pixel(u32 x, u32 y, u32 color);
+void fb_blend_pixel(u32 x, u32 y, u32 color, u8 alpha);
 u32 fb_get_pixel(u32 x, u32 y);
 void fb_fill_rect(u32 x, u32 y, u32 width, u32 height, u32 color);
 void fb_draw_hline(u32 x, u32 y, u32 width, u32 color);

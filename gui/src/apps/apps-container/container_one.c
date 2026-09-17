@@ -7,6 +7,7 @@
 #define APPS_CONTAINER_BUTTON_GAP 8u
 #define APPS_CONTAINER_PADDING 12u
 #define APPS_CONTAINER_RADIUS 10u
+#define APPS_CONTAINER_ALPHA 128u
 
 typedef struct {
     int x;
@@ -79,7 +80,7 @@ static void apps_container_one_draw_round_rect(int x, int y, u32 width, u32 heig
     for (int py = top; py <= bottom; py++) {
         for (int px = left; px <= right; px++) {
             if (apps_container_one_point_in_round_rect(px, py, left, top, width, height, APPS_CONTAINER_RADIUS)) {
-                fb_put_pixel((u32)px, (u32)py, fill_color);
+                fb_blend_pixel((u32)px, (u32)py, fill_color, APPS_CONTAINER_ALPHA);
             }
         }
     }
@@ -163,12 +164,10 @@ void apps_container_one_draw(void) {
         return;
     }
 
-    fb_fill_rect((u32)apps_container_one.x, (u32)apps_container_one.y,
-                 apps_container_one.width, apps_container_one.height,
-                 apps_container_one.background);
-    fb_draw_rect((u32)apps_container_one.x, (u32)apps_container_one.y,
-                 apps_container_one.width, apps_container_one.height,
-                 apps_container_one.border_color);
+    apps_container_one_draw_round_rect(apps_container_one.x, apps_container_one.y,
+                                       apps_container_one.width, apps_container_one.height,
+                                       FB_COLOR(255u, 255u, 255u),
+                                       apps_container_one.border_color);
 
     apps_container_one_draw_all_apps_button();
 }

@@ -337,6 +337,36 @@ void fb_put_pixel(u32 x, u32 y, u32 color) {
                                            (u8)((color >> 24) & 0xFFu)));
 }
 
+void fb_blend_pixel(u32 x, u32 y, u32 color, u8 alpha) {
+    u32 pixel;
+    u8 red;
+    u8 green;
+    u8 blue;
+    u8 old_red;
+    u8 old_green;
+    u8 old_blue;
+
+    if (!g_fb.initialized || !g_fb.base || x >= g_fb.width || y >= g_fb.height) return;
+    if (alpha == 0u) return;
+    if (alpha == 255u) {
+        fb_put_pixel(x, y, color);
+        return;
+    }
+
+    pixel = fb_read_pixel_raw(x, y);
+    old_red = (u8)((pixel >> g_fb.format.red_position) & ((1u << g_fb.format.red_size) - 1u));
+    old_green = (u8)((pixel >> g_fb.format.green_position) & ((1u << g_fb.format.green_size) - 1u));
+    old_blue = (u8)((pixel >> g_fb.format.blue_position) & ((1u << g_fb.format.blue_size) - 1u));
+    if (g_fb.format.red_size < 8u) old_red = (u8)((old_red * 255u) / ((1u << g_fb.format.red_size) - 1u));
+    if (g_fb.format.green_size < 8u) old_green = (u8)((old_green * 255u) / ((1u << g_fb.format.green_size) - 1u));
+    if (g_fb.format.blue_size < 8u) old_blue = (u8)((old_blue * 255u) / ((1u << g_fb.format.blue_size) - 1u));
+
+    red = (u8)(((u32)((color >> 16) & 0xFFu) * alpha + (u32)old_red * (255u - alpha)) / 255u);
+    green = (u8)(((u32)((color >> 8) & 0xFFu) * alpha + (u32)old_green * (255u - alpha)) / 255u);
+    blue = (u8)(((u32)color & 0xFFu) * alpha + (u32)old_blue * (255u - alpha)) / 255u;
+    fb_put_pixel(x, y, FB_COLOR(red, green, blue));
+}
+
 u32 fb_get_pixel(u32 x, u32 y) {
     u32 pixel;
     if (!g_fb.initialized || !g_fb.base) {
