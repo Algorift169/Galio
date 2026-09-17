@@ -6,6 +6,11 @@
 #include "framebuffer.h"
 #include "fb_console.h"
 #include "display_wrapper.h"
+#include "display_output.h"
+
+#define TERMINAL_CONTROL_SIZE 12u
+#define TERMINAL_CONTROL_GAP 2u
+#define TERMINAL_CONTROL_MARGIN 4u
 
 static void terminal_window_update_console_geometry(terminal_window_t *terminal) {
     int console_pixel_x;
@@ -38,6 +43,12 @@ void terminal_window_init(terminal_window_t *terminal, const char *title, u32 x,
     window_init(&terminal->window, title ? title : "terminal", FB_COLOR(64, 0, 16), x, y, width, height);
     terminal->window.draggable = 1u;
     terminal->window.resizeable = 0u;
+    terminal->normal_x = (int)x;
+    terminal->normal_y = (int)y;
+    terminal->normal_width = width;
+    terminal->normal_height = height;
+    terminal->minimized = 0u;
+    terminal->maximized = 0u;
     terminal_window_update_console_geometry(terminal);
     terminal->visible = 1u;
     terminal->initialized = 1u;
@@ -100,10 +111,25 @@ u8 terminal_window_contains(const terminal_window_t *terminal, int x, int y) {
     return window_contains(&terminal->window, x, y);
 }
 
+u8 terminal_window_control_at(const terminal_window_t *terminal, int x, int y) {
+    int right;
+    int top;
+    int control_x;
+
+    if (!terminal || !terminal->visible) return TERMINAL_CONTROL_NONE;
+    right = terminal->window.x + (int)terminal->window.width - TERMINAL_CONTROL_MARGIN;
+    top = terminal->window.y + 2;
+    if (y < top || y >= top + (int)TERMINAL_CONTROL_SIZE) return TERMINAL_CONTROL_NONE;
+
+    control_x = right - (int)TERMINAL_CONTROL_SIZE;
+    if (x >= control_x && x < right) return TERMINAL_CONTROL_CLOSE;
+    control_x -= (int)(TERMINAL_CONTROL_GAP + TERMINAL_CONTROL_SIZE);
+    if (x >= control_x && x < control_x + (int)TERMINAL_CONTROL_SIZE) return TERMINAL_CONTROL_MINIMIZE;
+    control_x -= (int)(TERMINAL_CONTROL_GAP + TERMINAL_CONTROL_SIZE);
+    if (x >= control_x && x < control_x + (int)TERMINAL_CONTROL_SIZE) return TERMINAL_CONTROL_FULLSCREEN;
+    return TERMINAL_CONTROL_NONE;
+}
+
 u8 terminal_window_exit_contains(const terminal_window_t *terminal, int x, int y) {
-    if (!terminal || !terminal->visible) return 0u;
-    return x >= terminal->window.x + (int)terminal->window.width - 18 &&
-           x < terminal->window.x + (int)terminal->window.width - 2 &&
-           y >= terminal->window.y + (int)terminal->window.height - 18 &&
-           y < terminal->window.y + (int)terminal->window.height - 2;
+    return terminal_window_control_at(terminal, x, y) == TERMINAL_CONTROL_CLOSE;
 }

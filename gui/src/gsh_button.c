@@ -39,6 +39,9 @@ static u8 gsh_pointer_buttons = 0u;
 static u8 gsh_monitor_active = 0u;
 static u32 gsh_terminal_event = 0u;
 
+extern void apps_container_one_set_app_count(u32 app_count);
+extern u8 apps_container_one_contains_gsh(int x, int y);
+
 static void repaint_exposed_wallpaper(int old_x, int old_y, u32 width, u32 height,
                                       int new_x, int new_y) {
     int old_right = old_x + (int)width;
@@ -186,6 +189,29 @@ u8 gsh_button_owns_window(u32 window_id) {
     }
     return 0u;
 }
+u8 gsh_button_is_terminal_control_at(int x, int y) {
+    return (u8)(gsh_window_active && gsh_active_terminal &&
+                terminal_window_control_at(gsh_active_terminal, x, y) != TERMINAL_CONTROL_NONE);
+}
+u8 gsh_button_is_any_terminal_control_at(int x, int y) {
+    u32 index;
+
+    if (gsh_window.visible && terminal_window_control_at(&gsh_window, x, y) != TERMINAL_CONTROL_NONE) {
+        return 1u;
+    }
+    for (index = 0u; index < GSH_MAX_EXTRA_WINDOWS; index++) {
+        if (gsh_extra_windows[index].visible &&
+            terminal_window_control_at(&gsh_extra_windows[index], x, y) != TERMINAL_CONTROL_NONE) {
+            return 1u;
+        }
+    }
+    return 0u;
+}
+
+u8 gsh_button_is_minimized_icon_at(int x, int y) {
+    return (u8)(gsh_window_active && !gsh_window.visible &&
+                apps_container_one_contains_gsh(x, y));
+}
 
 static void gsh_save_active_content(void) {
     gsh_save_terminal_content(gsh_active_terminal);
@@ -209,6 +235,20 @@ static void draw_gsh_label(void) {
                                  label_y + row * scale, scale, scale,
                                  GSH_BUTTON_TEXT_COLOR);
                 }
+            }
+        }
+    }
+}
+
+void gsh_button_draw_icon(int x, int y, u32 size) {
+    u32 scale = size / 7u;
+    if (scale == 0u) scale = 1u;
+    for (u32 row = 0u; row < 7u; row++) {
+        for (u32 column = 0u; column < 5u; column++) {
+            if (gsh_font[0][row] & (1u << (4u - column))) {
+                fb_fill_rect((u32)(x + (int)(column * scale)),
+                             (u32)(y + (int)(row * scale)), scale, scale,
+                             FB_COLOR(40u, 40u, 40u));
             }
         }
     }
@@ -311,10 +351,9 @@ static void gsh_open_extra_window(void) {
         display_server_focus_window(gsh_server_window_id);
         terminal_window_set_bounds(gsh_active_terminal);
         shell_set_exit_region(gsh_active_terminal->window.x +
-                              (int)gsh_active_terminal->window.width - 18,
-                              gsh_active_terminal->window.y +
-                              (int)gsh_active_terminal->window.height - 18,
-                              16, 16);
+                      (int)gsh_active_terminal->window.width - 16,
+                      gsh_active_terminal->window.y + 2,
+                      12, 12);
         if (!gsh_monitor_active) shell_redraw_terminal();
         cursor_show();
         return;
@@ -357,9 +396,8 @@ static void gsh_focus_terminal(terminal_window_t *terminal, u32 window_id) {
     gsh_draw_terminal_content(terminal);
     terminal_window_set_bounds(terminal);
     gsh_restore_terminal_cursor(terminal);
-    shell_set_exit_region(terminal->window.x + (int)terminal->window.width - 18,
-                          terminal->window.y + (int)terminal->window.height - 18,
-                          16, 16);
+    shell_set_exit_region(terminal->window.x + (int)terminal->window.width - 16,
+                          terminal->window.y + 2, 12, 12);
     cursor_show();
 }
 
@@ -420,6 +458,67 @@ static u8 gsh_close_active_window(int x, int y) {
     return 1u;
 }
 
+static u8 gsh_toggle_fullscreen(terminal_window_t *terminal) {
+    const display_output_t *output;
+    u32 window_id;
+    int old_x;
+    int old_y;
+    u32 old_width;
+    u32 old_height;
+    u8 was_maximized;
+
+    if (!terminal || !terminal->visible) return 0u;
+    output = display_output_get();
+    window_id = gsh_window_id_for_terminal(terminal);
+    old_x = terminal->window.x;
+    old_y = terminal->window.y;
+    old_width = terminal->window.width;
+    old_height = terminal->window.height;
+    was_maximized = terminal->maximized;
+    if (terminal->maximized) {
+        terminal->window.x = terminal->normal_x;
+        terminal->window.y = terminal->normal_y;
+        terminal->window.width = terminal->normal_width;
+        terminal->window.height = terminal->normal_height;
+        terminal->maximized = 0u;
+    } else {
+        terminal->normal_x = terminal->window.x;
+        terminal->normal_y = terminal->window.y;
+        terminal->normal_width = terminal->window.width;
+        terminal->normal_height = terminal->window.height;
+        terminal->window.x = output->usable_x;
+        terminal->window.y = output->usable_y;
+        terminal->window.width = output->usable_width;
+        terminal->window.height = output->usable_height;
+        terminal->maximized = 1u;
+    }
+    terminal_window_sync_layout(terminal);
+    if (window_id != 0u) {
+        display_server_client_move_window(gsh_server_client_id, window_id,
+                                          terminal->window.x, terminal->window.y);
+        display_server_resize_window(window_id, terminal->window.width,
+                                     terminal->window.height);
+    }
+    if (was_maximized) {
+        (void)old_x;
+        (void)old_y;
+        (void)old_width;
+        (void)old_height;
+        desktop_draw();
+        redraw_other_gsh_windows(terminal);
+    }
+    cursor_deactivate();
+    gsh_draw_terminal_content(terminal);
+    terminal_window_set_bounds(terminal);
+    gsh_restore_terminal_cursor(terminal);
+    if (terminal == gsh_active_terminal) {
+        shell_set_exit_region(terminal->window.x + (int)terminal->window.width - 16,
+                              terminal->window.y + 2, 12, 12);
+    }
+    cursor_show();
+    return 1u;
+}
+
 static u8 gsh_focus_existing_window(void) {
     u32 index;
 
@@ -447,6 +546,19 @@ static u8 gsh_focus_existing_window(void) {
 void gsh_button_click(void) {
     if (gsh_window_active) {
         if (gsh_launch_pressed) return;
+        if (gsh_active_terminal == &gsh_window && !gsh_active_terminal->visible) {
+            apps_container_one_set_app_count(0u);
+            desktop_draw();
+            gsh_active_terminal->visible = 1u;
+            gsh_active_terminal->minimized = 0u;
+            terminal_window_set_bounds(gsh_active_terminal);
+            gsh_draw_terminal_content(gsh_active_terminal);
+            shell_set_exit_region(gsh_active_terminal->window.x +
+                                  (int)gsh_active_terminal->window.width - 16,
+                                  gsh_active_terminal->window.y + 2, 12, 12);
+            cursor_show();
+            return;
+        }
         gsh_save_active_content();
         gsh_open_extra_window();
         if (gsh_active_terminal != &gsh_window) {
@@ -482,10 +594,8 @@ void gsh_button_click(void) {
     terminal_window_clear_content(gsh_active_terminal);
     cursor_show();
     shell_set_exit_region(gsh_active_terminal->window.x +
-                          (int)gsh_active_terminal->window.width - 18,
-                          gsh_active_terminal->window.y +
-                          (int)gsh_active_terminal->window.height - 18,
-                          16, 16);
+                          (int)gsh_active_terminal->window.width - 16,
+                          gsh_active_terminal->window.y + 2, 12, 12);
     shell_run();
     shell_clear_exit_region();
     gsh_save_terminal_content(gsh_active_terminal);
@@ -499,6 +609,8 @@ void gsh_button_click(void) {
 
     desktop_draw();
     redraw_other_gsh_windows((terminal_window_t *)0);
+    apps_container_one_set_app_count(0u);
+    desktop_draw();
     cursor_show();
     gsh_window_active = 0u;
     gsh_active_terminal = &gsh_window;
@@ -511,6 +623,43 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
     if (!gsh_window_active || !gsh_active_terminal) {
         gsh_pointer_buttons = buttons;
         return;
+    }
+
+    if (left_pressed) {
+        u8 control = terminal_window_control_at(gsh_active_terminal, x, y);
+        if (control == TERMINAL_CONTROL_FULLSCREEN) {
+            gsh_launch_pressed = 1u;
+            gsh_toggle_fullscreen(gsh_active_terminal);
+            gsh_pointer_buttons = buttons;
+            return;
+        }
+        if (control == TERMINAL_CONTROL_MINIMIZE) {
+            gsh_launch_pressed = 1u;
+            if (gsh_active_terminal == &gsh_window) {
+                gsh_save_terminal_content(gsh_active_terminal);
+                cursor_deactivate();
+                gsh_active_terminal->visible = 0u;
+                gsh_active_terminal->minimized = 1u;
+                fb_console_clear_bounds();
+                vga_clear_bounds();
+                shell_clear_exit_region();
+                apps_container_one_set_app_count(1u);
+                desktop_draw();
+                cursor_show();
+            } else {
+                u32 window_id = gsh_window_id_for_terminal(gsh_active_terminal);
+                gsh_active_terminal->visible = 0u;
+                display_server_hide_window(window_id);
+                shell_clear_exit_region();
+                desktop_draw();
+                cursor_show();
+            }
+            gsh_pointer_buttons = buttons;
+            return;
+        }
+        if (control == TERMINAL_CONTROL_CLOSE) {
+            gsh_launch_pressed = 1u;
+        }
     }
 
     if (left_pressed && gsh_close_active_window(x, y)) {
@@ -564,9 +713,8 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
         }
 
         terminal_window_set_bounds(terminal);
-        shell_set_exit_region(terminal->window.x + (int)terminal->window.width - 18,
-                              terminal->window.y + (int)terminal->window.height - 18,
-                              16, 16);
+        shell_set_exit_region(terminal->window.x + (int)terminal->window.width - 16,
+                      terminal->window.y + 2, 12, 12);
 
         gsh_draw_terminal_content(terminal);
         gsh_restore_terminal_cursor(terminal);

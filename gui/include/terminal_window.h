@@ -7,6 +7,11 @@
 #define TERMINAL_WINDOW_MAX_COLUMNS 80u
 #define TERMINAL_WINDOW_MAX_ROWS 25u
 
+#define TERMINAL_CONTROL_NONE 0u
+#define TERMINAL_CONTROL_CLOSE 1u
+#define TERMINAL_CONTROL_MINIMIZE 2u
+#define TERMINAL_CONTROL_FULLSCREEN 3u
+
 typedef struct {
     window_t window;
     int inner_x;
@@ -20,6 +25,12 @@ typedef struct {
     u8 visible;
     u8 initialized;
     u8 content_valid;
+    u8 minimized;
+    u8 maximized;
+    int normal_x;
+    int normal_y;
+    u32 normal_width;
+    u32 normal_height;
     int console_cursor_x;
     int console_cursor_y;
     u16 console_cells[TERMINAL_WINDOW_MAX_COLUMNS * TERMINAL_WINDOW_MAX_ROWS];
@@ -33,6 +44,7 @@ void terminal_window_close(terminal_window_t *terminal);
 void terminal_window_set_bounds(const terminal_window_t *terminal);
 void terminal_window_sync_layout(terminal_window_t *terminal);
 u8 terminal_window_contains(const terminal_window_t *terminal, int x, int y);
+u8 terminal_window_control_at(const terminal_window_t *terminal, int x, int y);
 u8 terminal_window_exit_contains(const terminal_window_t *terminal, int x, int y);
 
 #endif /* GUI_TERMINAL_WINDOW_H */

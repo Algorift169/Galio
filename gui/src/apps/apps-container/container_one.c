@@ -36,6 +36,7 @@ static apps_container_one_t apps_container_one = {
 };
 
 extern void apps_container_all_app_icon_draw(int x, int y, u32 size, u32 dot_color);
+extern void gsh_button_draw_icon(int x, int y, u32 size);
 
 
 static u8 apps_container_one_point_in_round_rect(int px, int py, int x, int y,
@@ -149,6 +150,19 @@ static void apps_container_one_draw_all_apps_button(void) {
                                     FB_COLOR(40u, 40u, 40u));
 }
 
+static void apps_container_one_draw_gsh_button(void) {
+    int button_x = apps_container_one.x + (int)APPS_CONTAINER_PADDING +
+                   (int)APPS_CONTAINER_BUTTON_GAP + 34;
+    u32 button_w = 34u;
+    u32 button_h = 34u;
+    int button_y = apps_container_one.y + ((int)apps_container_one.height - (int)button_h) / 2;
+
+    apps_container_one_draw_solid_round_rect(button_x, button_y, button_w, button_h,
+                                             apps_container_one.button_color,
+                                             FB_COLOR(60u, 60u, 60u), 7u);
+    gsh_button_draw_icon(button_x + 9, button_y + 9, 16u);
+}
+
 void apps_container_one_init(int x, int y) {
     apps_container_one.x = x;
     apps_container_one.y = y;
@@ -194,6 +208,9 @@ void apps_container_one_draw(void) {
                                        apps_container_one.border_color);
 
     apps_container_one_draw_all_apps_button();
+    if (apps_container_one.app_count > 0u) {
+        apps_container_one_draw_gsh_button();
+    }
 }
 
 u8 apps_container_one_contains(int x, int y) {
@@ -202,6 +219,18 @@ u8 apps_container_one_contains(int x, int y) {
     }
     return (x >= apps_container_one.x && x < (int)(apps_container_one.x + (int)apps_container_one.width) &&
             y >= apps_container_one.y && y < (int)(apps_container_one.y + (int)apps_container_one.height));
+}
+
+u8 apps_container_one_contains_gsh(int x, int y) {
+    int button_x;
+    int button_y;
+
+    if (!apps_container_one.visible || apps_container_one.app_count == 0u) return 0u;
+    button_x = apps_container_one.x + (int)APPS_CONTAINER_PADDING +
+               (int)APPS_CONTAINER_BUTTON_GAP + 34;
+    button_y = apps_container_one.y + ((int)apps_container_one.height - 34) / 2;
+    return (u8)(x >= button_x && x < button_x + 34 &&
+                y >= button_y && y < button_y + 34);
 }
 
 u32 apps_container_one_get_width(void) {

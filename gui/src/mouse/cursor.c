@@ -180,6 +180,10 @@ void cursor_poll(void)
         display_server_focus_at_point(cursor_x, cursor_y);
             }
         if (!panel_handle_click(cursor_x, cursor_y) &&
+            gsh_button_is_minimized_icon_at(cursor_x, cursor_y)) {
+            gsh_button_click();
+        } else if (!panel_handle_click(cursor_x, cursor_y) &&
+            !gsh_button_is_any_terminal_control_at(cursor_x, cursor_y) &&
             gsh_button_contains(cursor_x, cursor_y)) {
             gsh_button_click();
         }

@@ -7,12 +7,9 @@
 #include "panel.h"
 #include "srver/client.h"
 #include "display_output.h"
+#include "apps_container.h"
 
 extern void apps_container_one_init(int x, int y);
-extern void apps_container_one_set_app_count(u32 app_count);
-extern void apps_container_one_draw(void);
-extern u32 apps_container_one_get_width(void);
-extern u32 apps_container_one_get_height(void);
 
 static window_t desktop_window;
 static u8 gsh_open = 0u;
@@ -80,8 +77,9 @@ void desktop_handle_click(int x, int y) {
     dock_x = (int)((screen_width - dock_width) / 2u);
     dock_y = desktop_app_container_y(screen_height);
 
-    if (x >= dock_x && x < dock_x + (int)dock_width &&
-        y >= dock_y && y < dock_y + (int)apps_container_one_get_height()) {
+    if (apps_container_one_contains_gsh(x, y) ||
+        (x >= dock_x && x < dock_x + (int)dock_width &&
+         y >= dock_y && y < dock_y + (int)apps_container_one_get_height())) {
         gsh_open = 1u;
         gsh_button_click();
     }
