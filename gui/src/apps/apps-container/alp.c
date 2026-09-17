@@ -10,8 +10,8 @@ void apps_container_alp_button_init(int x, int y, u32 width, u32 height,
                                     u32 bg_color, u32 icon_color) {
     button_init(&apps_container_alp_button, "", (u32)x, (u32)y,
                 width, height, bg_color, icon_color);
-    apps_container_alp_button.background = bg_color;
-    apps_container_alp_button.text_color = icon_color;
+    apps_container_alp_button.background = FB_COLOR(255u, 255u, 255u);
+    apps_container_alp_button.text_color = FB_COLOR(40u, 40u, 40u);
 }
 
 void apps_container_alp_button_draw(void) {
@@ -28,7 +28,7 @@ void apps_container_alp_button_draw(void) {
                  (u32)apps_container_alp_button.y,
                  apps_container_alp_button.width,
                  apps_container_alp_button.height,
-                 0x00D0D0D0u);
+                 FB_COLOR(60u, 60u, 60u));
 
     u32 size = apps_container_alp_button.height > 14u ? 10u : 8u;
     int icon_x = apps_container_alp_button.x + (int)(apps_container_alp_button.width / 2u) - (int)(size / 2u);

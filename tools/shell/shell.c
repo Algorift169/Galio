@@ -2070,7 +2070,7 @@ void shell_run(void) {
 
     while (!shell_should_exit) {
         if (clock_tick()) {
-            panel_draw_clock();
+            panel_draw();
         }
         shell_poll_keyboard();
         shell_poll_mouse();

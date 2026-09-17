@@ -14,6 +14,10 @@
 #define PANEL_BUTTON_COLOR FB_COLOR(30u, 46u, 60u)
 static button_t shutdown_button;
 static u8 panel_ready;
+static int panel_system_x;
+static int panel_file_x;
+static int panel_help_x;
+static int panel_shutdown_x;
 
 static u32 panel_height(void) { return gui_scaled(36u); }
 static u32 panel_gap(void) { return gui_scaled(4u); }
@@ -77,6 +81,19 @@ static void panel_put_text(int x, int y, const char *text, u32 color) {
     }
 }
 
+static void panel_put_centered_text(int x, int y, u32 width, u32 height,
+                                    const char *text, u32 color) {
+    u32 length = 0u;
+    u32 text_width;
+    u32 pixel = panel_font_pixel();
+
+    while (text && text[length]) length++;
+    text_width = length * pixel * 6u;
+    panel_put_text(x + (int)(width > text_width ? (width - text_width) / 2u : 0u),
+                   y + (int)(height > pixel * 7u ? (height - pixel * 7u) / 2u : 0u),
+                   text, color);
+}
+
 void panel_draw_clock(void) {
     char date[11];
     char time[9];
@@ -117,6 +134,10 @@ void panel_init(void) {
     gsh_x = file_x + (int)gui_scaled(40u) + (int)panel_gap();
     help_x = gsh_x + (int)gui_scaled(28u) + (int)panel_gap();
     shutdown_x = help_x + (int)gui_scaled(44u) + (int)panel_gap();
+    panel_system_x = system_x;
+    panel_file_x = file_x;
+    panel_help_x = help_x;
+    panel_shutdown_x = shutdown_x;
 
     button_init(&shutdown_button, "SHUTDOWN", (u32)shutdown_x, gui_scaled(6u),
                 gui_scaled(62u), gui_scaled(19u),
@@ -131,16 +152,12 @@ void panel_init(void) {
 void panel_draw(void) {
     u32 screen_width = FB_DEFAULT_WIDTH;
     u32 panel_width;
-    int cluster_x;
 
     if (!panel_ready) return;
 
     const display_output_t *output = display_output_get();
     screen_width = output->width;
     panel_width = screen_width;
-    cluster_x = (int)screen_width - (int)gui_scaled(300u);
-    if (cluster_x < (int)gui_scaled(8u)) cluster_x = (int)gui_scaled(8u);
-
     fb_fill_rect(0u, 0u, panel_width, panel_height(), PANEL_COLOR);
     gui_draw_border(0, 0, panel_width, panel_height(), PANEL_LINE_COLOR);
     panel_draw_clock();
@@ -148,13 +165,15 @@ void panel_draw(void) {
     panel_file_button_draw();
     panel_help_button_draw();
     button_draw(&shutdown_button);
-    panel_put_text(cluster_x + (int)gui_scaled(5u), (int)gui_scaled(10u), "SYSTEM MONITOR", PANEL_LINE_COLOR);
-    panel_put_text(cluster_x + (int)gui_scaled(104u) + (int)panel_gap(),
-                   (int)gui_scaled(10u), "FILE", PANEL_LINE_COLOR);
-    panel_put_text(cluster_x + (int)gui_scaled(168u) + (int)panel_gap() * 2,
-                   (int)gui_scaled(10u), "HELP", PANEL_LINE_COLOR);
-    panel_put_text((int)shutdown_button.x + (int)gui_scaled(4u),
-                   (int)shutdown_button.y + (int)gui_scaled(6u), "SHUT", PANEL_LINE_COLOR);
+    panel_put_centered_text(panel_system_x, (int)gui_scaled(6u), gui_scaled(100u), gui_scaled(19u),
+                            "SYSTEM MONITOR", PANEL_LINE_COLOR);
+    panel_put_centered_text(panel_file_x, (int)gui_scaled(6u), gui_scaled(40u), gui_scaled(19u),
+                            "FILE", PANEL_TEXT_COLOR);
+    panel_put_centered_text(panel_help_x, (int)gui_scaled(6u), gui_scaled(44u), gui_scaled(19u),
+                            "HELP", PANEL_TEXT_COLOR);
+    panel_put_centered_text(panel_shutdown_x, (int)gui_scaled(6u), gui_scaled(62u), gui_scaled(19u),
+                            "SHUT", PANEL_LINE_COLOR);
+    gsh_button_draw();
 }
 
 u8 panel_handle_click(int x, int y) {

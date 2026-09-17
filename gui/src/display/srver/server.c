@@ -176,7 +176,7 @@ void display_server_tick(void) {
     }
 
     if (clock_tick()) {
-        panel_draw_clock();
+        panel_draw();
     }
 
     if (g_display_server_state.redraw_pending) {

@@ -31,7 +31,7 @@ static apps_container_one_t apps_container_one = {
     .app_slot_size = 22u,
     .background = FB_COLOR(42u, 62u, 78u),
     .border_color = FB_COLOR(208u, 208u, 208u),
-    .button_color = FB_COLOR(31u, 42u, 56u),
+    .button_color = FB_COLOR(255u, 255u, 255u),
     .visible = 1u,
 };
 
@@ -110,19 +110,43 @@ static void apps_container_one_draw_round_rect(int x, int y, u32 width, u32 heig
     }
 }
 
+static void apps_container_one_draw_solid_round_rect(int x, int y, u32 width, u32 height,
+                                                     u32 fill_color, u32 border_color,
+                                                     u32 radius) {
+    int right = x + (int)width - 1;
+    int bottom = y + (int)height - 1;
+
+    for (int py = y; py <= bottom; py++) {
+        for (int px = x; px <= right; px++) {
+            if (apps_container_one_point_in_round_rect(px, py, x, y, width, height, radius)) {
+                fb_put_pixel((u32)px, (u32)py, fill_color);
+            }
+        }
+    }
+    for (int py = y; py <= bottom; py++) {
+        for (int px = x; px <= right; px++) {
+            if (!apps_container_one_point_in_round_rect(px, py, x, y, width, height, radius)) {
+                continue;
+            }
+            if (px == x || px == right || py == y || py == bottom) {
+                fb_put_pixel((u32)px, (u32)py, border_color);
+            }
+        }
+    }
+}
+
 static void apps_container_one_draw_all_apps_button(void) {
     int button_x = apps_container_one.x + (int)APPS_CONTAINER_PADDING;
     u32 button_w = 34u;
     u32 button_h = 34u;
     int button_y = apps_container_one.y + ((int)apps_container_one.height - (int)button_h) / 2;
 
-    fb_fill_rect((u32)button_x, (u32)button_y, button_w, button_h,
-                 apps_container_one.button_color);
-    fb_draw_rect((u32)button_x, (u32)button_y, button_w, button_h,
-                 apps_container_one.border_color);
+    apps_container_one_draw_solid_round_rect(button_x, button_y, button_w, button_h,
+                                             apps_container_one.button_color,
+                                             FB_COLOR(60u, 60u, 60u), 7u);
 
     apps_container_all_app_icon_draw(button_x + 9, button_y + 9, 16u,
-                                    0x00FFFFFFu);
+                                    FB_COLOR(40u, 40u, 40u));
 }
 
 void apps_container_one_init(int x, int y) {

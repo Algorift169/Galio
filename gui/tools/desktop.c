@@ -63,7 +63,6 @@ void desktop_draw(void) {
     display_wrapper_draw();
     panel_draw();
     apps_container_one_draw();
-    gsh_button_draw();
 }
 
 void desktop_handle_click(int x, int y) {
