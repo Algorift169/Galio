@@ -191,9 +191,19 @@ u8 shell_net_command(const char *args, const char *current_dir) {
             return 0;
         }
         net_device_t *wlan = netdev_get_by_name("wlan0");
-        if (!wlan) {
-            kprintf("No wireless devices available\n");
+        net_device_t *eth = netdev_get_by_name("eth0");
+        if (!wlan && !eth) {
+            kprintf("No wireless or Ethernet devices available\n");
             return 0;
+        }
+        if (!wlan) {
+            kprintf("No wireless hardware detected; Ethernet link is present on %s\n",
+                    eth ? eth->name : "eth0");
+            if (eth && eth->ip_addr) {
+                kprintf("IPv4: "); print_ipv4(eth->ip_addr); kprintf("\n");
+                kprintf("Gateway: "); print_ipv4(eth->gateway); kprintf("\n");
+            }
+            return 1;
         }
         wifi_scan_start_timeout(timeout_seconds);
         u32 count = 0;
@@ -216,9 +226,18 @@ u8 shell_net_command(const char *args, const char *current_dir) {
 
     if (strncmp(args, "list", 4) == 0 && (args[4] == ' ' || args[4] == '\0')) {
         net_device_t *wlan = netdev_get_by_name("wlan0");
-        if (!wlan) {
-            kprintf("No wireless devices available\n");
+        net_device_t *eth = netdev_get_by_name("eth0");
+        if (!wlan && !eth) {
+            kprintf("No wireless or Ethernet devices available\n");
             return 0;
+        }
+        if (!wlan) {
+            kprintf("Wireless hardware not present; Ethernet interface %s is available\n",
+                    eth ? eth->name : "eth0");
+            if (eth && eth->ip_addr) {
+                kprintf("IPv4: "); print_ipv4(eth->ip_addr); kprintf("\n");
+            }
+            return 1;
         }
         wifi_scan_start();
         u32 count = 0;

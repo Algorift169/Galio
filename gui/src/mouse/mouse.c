@@ -1,4 +1,5 @@
 #include "mouse/mouse.h"
+#include "display_output.h"
 #include "arch/x86/cpu.h"
 
 #define DATA 0x60
@@ -113,8 +114,13 @@ void mouse_poll_position(void) {
 
         if (mouse_x < 0) mouse_x = 0;
         if (mouse_y < 0) mouse_y = 0;
-        if (mouse_x >= 1024) mouse_x = 1023;
-        if (mouse_y >= 768) mouse_y = 767;
+        const display_output_t *output = display_output_get();
+        if (output->width != 0u && mouse_x >= (int)output->width) {
+            mouse_x = (int)output->width - 1;
+        }
+        if (output->height != 0u && mouse_y >= (int)output->height) {
+            mouse_y = (int)output->height - 1;
+        }
 
         if (wheel != 0) {
             int new_scroll = (int)scroll_delta + (int)wheel;

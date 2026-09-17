@@ -10,8 +10,17 @@
 #include "mouse/mouse.h"
 #include "mouse/cursor.h"
 #include "keyboard.h"
+#include "gsh_button.h"
+#include "display_output.h"
+#include "gui_layout.h"
+#include "gui_scale.h"
 
 #define DISPLAY_SERVER_DEFAULT_BG FB_COLOR(125u, 180u, 255u)
+
+static gui_rect_t g_gui_root;
+static gui_rect_t g_gui_usable;
+
+static void display_server_relayout(void);
 
 display_server_state_t g_display_server_state;
 display_server_state_t g_display_server = {0};
@@ -39,26 +48,31 @@ static void display_server_focus_top_window(void) {
 }
 
 static void display_server_boot_state(void) {
-    u32 width = FB_DEFAULT_WIDTH;
-    u32 height = FB_DEFAULT_HEIGHT;
-    u32 pitch = 0u;
-    u32 bpp = 0u;
+    const display_output_t *output;
 
-    fb_get_info(&width, &height, &pitch, &bpp);
-    if (width == 0u) width = FB_DEFAULT_WIDTH;
-    if (height == 0u) height = FB_DEFAULT_HEIGHT;
+    display_output_init();
+    output = display_output_get();
 
-    g_display_server_state.screen_width = width;
-    g_display_server_state.screen_height = height;
-    g_display_server_state.output.width = width;
-    g_display_server_state.output.height = height;
-    g_display_server_state.output.pitch = pitch ? pitch : width * 4u;
-    g_display_server_state.output.bpp = bpp ? bpp : 32u;
+    g_display_server_state.screen_width = output->width;
+    g_display_server_state.screen_height = output->height;
+    g_display_server_state.output.width = output->width;
+    g_display_server_state.output.height = output->height;
+    g_display_server_state.output.pitch = output->pitch;
+    g_display_server_state.output.bpp = output->bpp;
     g_display_server_state.output.pixel_format = 0u;
     g_display_server_state.output.primary = DISPLAY_SERVER_OUTPUT_PRIMARY;
     g_display_server_state.output.enabled = DISPLAY_SERVER_OUTPUT_ENABLED;
     g_display_server_state.output.connected = DISPLAY_SERVER_OUTPUT_CONNECTED;
     g_display_server_state.output.background = DISPLAY_SERVER_DEFAULT_BG;
+    g_gui_root.x = 0;
+    g_gui_root.y = 0;
+    g_gui_root.width = output->width;
+    g_gui_root.height = output->height;
+    g_gui_usable.x = output->usable_x;
+    g_gui_usable.y = output->usable_y;
+    g_gui_usable.width = output->usable_width;
+    g_gui_usable.height = output->usable_height;
+    gui_scale_update(output->usable_width, output->usable_height);
     g_display_server_state.cursor_visible = 1u;
     g_display_server_state.cursor_type = DISPLAY_SERVER_CURSOR_ARROW;
     g_display_server_state.next_window_id = 1u;
@@ -70,6 +84,49 @@ static void display_server_boot_state(void) {
     g_display_server_state.active_window_id = DISPLAY_SERVER_WINDOW_ID_NONE;
     g_display_server_state.active_client_id = DISPLAY_SERVER_CLIENT_ID_NONE;
     g_display_server_state.clipboard_ready = 1u;
+}
+
+static void display_server_relayout(void) {
+    const display_output_t *output = display_output_get();
+    u32 index;
+
+    g_display_server_state.screen_width = output->width;
+    g_display_server_state.screen_height = output->height;
+    g_gui_root.x = 0;
+    g_gui_root.y = 0;
+    g_gui_root.width = output->width;
+    g_gui_root.height = output->height;
+    g_gui_usable.x = output->usable_x;
+    g_gui_usable.y = output->usable_y;
+    g_gui_usable.width = output->usable_width;
+    g_gui_usable.height = output->usable_height;
+    g_display_server_state.output.width = output->width;
+    g_display_server_state.output.height = output->height;
+    g_display_server_state.output.pitch = output->pitch;
+    g_display_server_state.output.bpp = output->bpp;
+    gui_scale_update(output->usable_width, output->usable_height);
+
+    for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
+        display_server_window_t *window = &g_display_server_state.windows[index];
+        gui_rect_t rect;
+        if (window->closed || window->state == DISPLAY_SERVER_WINDOW_STATE_HIDDEN) continue;
+        if (window->maximized) {
+            window->x = g_gui_usable.x;
+            window->y = g_gui_usable.y;
+            window->width = g_gui_usable.width;
+            window->height = g_gui_usable.height;
+            continue;
+        }
+        rect.x = window->x;
+        rect.y = window->y;
+        rect.width = window->width;
+        rect.height = window->height;
+        rect = gui_layout_clamp(rect, g_gui_usable);
+        window->x = rect.x;
+        window->y = rect.y;
+        window->width = rect.width;
+        window->height = rect.height;
+    }
 }
 
 void display_server_init(void) {
@@ -85,6 +142,7 @@ void display_server_init(void) {
     display_server_protocol_init();
     display_server_output_init();
     desktop_init();
+    display_server_relayout();
     desktop_set_background(DISPLAY_SERVER_DEFAULT_BG);
     desktop_draw();
     mouse_init();
@@ -109,6 +167,12 @@ void display_server_start(void) {
 void display_server_tick(void) {
     if (!g_display_server_state.running) {
         return;
+    }
+
+    if (display_output_refresh()) {
+        desktop_init();
+        display_server_relayout();
+        g_display_server_state.redraw_pending = 1u;
     }
 
     if (clock_tick()) {
@@ -242,10 +306,13 @@ void display_server_output_refresh(void) {
 
     for (order = 0u; order < draw_count; order++) {
         display_server_window_t *window = &g_display_server_state.windows[draw_order[order]];
+        if (gsh_button_owns_window(window->id)) continue;
         display_server_renderer_fill_rect((u32)window->x, (u32)window->y,
                                           window->width, window->height,
                                           FB_COLOR(64u, 64u, 72u));
     }
+
+    gsh_button_redraw_windows();
 
     if (g_display_server_state.cursor_visible) {
         cursor_rebase();
@@ -336,10 +403,33 @@ void display_server_disconnect_client(u32 client_id) {
 u32 display_server_create_window(u32 client_id, const char *title, int x, int y, u32 width, u32 height) {
     u32 window_id = DISPLAY_SERVER_WINDOW_ID_NONE;
     u32 index;
+    gui_rect_t bounds = g_gui_usable;
+    gui_rect_t requested;
 
     if (!display_server_resource_validate_client(client_id)) {
         return DISPLAY_SERVER_WINDOW_ID_NONE;
     }
+
+    if (bounds.width == 0u || bounds.height == 0u) {
+        bounds = gui_layout_center((gui_rect_t){0, 0, display_output_get_width(),
+                                                display_output_get_height()},
+                                   display_output_get_width(), display_output_get_height());
+    }
+    if (width == 0u) width = (u32)(((u64)bounds.width * 600u) / 1000u);
+    if (height == 0u) height = (u32)(((u64)bounds.height * 600u) / 1000u);
+    requested.x = x;
+    requested.y = y;
+    requested.width = width;
+    requested.height = height;
+    if (x < 0 || y < 0) {
+        requested = gui_layout_center(bounds, width, height);
+    } else {
+        requested = gui_layout_clamp(requested, bounds);
+    }
+    x = requested.x;
+    y = requested.y;
+    width = requested.width;
+    height = requested.height;
 
     for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
         if (g_display_server_state.windows[index].closed) {

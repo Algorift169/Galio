@@ -58,6 +58,13 @@ void terminal_window_open(terminal_window_t *terminal) {
                     terminal->window.background);
 }
 
+void terminal_window_clear_content(terminal_window_t *terminal) {
+    if (!terminal || !terminal->visible) return;
+    terminal_window_set_bounds(terminal);
+    fb_console_clear_active_region();
+    terminal->content_valid = 0u;
+}
+
 void terminal_window_close(terminal_window_t *terminal) {
     if (!terminal) return;
 

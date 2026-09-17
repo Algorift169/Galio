@@ -11,13 +11,15 @@ set -euo pipefail
 # Examples:
 #   ./run.sh
 #   ./run.sh --nogui
-#   ./run.sh --qemu-args "-m 256M -display gtk -serial file:serial.log"
+#   ./run.sh --qemu-args "-m 256M -display gtk,zoom-to-fit=on"
 
 ISO="build/bin/galio.iso"
 DISK="build/disk.img"
 QEMU_BIN="qemu-system-x86_64"
 EXTRA_ARGS=""
 NOGRAPHIC=false
+GUI_DISPLAY_ARGS="-display gtk,zoom-to-fit=on"
+QEMU_DISPLAY_ARGS="-device VGA,edid=on,xres=1280,yres=720"
 
 # Use the host CPU feature set and a safe share of host memory by default.
 # Override GALIO_RAM_MB when a different guest size is desired.
@@ -107,7 +109,7 @@ fi
 # QEMU user networking provides outbound NAT through the host's real network.
 # The guest still needs DHCP or static IP configuration before kernel sockets
 # can use the interface. The disk remains Galio's image; no host disk is used.
-COMMON_ARGS="${QEMU_ACCEL_ARGS} ${QEMU_CPU_ARGS} -smp 1 -vga std -cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m ${GALIO_RAM_MB}M -netdev user,id=net0,restrict=off -device e1000,netdev=net0"
+COMMON_ARGS="${QEMU_ACCEL_ARGS} ${QEMU_CPU_ARGS} -smp 1 ${QEMU_DISPLAY_ARGS} -cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m ${GALIO_RAM_MB}M -netdev user,id=net0,restrict=off -device e1000,netdev=net0"
 echo "Using ${QEMU_CPU_ARGS}, ${GALIO_RAM_MB} MB guest RAM, and Galio disk image ${DISK}"
 
 # Run QEMU
@@ -117,6 +119,6 @@ if [ "${NOGRAPHIC}" = true ]; then
     exec ${QEMU_BIN} ${COMMON_ARGS} -display none -monitor none -serial stdio ${EXTRA_ARGS}
 else
     # GUI mode: serial logged to serial.log
-    echo "Starting QEMU (GUI). Serial logged to serial.log"
-    exec ${QEMU_BIN} ${COMMON_ARGS} -display gtk -serial file:serial.log -monitor none -no-reboot ${EXTRA_ARGS}
+    echo "Starting QEMU (windowed, fit-to-window). Serial logged to serial.log"
+    exec ${QEMU_BIN} ${COMMON_ARGS} ${GUI_DISPLAY_ARGS} -serial file:serial.log -monitor none -no-reboot ${EXTRA_ARGS}
 fi

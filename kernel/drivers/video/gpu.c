@@ -51,27 +51,42 @@ static u8 gpu_map_mmio(const pci_device_t *device, u8 bar, u32 *mapped_size) {
 
 static u8 gpu_try_qemu_vbe(void) {
     u16 id = vbe_read(VBE_INDEX_ID);
+    u16 width;
+    u16 height;
+    u16 bpp;
+    u32 pitch;
+
     if (id < VBE_ID_MIN || id > VBE_ID_MAX) return 0;
 
+    width = vbe_read(VBE_INDEX_XRES);
+    height = vbe_read(VBE_INDEX_YRES);
+    bpp = vbe_read(VBE_INDEX_BPP);
+    if (!width || !height || (bpp != 16u && bpp != 24u && bpp != 32u)) return 0;
+    pitch = (u32)width * ((u32)bpp / 8u);
+
     vbe_write(VBE_INDEX_ENABLE, 0);
-    vbe_write(VBE_INDEX_XRES, FB_DEFAULT_WIDTH);
-    vbe_write(VBE_INDEX_YRES, FB_DEFAULT_HEIGHT);
-    vbe_write(VBE_INDEX_BPP, FB_DEFAULT_BPP);
+    vbe_write(VBE_INDEX_XRES, width);
+    vbe_write(VBE_INDEX_YRES, height);
+    vbe_write(VBE_INDEX_BPP, bpp);
     vbe_write(VBE_INDEX_ENABLE, VBE_ENABLE | VBE_LFB_ENABLED | VBE_NOCLEARMEM);
 
-    if (!fb_attach(VBE_LFB_BASE, FB_DEFAULT_WIDTH, FB_DEFAULT_HEIGHT,
-                   FB_DEFAULT_PITCH, FB_DEFAULT_BPP)) {
+    if (!fb_attach(VBE_LFB_BASE, width, height, pitch, bpp)) {
         vbe_write(VBE_INDEX_ENABLE, 0);
         return 0;
     }
     kprintf("GPU: QEMU Bochs VBE %04X, %ux%u framebuffer at 0x%08X\n",
-             id, FB_DEFAULT_WIDTH, FB_DEFAULT_HEIGHT, VBE_LFB_BASE);
+             id, width, height, VBE_LFB_BASE);
     return 1;
 }
 
 void gpu_init(void) {
     u8 vbe_enabled = 0;
     u8 pci_gpu_found = 0;
+
+    if (!fb_is_initialized()) {
+        vbe_enabled = gpu_try_qemu_vbe();
+    }
+
     for (pci_device_t *device = pci_device_first(); device;
          device = pci_device_next(device)) {
         if (device->class_id != 0x03) continue;

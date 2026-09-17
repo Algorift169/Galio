@@ -2093,3 +2093,7 @@ void shell_set_exit_region(int x, int y, int width, int height) {
 void shell_clear_exit_region(void) {
     shell_exit_enabled = 0u;
 }
+
+void shell_request_exit(void) {
+    shell_should_exit = 1u;
+}

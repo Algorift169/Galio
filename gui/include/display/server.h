@@ -3,8 +3,8 @@
 
 #include "common.h"
 
-#define DISPLAY_SERVER_WIDTH 1024u
-#define DISPLAY_SERVER_HEIGHT 768u
+#define DISPLAY_SERVER_WIDTH 0u
+#define DISPLAY_SERVER_HEIGHT 0u
 
 typedef struct {
     u8 initialized;

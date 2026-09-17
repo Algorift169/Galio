@@ -1,10 +1,11 @@
 #include "button.h"
 #include "framebuffer.h"
+#include "gui_scale.h"
 
 static button_t file_button;
 
 void panel_file_button_init(int x, int y) {
-    button_init(&file_button, "File", (u32)x, (u32)y, 40u, 19u,
+    button_init(&file_button, "File", (u32)x, (u32)y, gui_scaled(40u), gui_scaled(19u),
                 FB_COLOR(30u, 46u, 60u), FB_COLOR(235u, 242u, 245u));
 }
 

@@ -28,6 +28,7 @@ typedef struct {
 void terminal_window_init(terminal_window_t *terminal, const char *title, u32 x, u32 y, u32 width, u32 height);
 void terminal_window_draw(const terminal_window_t *terminal);
 void terminal_window_open(terminal_window_t *terminal);
+void terminal_window_clear_content(terminal_window_t *terminal);
 void terminal_window_close(terminal_window_t *terminal);
 void terminal_window_set_bounds(const terminal_window_t *terminal);
 void terminal_window_sync_layout(terminal_window_t *terminal);

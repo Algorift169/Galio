@@ -14,8 +14,8 @@ static display_server_state_t g_display_server = {
     .redraw_pending = 0u,
     .screen_width = DISPLAY_SERVER_WIDTH,
     .screen_height = DISPLAY_SERVER_HEIGHT,
-    .cursor_x = 512,
-    .cursor_y = 384
+    .cursor_x = 0,
+    .cursor_y = 0
 };
 
 static void display_server_boot_ui(void) {

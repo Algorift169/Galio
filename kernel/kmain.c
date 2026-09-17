@@ -305,27 +305,8 @@ void kmain(void *multiboot_ptr) {
 
     /* UI shell is intentionally disabled; the system boots directly into fullscreen gsh after auth. */
 
-    kprintf("Initializing networking subsystem...\n");
-    net_init();
-    wifi_init();
-    rtl8188eu_register_driver();
-    e1000_register_driver();
-    pci_init();
-    gpu_init();
-    net_print_devices();
-
-    kprintf("Running memory stabilization tests...\n");
-    mem_test_run();
-
-    kprintf("Initializing process manager...\n");
-    process_init();
-
-    kprintf("Initializing power subsystem...\n");
-    power_suspend_init();
-    kprintf("[POWER] self-test: reset=ready, shutdown=ready, suspend=ready\n");
-
-    kprintf("Installing system call handler...\n");
-    syscall_init();
+    kprintf("Initializing keyboard...\n");
+    keyboard_init();
 
     kprintf("Initializing timer (%u Hz)...\n", GALIO_HZ);
     /* Initialize wall-clock and timer queues before enabling PIT IRQs. */
@@ -338,24 +319,7 @@ void kmain(void *multiboot_ptr) {
     galio_timekeeping_init();
     pit_init(GALIO_HZ);
 
-    if (dhcp_start() == 0) {
-        kprintf("DHCP: lease acquired\n");
-    } else {
-        kprintf("DHCP: no lease acquired\n");
-    }
-
-    kprintf("Initializing CPU subsystem...\n");
-    cpu_init();
-    cpufreq_init();
-
-    kprintf("Initializing scheduler...\n");
-    cpu_scheduler_init();
-
-    kprintf("Initializing keyboard...\n");
-    keyboard_init();
-
     kprintf("Initializing filesystem...\n");
-
     extern u8 _binary_initrd_bin_start;
     vfs_init(&_binary_initrd_bin_start);
     /* Decode built-in desktop assets while the InitRD RAM VFS is active. */
@@ -442,7 +406,12 @@ void kmain(void *multiboot_ptr) {
         }
     }
     vfs_ensure_home_dirs();
+#ifndef GALIO_BOOT_DEBUG
+#define GALIO_BOOT_DEBUG 0
+#endif
+#if GALIO_BOOT_DEBUG
     vfs_debug();
+#endif
 
     kprintf("Running kernel self-tests...\n");
     run_kernel_tests();
@@ -479,6 +448,41 @@ void kmain(void *multiboot_ptr) {
     }
 
     auth_bootstrap();
+
+    kprintf("Initializing process manager...\n");
+    process_init();
+
+    kprintf("Initializing power subsystem...\n");
+    power_suspend_init();
+    kprintf("[POWER] self-test: reset=ready, shutdown=ready, suspend=ready\n");
+
+    kprintf("Installing system call handler...\n");
+    syscall_init();
+
+    kprintf("Initializing CPU subsystem...\n");
+    cpu_init();
+    cpufreq_init();
+
+    kprintf("Initializing scheduler...\n");
+    cpu_scheduler_init();
+
+    kprintf("Running memory stabilization tests...\n");
+    mem_test_run();
+
+    kprintf("Initializing networking subsystem...\n");
+    net_init();
+    wifi_init();
+    rtl8188eu_register_driver();
+    e1000_register_driver();
+    pci_init();
+    gpu_init();
+    net_print_devices();
+
+    if (dhcp_start() == 0) {
+        kprintf("DHCP: lease acquired\n");
+    } else {
+        kprintf("DHCP: no lease acquired\n");
+    }
 
     /* The embedded ELF test runner is not the desktop init process. Starting
      * it here floods the display before the authenticated GUI can take over. */

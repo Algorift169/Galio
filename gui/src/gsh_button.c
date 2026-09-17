@@ -14,6 +14,8 @@
 #include "srver/server.h"
 #include "srver/resources.h"
 #include "display_wrapper.h"
+#include "display_output.h"
+#include "gui_scale.h"
 
 extern void apps_container_one_draw(void);
 
@@ -170,6 +172,21 @@ static void redraw_other_gsh_windows(const terminal_window_t *active_terminal) {
     }
 }
 
+void gsh_button_redraw_windows(void) {
+    redraw_other_gsh_windows((terminal_window_t *)0);
+}
+
+u8 gsh_button_owns_window(u32 window_id) {
+    u32 index;
+
+    if (window_id == 0u) return 0u;
+    if (window_id == gsh_window_id) return 1u;
+    for (index = 0u; index < GSH_MAX_EXTRA_WINDOWS; index++) {
+        if (window_id == gsh_extra_window_ids[index]) return 1u;
+    }
+    return 0u;
+}
+
 static void gsh_save_active_content(void) {
     gsh_save_terminal_content(gsh_active_terminal);
 }
@@ -200,7 +217,7 @@ static void draw_gsh_label(void) {
 void gsh_button_init(void) {
     u32 index;
 
-    button_init(&gsh_launch_button, "GSH", 20u, 20u, 28u, 19u,
+    button_init(&gsh_launch_button, "GSH", 20u, 20u, gui_scaled(28u), gui_scaled(19u),
                 FB_COLOR(18, 28, 42), 0x00FFFFFFu);
     gsh_button_x = 20;
     gsh_button_y = 20;
@@ -286,6 +303,7 @@ static void gsh_open_extra_window(void) {
 
         terminal_window_open(&gsh_extra_windows[index]);
         terminal_window_draw(&gsh_extra_windows[index]);
+        terminal_window_clear_content(&gsh_extra_windows[index]);
         gsh_save_terminal_content(&gsh_extra_windows[index]);
         gsh_active_terminal = &gsh_extra_windows[index];
         gsh_server_window_id = gsh_extra_window_ids[index];
@@ -345,6 +363,7 @@ static void gsh_focus_terminal(terminal_window_t *terminal, u32 window_id) {
     cursor_show();
 }
 
+
 static u8 gsh_close_active_window(int x, int y) {
     terminal_window_t *terminal = gsh_active_terminal;
     u32 window_id;
@@ -354,50 +373,50 @@ static u8 gsh_close_active_window(int x, int y) {
 
     if (!terminal || !terminal_window_exit_contains(terminal, x, y)) return 0u;
 
-    window_id = gsh_window_id_for_terminal(terminal);
-    for (index = 0u; index < GSH_MAX_EXTRA_WINDOWS; index++) {
-        if (gsh_extra_window_ids[index] != 0u &&
-            gsh_extra_window_ids[index] != window_id &&
-            display_server_resource_validate_window(gsh_extra_window_ids[index])) {
-            display_server_window_t *window = display_server_resources_find_window(
-                gsh_extra_window_ids[index]);
-            if (window && window->z_order >= best_z) {
-                best_z = window->z_order;
-                best_id = window->id;
-            }
-        }
-    }
-    if (gsh_window_id != 0u && gsh_window_id != window_id &&
-        display_server_resource_validate_window(gsh_window_id)) {
-        display_server_window_t *window = display_server_resources_find_window(gsh_window_id);
-        if (window && window->z_order >= best_z) best_id = window->id;
+    if (terminal == &gsh_window) {
+        /* The shell loop still owns the main console until it returns. */
+        shell_request_exit();
+        return 1u;
     }
 
+    window_id = gsh_window_id_for_terminal(terminal);
     gsh_save_terminal_content(terminal);
     cursor_deactivate();
     terminal_window_close(terminal);
     display_server_client_destroy_window(gsh_server_client_id, window_id);
-    if (terminal == &gsh_window) {
-        gsh_window_id = 0u;
-    } else {
-        for (index = 0u; index < GSH_MAX_EXTRA_WINDOWS; index++) {
-            if (&gsh_extra_windows[index] == terminal) {
-                gsh_extra_window_ids[index] = 0u;
-                break;
-            }
+
+    for (index = 0u; index < GSH_MAX_EXTRA_WINDOWS; index++) {
+        if (&gsh_extra_windows[index] == terminal) {
+            gsh_extra_window_ids[index] = 0u;
+            break;
         }
     }
+
+    for (index = 0u; index < GSH_MAX_EXTRA_WINDOWS; index++) {
+        display_server_window_t *window;
+        if (gsh_extra_window_ids[index] == 0u ||
+            !display_server_resource_validate_window(gsh_extra_window_ids[index])) {
+            continue;
+        }
+        window = display_server_resources_find_window(gsh_extra_window_ids[index]);
+        if (window && window->z_order >= best_z) {
+            best_z = window->z_order;
+            best_id = window->id;
+        }
+    }
+
     desktop_draw();
     redraw_other_gsh_windows((terminal_window_t *)0);
-
     if (best_id != 0u) {
-        gsh_focus_terminal(gsh_terminal_for_window_id(best_id), best_id);
+        gsh_active_terminal = gsh_terminal_for_window_id(best_id);
+        gsh_server_window_id = best_id;
+        gsh_focus_terminal(gsh_active_terminal, best_id);
     } else {
-        gsh_window_active = 0u;
-        gsh_server_window_id = 0u;
         gsh_active_terminal = &gsh_window;
+        gsh_server_window_id = 0u;
         shell_clear_exit_region();
     }
+    cursor_show();
     return 1u;
 }
 
@@ -460,6 +479,7 @@ void gsh_button_click(void) {
     terminal_window_open(gsh_active_terminal);
     terminal_window_set_bounds(gsh_active_terminal);
     terminal_window_draw(gsh_active_terminal);
+    terminal_window_clear_content(gsh_active_terminal);
     cursor_show();
     shell_set_exit_region(gsh_active_terminal->window.x +
                           (int)gsh_active_terminal->window.width - 18,
@@ -516,12 +536,13 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
 
     window_handle_pointer(&terminal->window, x, y, buttons);
 
-    int max_x = 1024 - (int)terminal->window.width;
-    int max_y = 768 - (int)terminal->window.height;
+    const display_output_t *output = display_output_get();
+    int max_x = (int)output->usable_width - (int)terminal->window.width + output->usable_x;
+    int max_y = (int)output->usable_height - (int)terminal->window.height + output->usable_y;
     if (max_x < 0) max_x = 0;
     if (max_y < 0) max_y = 0;
-    if (terminal->window.x < 0) terminal->window.x = 0;
-    if (terminal->window.y < 0) terminal->window.y = 0;
+    if (terminal->window.x < output->usable_x) terminal->window.x = output->usable_x;
+    if (terminal->window.y < output->usable_y) terminal->window.y = output->usable_y;
     if (terminal->window.x > max_x) terminal->window.x = max_x;
     if (terminal->window.y > max_y) terminal->window.y = max_y;
 

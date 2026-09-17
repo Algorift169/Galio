@@ -1,4 +1,5 @@
 #include "mouse/cursor.h"
+#include "display_output.h"
 
 #include "mouse/mouse.h"
 #include "desktop.h"
@@ -139,21 +140,20 @@ void cursor_poll(void)
         cursor_x = x;
         cursor_y = y;
 
-        /*
-         * Keep the complete 12x18 cursor inside
-         * the 1024x768 framebuffer.
-         */
+        const display_output_t *output = display_output_get();
+        int max_x = output->width > 12u ? (int)output->width - 12 : 0;
+        int max_y = output->height > 18u ? (int)output->height - 18 : 0;
         if (cursor_x < 0)
             cursor_x = 0;
 
         if (cursor_y < 0)
             cursor_y = 0;
 
-        if (cursor_x > 1024 - 12)
-            cursor_x = 1024 - 12;
+        if (cursor_x > max_x)
+            cursor_x = max_x;
 
-        if (cursor_y > 768 - 18)
-            cursor_y = 768 - 18;
+        if (cursor_y > max_y)
+            cursor_y = max_y;
 
         save_cursor_background();
         draw_cursor();
@@ -176,7 +176,7 @@ void cursor_poll(void)
     u8 right_pressed = (buttons & 0x02u) && !(previous_buttons & 0x02u);
 
     if (left_pressed) {
-            if (cursor_y >= 32) {
+            if (cursor_y >= display_output_get()->usable_y) {
         display_server_focus_at_point(cursor_x, cursor_y);
             }
         if (!panel_handle_click(cursor_x, cursor_y) &&
@@ -224,16 +224,15 @@ void cursor_set_position(int x, int y)
     if (y < 0)
         y = 0;
 
-    /*
-     * Cursor is 12x18, so clamp its TOP-LEFT position
-     * rather than allowing the cursor to go outside
-     * the framebuffer.
-     */
-    if (x > 1024 - 12)
-        x = 1024 - 12;
+    const display_output_t *output = display_output_get();
+    int max_x = output->width > 12u ? (int)output->width - 12 : 0;
+    int max_y = output->height > 18u ? (int)output->height - 18 : 0;
 
-    if (y > 768 - 18)
-        y = 768 - 18;
+    if (x > max_x)
+        x = max_x;
+
+    if (y > max_y)
+        y = max_y;
 
     cursor_x = x;
     cursor_y = y;

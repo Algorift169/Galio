@@ -175,6 +175,9 @@ SRCS = kernel/kmain.c \
        kernel/drivers/video/gpu.c \
        kernel/drivers/usb/usb.c \
        gui/src/display/display.c \
+       gui/src/display/display_output.c \
+       gui/src/display/gui_scale.c \
+       gui/src/display/gui_layout.c \
        gui/src/png.c \
        gui/src/display/srver/server.c \
        gui/src/display/srver/client.c \
@@ -417,7 +420,7 @@ $(KERNEL_ISO): $(KERNEL_BIN) $(INITRD_IMAGE) $(DRIFT_BIN)
 	@cp $(DRIFT_BIN) $(ISO_DIR)/boot/drift
 	@printf '%s\n' 'set timeout=0' \
 		'set default=0' \
-		'set gfxmode=1024x768x32' \
+              'set gfxmode=1280x720,auto' \
 		'set gfxpayload=keep' '' \
 		'menuentry "Galio Kernel" {' \
 		'  multiboot /boot/galio.bin' \

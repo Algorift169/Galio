@@ -3,6 +3,7 @@
 #include "common.h"
 
 #define APPS_CONTAINER_MIN_WIDTH 104u
+#define APPS_CONTAINER_HEIGHT 54u
 #define APPS_CONTAINER_BUTTON_GAP 8u
 #define APPS_CONTAINER_PADDING 12u
 #define APPS_CONTAINER_RADIUS 10u
@@ -24,12 +25,12 @@ static apps_container_one_t apps_container_one = {
     .x = 0,
     .y = 0,
     .width = APPS_CONTAINER_MIN_WIDTH,
-    .height = 26u,
+    .height = APPS_CONTAINER_HEIGHT,
     .app_count = 0u,
     .app_slot_size = 22u,
-    .background = 0x001B2333u,
-    .border_color = 0x00D0D0D0u,
-    .button_color = 0x001F2A38u,
+    .background = FB_COLOR(42u, 62u, 78u),
+    .border_color = FB_COLOR(208u, 208u, 208u),
+    .button_color = FB_COLOR(31u, 42u, 56u),
     .visible = 1u,
 };
 
@@ -110,16 +111,16 @@ static void apps_container_one_draw_round_rect(int x, int y, u32 width, u32 heig
 
 static void apps_container_one_draw_all_apps_button(void) {
     int button_x = apps_container_one.x + (int)APPS_CONTAINER_PADDING;
-    int button_y = apps_container_one.y + 2;
-    u32 button_w = 22u;
-    u32 button_h = apps_container_one.height - 4u;
+    u32 button_w = 34u;
+    u32 button_h = 34u;
+    int button_y = apps_container_one.y + ((int)apps_container_one.height - (int)button_h) / 2;
 
     fb_fill_rect((u32)button_x, (u32)button_y, button_w, button_h,
                  apps_container_one.button_color);
     fb_draw_rect((u32)button_x, (u32)button_y, button_w, button_h,
                  apps_container_one.border_color);
 
-    apps_container_all_app_icon_draw(button_x + 4, button_y + 5, 10u,
+    apps_container_all_app_icon_draw(button_x + 9, button_y + 9, 16u,
                                     0x00FFFFFFu);
 }
 
@@ -127,12 +128,17 @@ void apps_container_one_init(int x, int y) {
     apps_container_one.x = x;
     apps_container_one.y = y;
     apps_container_one.width = APPS_CONTAINER_MIN_WIDTH;
-    apps_container_one.height = 26u;
+    apps_container_one.height = APPS_CONTAINER_HEIGHT;
     apps_container_one.app_count = 0u;
     apps_container_one.visible = 1u;
 }
 
 void apps_container_one_set_app_count(u32 app_count) {
+    u32 screen_width = FB_DEFAULT_WIDTH;
+
+    fb_get_info(&screen_width, NULL, NULL, NULL);
+    if (screen_width == 0u) screen_width = FB_DEFAULT_WIDTH;
+
     apps_container_one.app_count = app_count;
 
     u32 total_slots = app_count > 0u ? app_count + 1u : 1u;
@@ -143,7 +149,13 @@ void apps_container_one_set_app_count(u32 app_count) {
         apps_container_one.width = APPS_CONTAINER_MIN_WIDTH;
     }
 
-    apps_container_one.x = (1024 - (int)apps_container_one.width) / 2;
+    if (screen_width > apps_container_one.width) {
+        apps_container_one.x = ((int)screen_width - (int)apps_container_one.width) / 2;
+    } else {
+        apps_container_one.x = 0;
+        apps_container_one.width = screen_width;
+    }
+
 }
 
 void apps_container_one_draw(void) {
@@ -151,12 +163,12 @@ void apps_container_one_draw(void) {
         return;
     }
 
-    apps_container_one_draw_round_rect((int)apps_container_one.x,
-                                      (int)apps_container_one.y,
-                                      apps_container_one.width,
-                                      apps_container_one.height,
-                                      apps_container_one.background,
-                                      apps_container_one.border_color);
+    fb_fill_rect((u32)apps_container_one.x, (u32)apps_container_one.y,
+                 apps_container_one.width, apps_container_one.height,
+                 apps_container_one.background);
+    fb_draw_rect((u32)apps_container_one.x, (u32)apps_container_one.y,
+                 apps_container_one.width, apps_container_one.height,
+                 apps_container_one.border_color);
 
     apps_container_one_draw_all_apps_button();
 }

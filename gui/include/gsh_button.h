@@ -13,6 +13,8 @@ u8 gsh_button_is_input_enabled(void);
 u32 gsh_button_get_active_window_id(void);
 u32 gsh_button_get_terminal_event(void);
 void gsh_button_set_monitor_active(u8 active);
+void gsh_button_redraw_windows(void);
+u8 gsh_button_owns_window(u32 window_id);
 void gsh_button_poll_pointer(int x, int y, u8 buttons);
 
 #endif /* GUI_GSH_BUTTON_H */

@@ -1,11 +1,12 @@
 #include "button.h"
 #include "framebuffer.h"
+#include "gui_scale.h"
 
 static button_t system_monitor_button;
 
 void panel_system_monitor_button_init(int x, int y) {
     button_init(&system_monitor_button, "System Monitor", (u32)x, (u32)y,
-                100u, 19u, FB_COLOR(30u, 46u, 60u),
+                gui_scaled(100u), gui_scaled(19u), FB_COLOR(30u, 46u, 60u),
                 FB_COLOR(105u, 145u, 165u));
 }
 
