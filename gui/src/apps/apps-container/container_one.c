@@ -158,9 +158,9 @@ static void apps_container_one_draw_gsh_button(void) {
     int button_y = apps_container_one.y + ((int)apps_container_one.height - (int)button_h) / 2;
 
     apps_container_one_draw_solid_round_rect(button_x, button_y, button_w, button_h,
-                                             apps_container_one.button_color,
-                                             FB_COLOR(60u, 60u, 60u), 7u);
-    gsh_button_draw_icon(button_x + 9, button_y + 9, 16u);
+                                             FB_COLOR(255u, 255u, 255u),
+                                             FB_COLOR(255u, 255u, 255u), 7u);
+    gsh_button_draw_icon(button_x + 4, button_y + 3, 24u);
 }
 
 void apps_container_one_init(int x, int y) {

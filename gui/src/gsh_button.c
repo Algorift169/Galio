@@ -16,10 +16,12 @@
 #include "display_wrapper.h"
 #include "display_output.h"
 #include "gui_scale.h"
+#include "gsh_icon.h"
 
 extern void apps_container_one_draw(void);
 
 #define GSH_BUTTON_TEXT_COLOR FB_COLOR(105u, 145u, 165u)
+#define GSH_PANEL_COLOR FB_COLOR(105u, 145u, 165u)
 #define GSH_MAX_EXTRA_WINDOWS 3u
 
 static button_t gsh_launch_button;
@@ -217,47 +219,14 @@ static void gsh_save_active_content(void) {
     gsh_save_terminal_content(gsh_active_terminal);
 }
 
-static const u8 gsh_font[3][7] = {
-    {0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0E},
-    {0x00, 0x00, 0x0F, 0x10, 0x0E, 0x01, 0x1E},
-    {0x00, 0x00, 0x11, 0x11, 0x1F, 0x11, 0x11}
-};
-
-static void draw_gsh_label(void) {
-    const u32 scale = 1u;
-    const u32 label_x = (u32)gsh_button_x + 5u;
-    const u32 label_y = (u32)gsh_button_y + 6u;
-    for (u32 letter = 0u; letter < 3u; letter++) {
-        for (u32 row = 0u; row < 7u; row++) {
-            for (u32 column = 0u; column < 5u; column++) {
-                if (gsh_font[letter][row] & (1u << (4u - column))) {
-                    fb_fill_rect(label_x + letter * 6u + column * scale,
-                                 label_y + row * scale, scale, scale,
-                                 GSH_BUTTON_TEXT_COLOR);
-                }
-            }
-        }
-    }
-}
-
 void gsh_button_draw_icon(int x, int y, u32 size) {
-    u32 scale = size / 7u;
-    if (scale == 0u) scale = 1u;
-    for (u32 row = 0u; row < 7u; row++) {
-        for (u32 column = 0u; column < 5u; column++) {
-            if (gsh_font[0][row] & (1u << (4u - column))) {
-                fb_fill_rect((u32)(x + (int)(column * scale)),
-                             (u32)(y + (int)(row * scale)), scale, scale,
-                             FB_COLOR(40u, 40u, 40u));
-            }
-        }
-    }
+    gsh_icon_draw(x, y, size);
 }
 
 void gsh_button_init(void) {
     u32 index;
 
-    button_init(&gsh_launch_button, "GSH", 20u, 20u, gui_scaled(28u), gui_scaled(19u),
+    button_init(&gsh_launch_button, "", 20u, 20u, gui_scaled(28u), gui_scaled(19u),
                 FB_COLOR(18, 28, 42), 0x00FFFFFFu);
     gsh_button_x = 20;
     gsh_button_y = 20;
@@ -284,12 +253,12 @@ void gsh_button_draw(void) {
                  gsh_launch_button.width, gsh_launch_button.height, background);
     fb_draw_rect((u32)gsh_button_x, (u32)gsh_button_y,
                  gsh_launch_button.width, gsh_launch_button.height,
-                 0x00FFFFFFu);
-    draw_gsh_label();
+                 GSH_PANEL_COLOR);
+    gsh_icon_draw((int)gsh_button_x + 3, (int)gsh_button_y, 21u);
     if (gsh_hovered) {
         fb_draw_rect((u32)gsh_button_x + 2u, (u32)gsh_button_y + 2u,
                      gsh_launch_button.width - 4u, gsh_launch_button.height - 4u,
-                     0x00FFFFFFu);
+                     GSH_PANEL_COLOR);
     }
 }
 
