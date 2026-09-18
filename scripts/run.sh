@@ -21,11 +21,11 @@ NOGRAPHIC=false
 GUI_DISPLAY_ARGS="-display gtk,zoom-to-fit=on"
 QEMU_DISPLAY_ARGS="-device VGA,edid=on,xres=1280,yres=720"
 
-# Use the host CPU feature set and a safe share of host memory by default.
-# Override GALIO_RAM_MB when a different guest size is desired.
+# Use a full 4 GB guest by default so networking and userland services have
+# enough memory in QEMU. Override GALIO_RAM_MB if a different guest size is desired.
 HOST_RAM_MB=$(awk '/MemTotal:/ { printf "%d", $2 / 1024 }' /proc/meminfo)
-GALIO_RAM_MB="${GALIO_RAM_MB:-$((HOST_RAM_MB / 2))}"
-if [ "${GALIO_RAM_MB}" -lt 128 ]; then GALIO_RAM_MB=128; fi
+GALIO_RAM_MB="${GALIO_RAM_MB:-4096}"
+if [ "${GALIO_RAM_MB}" -lt 4096 ]; then GALIO_RAM_MB=4096; fi
 QEMU_ACCEL_ARGS=""
 QEMU_CPU_ARGS="-cpu max"
 if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
@@ -109,8 +109,10 @@ fi
 # QEMU user networking provides outbound NAT through the host's real network.
 # The guest still needs DHCP or static IP configuration before kernel sockets
 # can use the interface. The disk remains Galio's image; no host disk is used.
-COMMON_ARGS="${QEMU_ACCEL_ARGS} ${QEMU_CPU_ARGS} -smp 1 ${QEMU_DISPLAY_ARGS} -cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m ${GALIO_RAM_MB}M -netdev user,id=net0,restrict=off -device e1000,netdev=net0"
-echo "Using ${QEMU_CPU_ARGS}, ${GALIO_RAM_MB} MB guest RAM, and Galio disk image ${DISK}"
+# This uses an e1000 NIC so Ethernet is exposed to the guest while still having
+# real host internet access via QEMU user networking.
+COMMON_ARGS="${QEMU_ACCEL_ARGS} ${QEMU_CPU_ARGS} -smp 1 ${QEMU_DISPLAY_ARGS} -cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m ${GALIO_RAM_MB}M -nic user,model=e1000,ipv6=on"
+echo "Using ${QEMU_CPU_ARGS}, ${GALIO_RAM_MB} MB guest RAM, Galio disk image ${DISK}, and e1000 user networking"
 
 # Run QEMU
 if [ "${NOGRAPHIC}" = true ]; then
