@@ -1,7 +1,7 @@
 #include "framebuffer.h"
 #include "common.h"
 
-#define GSH_PANEL_COLOR FB_COLOR(105u, 145u, 165u)
+#define GSH_PANEL_COLOR 0x00FFFFFFu
 
 static const char gsh_colon[7][5] = {
     {0, 0, 1, 0, 0},
