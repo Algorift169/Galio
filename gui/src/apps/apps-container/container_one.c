@@ -37,6 +37,7 @@ static apps_container_one_t apps_container_one = {
 
 extern void apps_container_all_app_icon_draw(int x, int y, u32 size, u32 dot_color);
 extern void gsh_button_draw_icon(int x, int y, u32 size);
+extern void gsh_button_draw_icon_colored(int x, int y, u32 size, u32 color);
 
 
 static u8 apps_container_one_point_in_round_rect(int px, int py, int x, int y,
@@ -160,7 +161,7 @@ static void apps_container_one_draw_gsh_button(void) {
     apps_container_one_draw_solid_round_rect(button_x, button_y, button_w, button_h,
                                              FB_COLOR(255u, 255u, 255u),
                                              FB_COLOR(255u, 255u, 255u), 7u);
-    gsh_button_draw_icon(button_x + 4, button_y + 3, 24u);
+    gsh_button_draw_icon_colored(button_x + 4, button_y + 3, 24u, FB_COLOR(18u, 28u, 42u));
 }
 
 void apps_container_one_init(int x, int y) {

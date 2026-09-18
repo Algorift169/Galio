@@ -223,6 +223,10 @@ void gsh_button_draw_icon(int x, int y, u32 size) {
     gsh_icon_draw(x, y, size);
 }
 
+void gsh_button_draw_icon_colored(int x, int y, u32 size, u32 color) {
+    gsh_icon_draw_with_color(x, y, size, color);
+}
+
 void gsh_button_init(void) {
     u32 index;
 

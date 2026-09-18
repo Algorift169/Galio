@@ -3,6 +3,19 @@
 
 #define GSH_PANEL_COLOR 0x00FFFFFFu
 
+static void gsh_draw_glyph_color(int x, int y, u32 dot_size, const char glyph[7][5], u32 color) {
+    for (u32 row = 0u; row < 7u; row++) {
+        for (u32 column = 0u; column < 5u; column++) {
+            if (glyph[row][column] == 0) {
+                continue;
+            }
+            fb_fill_rect((u32)(x + (int)(column * (int)dot_size)),
+                         (u32)(y + (int)(row * (int)dot_size)),
+                         dot_size, dot_size, color);
+        }
+    }
+}
+
 static const char gsh_colon[7][5] = {
     {0, 0, 1, 0, 0},
     {0, 0, 1, 0, 0},
@@ -34,19 +47,10 @@ static const char gsh_underscore[7][5] = {
 };
 
 static void gsh_draw_glyph(int x, int y, u32 dot_size, const char glyph[7][5], u32 color) {
-    for (u32 row = 0u; row < 7u; row++) {
-        for (u32 column = 0u; column < 5u; column++) {
-            if (glyph[row][column] == 0) {
-                continue;
-            }
-            fb_fill_rect((u32)(x + (int)(column * (int)dot_size)),
-                         (u32)(y + (int)(row * (int)dot_size)),
-                         dot_size, dot_size, color);
-        }
-    }
+    gsh_draw_glyph_color(x, y, dot_size, glyph, color);
 }
 
-void gsh_icon_draw(int x, int y, u32 size) {
+void gsh_icon_draw_with_color(int x, int y, u32 size, u32 color) {
     if (size < 20u) {
         size = 20u;
     }
@@ -62,9 +66,12 @@ void gsh_icon_draw(int x, int y, u32 size) {
     int offset_y = y + (int)((size - (7u * dot_size)) / 2u);
     int glyph_width = 5 * (int)dot_size;
     int gap = (int)dot_size;
-    u32 color = GSH_PANEL_COLOR;
 
-    gsh_draw_glyph(offset_x, offset_y, dot_size, gsh_colon, color);
-    gsh_draw_glyph(offset_x + glyph_width + gap, offset_y, dot_size, gsh_dollar, color);
-    gsh_draw_glyph(offset_x + (glyph_width * 2) + (gap * 2), offset_y, dot_size, gsh_underscore, color);
+    gsh_draw_glyph_color(offset_x, offset_y, dot_size, gsh_colon, color);
+    gsh_draw_glyph_color(offset_x + glyph_width + gap, offset_y, dot_size, gsh_dollar, color);
+    gsh_draw_glyph_color(offset_x + (glyph_width * 2) + (gap * 2), offset_y, dot_size, gsh_underscore, color);
+}
+
+void gsh_icon_draw(int x, int y, u32 size) {
+    gsh_icon_draw_with_color(x, y, size, GSH_PANEL_COLOR);
 }
