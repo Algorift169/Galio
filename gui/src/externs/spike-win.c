@@ -81,15 +81,14 @@ static void spike_draw_graph(window_t *window, const u8 *samples, u32 count) {
 
     for (i = 0u; i < count; i++) {
         u32 sample = samples[i];
-        u32 bar_width = chart_w / (count > 1u ? count : 1u);
+        u32 bar_width = chart_w / SPIKE_SAMPLE_COUNT;
         u32 bar_height = ((u32)sample * chart_h + 99u) / 100u;
-        if (bar_height < 4u) {
-            bar_height = 4u;
+        if (bar_height < 3u) {
+            bar_height = 3u;
         }
-        u32 x = chart_x + i * bar_width + (count > 1u ? 1u : 0u);
+        u32 x = chart_x + i * bar_width + 1u;
         u32 y = chart_y + chart_h - bar_height;
-        u32 w = (count > 1u && bar_width > 2u) ? bar_width - 2u :
-            (count > 1u ? 1u : chart_w);
+        u32 w = bar_width > 2u ? bar_width - 2u : 1u;
         u32 color = sample >= 80u ? FB_COLOR(220u, 70u, 70u) :
                     (sample >= 50u ? FB_COLOR(220u, 180u, 60u) :
                      FB_COLOR(80u, 210u, 100u));
@@ -352,10 +351,6 @@ u8 spike_window_run(const char *args, const char *current_dir) {
             display_server_surface_damage(window_id, 0u, 0u, window.width, window.height);
             spike_window_redraw(&window, samples, count);
         }
-
-        /* The display server repaints registered windows during background
-         * refreshes, so restore the spike-specific contents before sleeping. */
-        spike_window_redraw(&window, samples, count);
 
         process_accounting_set_idle(1u);
         __asm__ volatile("hlt" ::: "memory");

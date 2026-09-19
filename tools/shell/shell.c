@@ -2078,6 +2078,9 @@ void shell_run(void) {
         shell_poll_keyboard();
         shell_poll_mouse();
         for (volatile int i = 0; i < 10; i++);
+        process_accounting_set_idle(1u);
+        __asm__ volatile("hlt" ::: "memory");
+        process_accounting_set_idle(0u);
         process_yield();
     }
 
