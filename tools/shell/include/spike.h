@@ -26,5 +26,8 @@
 #include "common.h"
 
 u8 shell_spike_command(const char *args, const char *current_dir);
+u8 spike_window_run(const char *args, const char *current_dir);
+void spike_window_prepare_launch(void);
+u8 spike_window_launch_state(void);
 
 #endif /* GSH_SPIKE_H */

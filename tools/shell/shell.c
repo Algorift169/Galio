@@ -1477,6 +1477,9 @@ static void shell_execute_command(void) {
         SHELL_COLOR_OUT();
         shell_spike_command(input.buffer + 9, current_dir);
         SHELL_COLOR_RESET();
+        if (!shell_script_mode) shell_print_prompt();
+        input.len = 0;
+        return;
     } else if (strncmp(input.buffer, "gc ", 3) == 0) {
         SHELL_COLOR_OUT();
         char *args = input.buffer + 3;
@@ -2075,6 +2078,7 @@ void shell_run(void) {
         shell_poll_keyboard();
         shell_poll_mouse();
         for (volatile int i = 0; i < 10; i++);
+        process_yield();
     }
 
     shell_cursor_restore();

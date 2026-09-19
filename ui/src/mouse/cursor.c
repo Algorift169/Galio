@@ -145,18 +145,19 @@ void cursor_get_position(int *x, int *y) {
 }
 
 void cursor_deactivate(void) {
-    if (cursor_active) {
-        restore_previous_cell();
-        cursor_active = 0;
+    if (!cursor_initialized) {
+        return;
     }
+    cursor_visible = 1;
+    draw_cursor_icon();
 }
 
 void cursor_hide(void) {
     if (!cursor_initialized) {
         return;
     }
-    cursor_visible = 0;
-    cursor_deactivate();
+    cursor_visible = 1;
+    draw_cursor_icon();
 }
 
 void cursor_show(void) {

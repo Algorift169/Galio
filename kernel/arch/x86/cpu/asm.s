@@ -57,6 +57,10 @@ process_switch_asm:
     pushfq
     pop qword [rdi + 0x40]
     mov [rdi + 0x20], rbx
+    mov [rdi + 0x50], r12
+    mov [rdi + 0x58], r13
+    mov [rdi + 0x60], r14
+    mov [rdi + 0x68], r15
     mov [rdi + 0x48], rax
 
 .load_new:
@@ -66,6 +70,10 @@ process_switch_asm:
     mov rsp, [rsi + 0x00]
     mov rbp, [rsi + 0x08]
     mov rbx, [rsi + 0x20]
+    mov r12, [rsi + 0x50]
+    mov r13, [rsi + 0x58]
+    mov r14, [rsi + 0x60]
+    mov r15, [rsi + 0x68]
     push qword [rsi + 0x40]
     popfq
     mov rax, [rsi + 0x48]

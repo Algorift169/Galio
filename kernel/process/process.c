@@ -267,6 +267,7 @@ u32 process_create(void (*entry)(void), u32 priority) {
     }
     proc->pending_signals = 0;
     proc->exit_code = 0;
+    proc->accounting_idle = 0u;
     strncpy(proc->cwd, "/", PROCESS_PATH_MAX - 1);
     proc->cwd[PROCESS_PATH_MAX - 1] = 0;
     strncpy(proc->path, "/kernel/process", PROCESS_PATH_MAX - 1);

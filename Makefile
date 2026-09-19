@@ -192,6 +192,7 @@ SRCS = kernel/kmain.c \
        gui/src/apps/apps-container/alp.c \
        gui/src/apps/apps-container/container_one.c \
        gui/src/assets/app-icons/gsh.c \
+       gui/src/externs/spike-win.c \
        gui/src/gsh_button.c \
        gui/src/panel/panel.c \
        gui/src/panel/system_monitor_button.c \

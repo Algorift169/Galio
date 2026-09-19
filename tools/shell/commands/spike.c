@@ -30,6 +30,7 @@
 #include "mouse/cursor.h"
 #include "mouse/mouse.h"
 #include "gsh_button.h"
+#include "process.h"
 
 #define SPIKE_WIDTH 72
 #define SPIKE_HEIGHT 12
@@ -91,20 +92,19 @@ static void spike_draw(const u8 *samples, u32 count) {
     kprintf("\nCurrent: %u%%\n", count ? samples[count - 1] : 0);
 }
 
+static void spike_window_task_entry(void) {
+    spike_window_run("", (const char *)0);
+    process_exit(0);
+}
+
 u8 shell_spike_command(const char *args, const char *current_dir) {
-    u8 samples[SPIKE_WIDTH] = {0};
-    u8 ctrl_down = 0;
-    u32 count = 0;
-    u32 next_sample;
-    u32 terminal_id;
-    u32 terminal_event;
     (void)current_dir;
 
     if (args) {
         while (*args == ' ' || *args == '\t') args++;
         if (strcmp(args, "help") == 0 || strcmp(args, "-h") == 0 || strcmp(args, "--help") == 0) {
             kprintf("Usage: cpu-spike\n");
-            kprintf("Show live CPU utilization history. Press Ctrl+C to stop.\n");
+            kprintf("Show live CPU utilization history in a dedicated dashboard window.\n");
             return 1;
         }
         if (*args != 0) {
@@ -113,57 +113,20 @@ u8 shell_spike_command(const char *args, const char *current_dir) {
         }
     }
 
-    keyboard_reset_state();
-    keyboard_clear_pending_input();
-    enable_interrupts();
-    next_sample = pit_get_ticks();
-    cursor_deactivate();
-    spike_draw(samples, 0);
-    cursor_show();
-    terminal_id = gsh_button_get_active_window_id();
-    terminal_event = gsh_button_get_terminal_event();
-    gsh_button_set_monitor_active(1u);
-
-    for (;;) {
-        int mouse_x;
-        int mouse_y;
-        u8 mouse_buttons;
-
-        cursor_poll();
-        mouse_get_position(&mouse_x, &mouse_y);
-        mouse_buttons = mouse_get_buttons();
-        gsh_button_poll_pointer(mouse_x, mouse_y, mouse_buttons);
-
-        if (gsh_button_get_active_window_id() != terminal_id ||
-            gsh_button_get_terminal_event() != terminal_event) {
-            gsh_button_set_monitor_active(0u);
-            return 1;
-        }
-        if (spike_should_exit(&ctrl_down)) {
-            vga_set_color(0x0F);
-            kprintf("Stopping cpu-spike\n");
-            cursor_show();
-            gsh_button_set_monitor_active(0u);
-            return 1;
-        }
-
-        u32 now = pit_get_ticks();
-        if (!spike_sample_due(now, next_sample)) {
-            process_accounting_set_idle(1);
-            __asm__ volatile("hlt" ::: "memory");
-            process_accounting_set_idle(0);
-            continue;
-        }
-        next_sample = now;
-
-        if (count < SPIKE_WIDTH) {
-            samples[count++] = process_get_cpu_usage();
-        } else {
-            for (u32 i = 1; i < SPIKE_WIDTH; i++) samples[i - 1] = samples[i];
-            samples[SPIKE_WIDTH - 1] = process_get_cpu_usage();
-        }
-        cursor_deactivate();
-        spike_draw(samples, count);
-        cursor_show();
+    spike_window_prepare_launch();
+    u32 spike_pid = process_create(spike_window_task_entry, 1u);
+    if (spike_pid == 0u) {
+        kprintf("cpu-spike: failed to launch dashboard window\n");
+        return 0u;
     }
+
+    while (spike_window_launch_state() == 0u) {
+        process_yield();
+    }
+    if (spike_window_launch_state() == 2u) {
+        kprintf("cpu-spike: failed to create dashboard window\n");
+        return 0u;
+    }
+
+    return 1u;
 }

@@ -28,15 +28,20 @@
 
 static volatile u64 accounting_total_ticks;
 static volatile u64 accounting_idle_ticks;
-static volatile u8 accounting_idle_active;
 
 void process_accounting_tick(void) {
+    process_t *current = process_current();
+
     accounting_total_ticks++;
-    if (accounting_idle_active) accounting_idle_ticks++;
+    if (current && current->accounting_idle) accounting_idle_ticks++;
 }
 
 void process_accounting_set_idle(u8 idle) {
-    accounting_idle_active = idle ? 1 : 0;
+    process_t *current = process_current();
+
+    if (current) {
+        current->accounting_idle = idle ? 1u : 0u;
+    }
 }
 
 /* Scheduler tick handler - called by PIT and performs preemption */

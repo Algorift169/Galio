@@ -27,3 +27,10 @@ void display_server_client_destroy_window(u32 client_id, u32 window_id) {
     (void)client_id;
     display_server_destroy_window(window_id);
 }
+// Note: The client_id parameter is not used in the current implementation, but it
+// is included for potential future use or for consistency with the client-server architecture.
+void display_server_client_set_window_render_callback(u32 client_id, u32 window_id,
+                                                       void (*callback)(void)) {
+    (void)client_id;
+    display_server_set_window_render_callback(window_id, callback);
+}

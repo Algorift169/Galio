@@ -102,6 +102,7 @@ typedef struct {
     u8 maximized;
     u8 closed;
     u32 state;
+    void (*render_callback)(void);
 } display_server_window_t;
 
 typedef struct {
@@ -184,6 +185,7 @@ u8 display_server_focus_at_point(int x, int y);
 void display_server_show_window(u32 window_id);
 void display_server_hide_window(u32 window_id);
 void display_server_surface_damage(u32 window_id, u32 x, u32 y, u32 width, u32 height);
+void display_server_set_window_render_callback(u32 window_id, void (*callback)(void));
 
 void display_server_clipboard_set(const char *text);
 void display_server_clipboard_get(char *buffer, u32 buffer_size);

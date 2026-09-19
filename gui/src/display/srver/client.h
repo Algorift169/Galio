@@ -9,5 +9,7 @@ u32 display_server_client_create_surface(u32 client_id, u32 window_id, u32 width
 void display_server_client_set_window_title(u32 client_id, u32 window_id, const char *title);
 void display_server_client_move_window(u32 client_id, u32 window_id, int x, int y);
 void display_server_client_destroy_window(u32 client_id, u32 window_id);
+void display_server_client_set_window_render_callback(u32 client_id, u32 window_id,
+													   void (*callback)(void));
 
 #endif /* GUI_DISPLAY_CLIENT_H */

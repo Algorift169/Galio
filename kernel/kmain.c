@@ -498,6 +498,8 @@ void kmain(void *multiboot_ptr) {
 
     for (;;) {
         display_server_run_background();
+        process_accounting_set_idle(1u);
         __asm__ volatile("hlt");
+        process_accounting_set_idle(0u);
     }
 }

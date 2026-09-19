@@ -169,6 +169,8 @@ void display_server_tick(void) {
         return;
     }
 
+    cursor_show();
+
     if (display_output_refresh()) {
         desktop_init();
         display_server_relayout();
@@ -310,6 +312,9 @@ void display_server_output_refresh(void) {
         display_server_renderer_fill_rect((u32)window->x, (u32)window->y,
                                           window->width, window->height,
                                           FB_COLOR(64u, 64u, 72u));
+        if (window->render_callback) {
+            window->render_callback();
+        }
     }
 
     gsh_button_redraw_windows();
@@ -443,6 +448,7 @@ u32 display_server_create_window(u32 client_id, const char *title, int x, int y,
             g_display_server_state.windows[index].focused = 0u;
             g_display_server_state.windows[index].state = DISPLAY_SERVER_WINDOW_STATE_NORMAL;
             g_display_server_state.windows[index].closed = 0u;
+            g_display_server_state.windows[index].render_callback = (void (*)(void))0;
             g_display_server_state.windows[index].surface_id = display_server_create_surface(client_id, g_display_server_state.windows[index].id, width, height);
             if (g_display_server_state.windows[index].surface_id == DISPLAY_SERVER_SURFACE_ID_NONE) {
                 g_display_server_state.windows[index].closed = 1u;
@@ -491,6 +497,7 @@ void display_server_destroy_window(u32 window_id) {
             g_display_server_state.windows[index].surface_id = DISPLAY_SERVER_SURFACE_ID_NONE;
             g_display_server_state.windows[index].owner_client = DISPLAY_SERVER_CLIENT_ID_NONE;
             g_display_server_state.windows[index].state = DISPLAY_SERVER_WINDOW_STATE_HIDDEN;
+            g_display_server_state.windows[index].render_callback = (void (*)(void))0;
             g_display_server_state.windows[index].title[0] = '\0';
             g_display_server_state.window_count--;
             display_server_client_t *client = display_server_resources_find_client(owner_client);
@@ -744,6 +751,22 @@ void display_server_surface_damage(u32 window_id, u32 x, u32 y, u32 width, u32 h
         }
     }
 
+    g_display_server_state.redraw_pending = 1u;
+}
+
+void display_server_set_window_render_callback(u32 window_id, void (*callback)(void)) {
+    display_server_window_t *window;
+
+    if (!display_server_resource_validate_window(window_id)) {
+        return;
+    }
+
+    window = display_server_resources_find_window(window_id);
+    if (!window) {
+        return;
+    }
+
+    window->render_callback = callback;
     g_display_server_state.redraw_pending = 1u;
 }
 

@@ -24,35 +24,25 @@ static u8 previous_buttons;
  */
 static u32 cursor_background[12u * 18u];
 static const char cursor_shape[18][13] = {
+    "............",
     "#...........",
-    "##...........",
-    "#+#..........",
-    "#++#.........",
-    "#+++#........",
-    "#++++#.......",
-    "#++++++#......",
-    "#+++++++#.....",
-    "#++++++++#....",
-    "#++++++++++#...",
-    "#+++++++++++#..",
-    "#+++++++++++#..",
-    "#++++++++++++#...",
-    "#++++++++++#....",
-    ".#+++++++++#....",
-    ".....#++++#.....",
-    ".....#++++#.....",
-    ".....#++++#.....",
-    ".....#++++#.....",
-    "......#++++#.....",
-    "......#++++#......",
-    "........#++#.......",
-    "....... #++#........",
-    ".........#++#........",
-    ".........#++#........"
-    ".........#++#........"
-    ".........#+#........"
-    ".........#+#........"
-    "..........##........"
+    "##..........",
+    "###.........",
+    "####........",
+    "#####.......",
+    "######......",
+    "#######.....",
+    "########....",
+    "#########...",
+    "##########..",
+    "###########.",
+    "###########.",
+    "##########..",
+    "#########...",
+    "########....",
+    "#######.....",
+    "######.....",
+    "#####......"
 };
 static void save_cursor_background(void)
 {
@@ -132,6 +122,14 @@ void cursor_poll(void)
     u8 buttons = mouse_get_buttons();
 
     mouse_get_position(&x, &y);
+
+    // Handle cursor visibility and position updates to 
+    // prevent flickering and ensure the cursor is drawn correctly.
+    if (!cursor_visible) {
+        cursor_visible = 1u;
+        save_cursor_background();
+        draw_cursor();
+    }
 
     if (x != cursor_x || y != cursor_y) {
 
@@ -261,15 +259,20 @@ void cursor_get_position(int *x, int *y)
 
 void cursor_deactivate(void)
 {
-    if (cursor_visible) {
-        restore_cursor_background();
+    if (!cursor_visible) {
+        return;
     }
+    restore_cursor_background();
     cursor_visible = 0u;
 }
 
 void cursor_hide(void)
 {
-    cursor_deactivate();
+    if (!cursor_visible) {
+        return;
+    }
+    restore_cursor_background();
+    cursor_visible = 0u;
 }
 
 void cursor_show(void)
@@ -277,8 +280,7 @@ void cursor_show(void)
     if (cursor_visible) {
         return;
     }
-
-    cursor_visible = 1u;
     save_cursor_background();
+    cursor_visible = 1u;
     draw_cursor();
 }

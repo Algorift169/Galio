@@ -64,6 +64,10 @@ typedef struct {
     uintptr_t rax;
     uintptr_t rflags;
     uintptr_t rip;
+    uintptr_t r12;
+    uintptr_t r13;
+    uintptr_t r14;
+    uintptr_t r15;
     uintptr_t cs;
     uintptr_t user_rsp;
     uintptr_t user_ss;
@@ -117,6 +121,7 @@ typedef struct {
     u32 gid;
     u32 pending_signals;
     u32 exit_code;
+    u8 accounting_idle;
     char path[PROCESS_PATH_MAX];
     /* Kernel stack physical base (0 if allocated from kmalloc) */
     u32 kernel_stack_phys;

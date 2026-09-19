@@ -282,7 +282,13 @@ void gsh_button_set_hovered(u8 hovered) {
 }
 
 u8 gsh_button_is_input_enabled(void) {
+    /* Only the live, visible, unminimized terminal should consume shell keyboard
+     * input. Once a terminal is minimized or hidden, it must stop receiving
+     * keystrokes without terminating the shell loop itself. */
     return gsh_window_active && gsh_server_window_id != 0u &&
+           gsh_active_terminal != (terminal_window_t *)0u &&
+           gsh_active_terminal->visible &&
+           !gsh_active_terminal->minimized &&
            display_server_get_active_window_id() == gsh_server_window_id;
 }
 
@@ -516,6 +522,7 @@ static u8 gsh_focus_existing_window(void) {
     return 0u;
 }
 
+
 void gsh_button_click(void) {
     if (gsh_window_active) {
         if (gsh_launch_pressed) return;
@@ -524,6 +531,11 @@ void gsh_button_click(void) {
             desktop_draw();
             gsh_active_terminal->visible = 1u;
             gsh_active_terminal->minimized = 0u;
+            if (gsh_server_window_id != 0u &&
+                display_server_resource_validate_window(gsh_server_window_id)) {
+                display_server_show_window(gsh_server_window_id);
+                display_server_focus_window(gsh_server_window_id);
+            }
             terminal_window_set_bounds(gsh_active_terminal);
             gsh_draw_terminal_content(gsh_active_terminal);
             shell_set_exit_region(gsh_active_terminal->window.x +
@@ -594,6 +606,16 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
 
     if (!(buttons & 0x01u)) gsh_launch_pressed = 0u;
     if (!gsh_window_active || !gsh_active_terminal) {
+        cursor_show();
+        gsh_pointer_buttons = buttons;
+        return;
+    }
+
+    /* Minimized terminals are not interactive: ignore all pointer-driven window
+     * actions so a background monitor such as cpu-spike cannot re-enter the
+     * fullscreen/restore logic while hidden. */
+    if (gsh_active_terminal->minimized) {
+        cursor_show();
         gsh_pointer_buttons = buttons;
         return;
     }
@@ -609,10 +631,19 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
         if (control == TERMINAL_CONTROL_MINIMIZE) {
             gsh_launch_pressed = 1u;
             if (gsh_active_terminal == &gsh_window) {
+                u32 window_id = gsh_server_window_id;
                 gsh_save_terminal_content(gsh_active_terminal);
+                /* Minimize must leave the shell alive, but remove it from the
+                 * active input/focus path so the desktop can own input while the
+                 * terminal remains hidden. Keep the window id so the shell can be
+                 * restored later without losing its live session state. */
                 cursor_deactivate();
                 gsh_active_terminal->visible = 0u;
                 gsh_active_terminal->minimized = 1u;
+                if (window_id != 0u) {
+                    display_server_hide_window(window_id);
+                    display_server_focus_desktop();
+                }
                 fb_console_clear_bounds();
                 vga_clear_bounds();
                 shell_clear_exit_region();
@@ -622,6 +653,7 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
             } else {
                 u32 window_id = gsh_window_id_for_terminal(gsh_active_terminal);
                 gsh_active_terminal->visible = 0u;
+                gsh_active_terminal->minimized = 1u;
                 display_server_hide_window(window_id);
                 shell_clear_exit_region();
                 desktop_draw();

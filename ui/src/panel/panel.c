@@ -70,8 +70,6 @@ void panel_draw_header(void) {
         return;
     }
 
-    cursor_hide();
-    
     sysinfo_t sysinfo = sysinfo_get();
     DateTime now = kernel_time_get_datetime();
     u32 wall_seconds = now.hour * 3600u + now.minute * 60u + now.second;
@@ -216,7 +214,6 @@ static void panel_tick(registers_t *regs) {
         tick_count = 0;
         if (!panel_enabled) {
             sysinfo_t sysinfo = sysinfo_get();
-            cursor_hide();
 
             /* ROW 4: CPU value */
             char cpu_str[5];
@@ -238,8 +235,6 @@ static void panel_tick(registers_t *regs) {
             }
             if (x < 15) vga_write_cell(x++, 7, '%', PANEL_COLOR_RED);
             while (x < 16) vga_write_cell(x++, 7, ' ', PANEL_COLOR_RED);
-
-            cursor_show();
         } else {
             panel_draw_header();
         }

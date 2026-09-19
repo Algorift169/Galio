@@ -25,6 +25,7 @@ void display_server_resources_init(void) {
         g_display_server_state.windows[index].maximized = 0u;
         g_display_server_state.windows[index].closed = 1u;
         g_display_server_state.windows[index].state = DISPLAY_SERVER_WINDOW_STATE_NORMAL;
+        g_display_server_state.windows[index].render_callback = (void (*)(void))0;
         g_display_server_state.windows[index].title[0] = '\0';
     }
 
