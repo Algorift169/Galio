@@ -12,6 +12,7 @@
 #include "mouse/cursor.h"
 #include "keyboard.h"
 #include "gsh_button.h"
+#include "apps_container.h"
 #include "display_output.h"
 #include "gui_layout.h"
 #include "gui_scale.h"
@@ -345,6 +346,11 @@ void display_server_output_refresh_region(u32 x, u32 y, u32 width, u32 height) {
     u8 backbuffer_active;
     int right;
     int bottom;
+    const display_output_t *output;
+    int dock_x;
+    int dock_y;
+    int dock_right;
+    int dock_bottom;
 
     fb_get_info(&screen_width, &screen_height, NULL, NULL);
     if (x >= screen_width || y >= screen_height || width == 0u || height == 0u) return;
@@ -356,6 +362,16 @@ void display_server_output_refresh_region(u32 x, u32 y, u32 width, u32 height) {
     bottom = (int)(y + height);
 
     display_wrapper_draw_region(x, y, width, height);
+    output = display_output_get();
+    dock_x = output->usable_x + (int)(output->usable_width - apps_container_one_get_width()) / 2;
+    dock_y = output->usable_y + (int)output->usable_height -
+             (int)apps_container_one_get_height() - 16;
+    dock_right = dock_x + (int)apps_container_one_get_width();
+    dock_bottom = dock_y + (int)apps_container_one_get_height();
+    if (dock_x < right && dock_right > (int)x &&
+        dock_y < bottom && dock_bottom > (int)y) {
+        apps_container_one_draw();
+    }
     for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
         display_server_window_t *window = &g_display_server_state.windows[index];
         int window_right;
