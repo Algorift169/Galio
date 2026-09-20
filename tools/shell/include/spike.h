@@ -30,5 +30,6 @@ u8 spike_window_run(const char *args, const char *current_dir);
 void spike_window_prepare_launch(void);
 u8 spike_window_launch_state(void);
 void spike_window_restore(void);
+void spike_window_handle_pointer(int x, int y);
 
 #endif /* GSH_SPIKE_H */

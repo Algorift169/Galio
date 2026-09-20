@@ -81,6 +81,10 @@ static void panel_put_text(int x, int y, const char *text, u32 color) {
     }
 }
 
+void panel_draw_text(int x, int y, const char *text, u32 color) {
+    panel_put_text(x, y, text, color);
+}
+
 static void panel_put_centered_text(int x, int y, u32 width, u32 height,
                                     const char *text, u32 color) {
     u32 length = 0u;

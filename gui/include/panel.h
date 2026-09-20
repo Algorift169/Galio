@@ -6,6 +6,7 @@
 void panel_init(void);
 void panel_draw(void);
 void panel_draw_clock(void);
+void panel_draw_text(int x, int y, const char *text, u32 color);
 u8 panel_handle_click(int x, int y);
 
 void panel_system_monitor_button_init(int x, int y);

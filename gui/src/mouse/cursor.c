@@ -179,6 +179,7 @@ void cursor_poll(void)
             if (cursor_y >= display_output_get()->usable_y) {
         display_server_focus_at_point(cursor_x, cursor_y);
             }
+        spike_window_handle_pointer(cursor_x, cursor_y);
         if (!panel_handle_click(cursor_x, cursor_y) &&
             gsh_button_is_minimized_icon_at(cursor_x, cursor_y)) {
             gsh_button_click();

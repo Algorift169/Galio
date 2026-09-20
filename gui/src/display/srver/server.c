@@ -216,7 +216,6 @@ void display_server_handle_mouse_event(int x, int y, u8 buttons) {
 
     g_display_server_state.cursor_x = x;
     g_display_server_state.cursor_y = y;
-    g_display_server_state.redraw_pending = 1u;
 }
 
 void display_server_set_desktop_background(u32 color) {

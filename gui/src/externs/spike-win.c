@@ -13,6 +13,7 @@
 #include "display_output.h"
 #include "display_wrapper.h"
 #include "apps_container.h"
+#include "panel.h"
 #include "terminal_window.h"
 #include "srver/client.h"
 #include "srver/server.h"
@@ -31,6 +32,40 @@ static u32 spike_render_count;
 static u32 spike_window_id;
 static volatile u8 spike_restore_requested;
 
+static void spike_draw_frame(const window_t *window) {
+    u32 x;
+    u32 y;
+    u32 w;
+    u32 h;
+    u32 close_x;
+    u32 minimize_x;
+    u32 fullscreen_x;
+
+    if (!window) return;
+
+    x = (u32)window->x;
+    y = (u32)window->y;
+    w = window->width;
+    h = window->height;
+    fb_fill_rect(x, y, w, h, window->background);
+    fb_draw_hline(x, y, w, window->border_color);
+    fb_draw_hline(x, y + 14u, w, window->border_color);
+    fb_draw_hline(x, y + h - 1u, w, window->border_color);
+
+    close_x = x + w - 4u - 12u;
+    minimize_x = close_x - 2u - 12u;
+    fullscreen_x = minimize_x - 2u - 12u;
+    fb_fill_rect(fullscreen_x, y + 2u, 12u, 12u, FB_COLOR(80u, 210u, 100u));
+    fb_fill_rect(minimize_x, y + 2u, 12u, 12u, FB_COLOR(235u, 190u, 55u));
+    fb_fill_rect(close_x, y + 2u, 12u, 12u, FB_COLOR(235u, 70u, 70u));
+
+    if (window->name[0] != '\0') {
+        for (u32 i = 0u; i < strlen(window->name) && i < 32u; i++) {
+            fb_put_pixel(x + 8u + (i * 8u), y + 6u, window->title_color);
+        }
+    }
+}
+
 void spike_window_prepare_launch(void) {
     spike_launch_state = 0u;
 }
@@ -44,6 +79,7 @@ void spike_window_restore(void) {
         spike_restore_requested = 1u;
         display_server_show_window(spike_window_id);
         display_server_focus_window(spike_window_id);
+        display_server_output_refresh();
     }
 }
 
@@ -79,6 +115,19 @@ static void spike_draw_graph(window_t *window, const u8 *samples, u32 count) {
 
     fb_fill_rect(chart_x, chart_y, chart_w, chart_h, FB_COLOR(20u, 26u, 35u));
     fb_draw_rect(chart_x, chart_y, chart_w, chart_h, FB_COLOR(110u, 130u, 150u));
+
+    fb_fill_rect((u32)(window->x + 18), (u32)(window->y + 18), 5u, 7u,
+                 FB_COLOR(80u, 210u, 100u));
+    panel_draw_text(window->x + 26, window->y + 18, "GREEN FULLSCREEN",
+                    FB_COLOR(235u, 242u, 245u));
+    fb_fill_rect((u32)(window->x + 150), (u32)(window->y + 18), 5u, 7u,
+                 FB_COLOR(235u, 190u, 55u));
+    panel_draw_text(window->x + 158, window->y + 18, "YELLOW MINIMIZE",
+                    FB_COLOR(235u, 242u, 245u));
+    fb_fill_rect((u32)(window->x + 274), (u32)(window->y + 18), 5u, 7u,
+                 FB_COLOR(235u, 70u, 70u));
+    panel_draw_text(window->x + 282, window->y + 18, "RED CLOSE",
+                    FB_COLOR(235u, 242u, 245u));
 
     for (i = 0u; i < chart_w; i += 18u) {
         fb_draw_vline(chart_x + i, chart_y, chart_h, FB_COLOR(38u, 46u, 58u));
@@ -166,15 +215,29 @@ static u8 spike_window_control_at(const window_t *window, int x, int y) {
     return TERMINAL_CONTROL_NONE;
 }
 
+void spike_window_handle_pointer(int x, int y) {
+    if (!spike_render_window || spike_window_id == DISPLAY_SERVER_WINDOW_ID_NONE ||
+        display_server_get_active_window_id() != spike_window_id) {
+        return;
+    }
+
+    if (spike_window_control_at(spike_render_window, x, y) == TERMINAL_CONTROL_MINIMIZE) {
+        apps_container_one_set_spike_active(1u);
+        display_server_hide_window(spike_window_id);
+        display_server_focus_desktop();
+        display_server_output_refresh();
+    }
+}
+
 static void spike_window_redraw(window_t *window, const u8 *samples, u32 count) {
     if (!window) return;
-    win_border_draw(window, window->border_color, window->background);
+    spike_draw_frame(window);
     spike_draw_graph(window, samples, count);
     cursor_show();
 }
 
 static void spike_window_update_graph(window_t *window, const u8 *samples, u32 count) {
-    if (!window) return;
+    if (!window || display_server_get_active_window_id() != spike_window_id) return;
     spike_draw_graph(window, samples, count);
     cursor_show();
 }
@@ -264,10 +327,8 @@ u8 spike_window_run(const char *args, const char *current_dir) {
         left_pressed = (u8)((mouse_buttons & 0x01u) && !(last_mouse_buttons & 0x01u));
         left_held = (u8)(mouse_buttons & 0x01u);
 
-        if (display_server_get_active_window_id() != window_id &&
-            window_contains(&window, mouse_x, mouse_y) &&
-            left_pressed) {
-            display_server_focus_window(window_id);
+        if (left_pressed) {
+            display_server_focus_at_point(mouse_x, mouse_y);
         }
 
         if (display_server_get_active_window_id() == window_id) {
@@ -353,12 +414,14 @@ u8 spike_window_run(const char *args, const char *current_dir) {
         mouse_poll_position();
         cursor_show();
 
+        if (spike_restore_requested) {
+            spike_restore_requested = 0u;
+            minimized = 0u;
+            window.visible = 1u;
+            spike_window_redraw(&window, samples, count);
+        }
+
         if (minimized) {
-            if (spike_restore_requested) {
-                spike_restore_requested = 0u;
-                minimized = 0u;
-                spike_window_redraw(&window, samples, count);
-            }
             process_accounting_set_idle(1u);
             __asm__ volatile("hlt" ::: "memory");
             process_accounting_set_idle(0u);
