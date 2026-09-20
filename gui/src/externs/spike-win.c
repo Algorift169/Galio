@@ -379,8 +379,9 @@ u8 spike_window_run(const char *args, const char *current_dir) {
             }
 
             if (left_held && control == TERMINAL_CONTROL_NONE &&
-                window_contains(&window, mouse_x, mouse_y) &&
-                mouse_y >= window.y && mouse_y < window.y + 20) {
+                (window.dragging ||
+                 (window_contains(&window, mouse_x, mouse_y) &&
+                  mouse_y >= window.y && mouse_y < window.y + 20))) {
                 int old_x = window.x;
                 int old_y = window.y;
 
