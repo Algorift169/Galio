@@ -15,6 +15,7 @@ typedef struct {
     u32 width;
     u32 height;
     u32 app_count;
+    u8 spike_active;
     u32 app_slot_size;
     u32 background;
     u32 border_color;
@@ -28,6 +29,7 @@ static apps_container_one_t apps_container_one = {
     .width = APPS_CONTAINER_MIN_WIDTH,
     .height = APPS_CONTAINER_HEIGHT,
     .app_count = 0u,
+    .spike_active = 0u,
     .app_slot_size = 22u,
     .background = FB_COLOR(42u, 62u, 78u),
     .border_color = FB_COLOR(208u, 208u, 208u),
@@ -164,12 +166,29 @@ static void apps_container_one_draw_gsh_button(void) {
     gsh_button_draw_icon_colored(button_x + 1, button_y + 1, 32u, FB_COLOR(18u, 28u, 42u));
 }
 
+static void apps_container_one_draw_spike_button(void) {
+    int button_x = apps_container_one.x + (int)APPS_CONTAINER_PADDING +
+                   (int)APPS_CONTAINER_BUTTON_GAP + 34;
+    u32 button_y = (u32)(apps_container_one.y + ((int)apps_container_one.height - 34) / 2);
+
+    if (apps_container_one.app_count > 0u) button_x += 34 + (int)APPS_CONTAINER_BUTTON_GAP;
+    apps_container_one_draw_solid_round_rect(button_x, (int)button_y, 34u, 34u,
+                                             FB_COLOR(255u, 255u, 255u),
+                                             FB_COLOR(255u, 255u, 255u), 7u);
+    fb_fill_rect((u32)button_x + 10u, button_y + 7u, 14u, 20u, FB_COLOR(32u, 170u, 80u));
+    fb_fill_rect((u32)button_x + 12u, button_y + 9u, 10u, 16u, FB_COLOR(18u, 28u, 42u));
+    fb_fill_rect((u32)button_x + 14u, button_y + 11u, 6u, 2u, FB_COLOR(32u, 170u, 80u));
+    fb_fill_rect((u32)button_x + 14u, button_y + 15u, 6u, 2u, FB_COLOR(32u, 170u, 80u));
+    fb_fill_rect((u32)button_x + 14u, button_y + 19u, 6u, 2u, FB_COLOR(32u, 170u, 80u));
+}
+
 void apps_container_one_init(int x, int y) {
     apps_container_one.x = x;
     apps_container_one.y = y;
     apps_container_one.width = APPS_CONTAINER_MIN_WIDTH;
     apps_container_one.height = APPS_CONTAINER_HEIGHT;
     apps_container_one.app_count = 0u;
+    apps_container_one.spike_active = 0u;
     apps_container_one.visible = 1u;
 }
 
@@ -181,7 +200,7 @@ void apps_container_one_set_app_count(u32 app_count) {
 
     apps_container_one.app_count = app_count;
 
-    u32 total_slots = app_count > 0u ? app_count + 1u : 1u;
+    u32 total_slots = app_count + (apps_container_one.spike_active ? 1u : 0u) + 1u;
     u32 base_width = APPS_CONTAINER_MIN_WIDTH;
     u32 extra_width = (total_slots - 1u) * (apps_container_one.app_slot_size + APPS_CONTAINER_BUTTON_GAP);
     apps_container_one.width = base_width + extra_width;
@@ -198,6 +217,11 @@ void apps_container_one_set_app_count(u32 app_count) {
 
 }
 
+void apps_container_one_set_spike_active(u8 active) {
+    apps_container_one.spike_active = active ? 1u : 0u;
+    apps_container_one_set_app_count(apps_container_one.app_count);
+}
+
 void apps_container_one_draw(void) {
     if (!apps_container_one.visible) {
         return;
@@ -212,6 +236,22 @@ void apps_container_one_draw(void) {
     if (apps_container_one.app_count > 0u) {
         apps_container_one_draw_gsh_button();
     }
+    if (apps_container_one.spike_active) {
+        apps_container_one_draw_spike_button();
+    }
+}
+
+u8 apps_container_one_contains_spike(int x, int y) {
+    int button_x;
+    int button_y;
+
+    if (!apps_container_one.visible || !apps_container_one.spike_active) return 0u;
+    button_x = apps_container_one.x + (int)APPS_CONTAINER_PADDING +
+               (int)APPS_CONTAINER_BUTTON_GAP + 34;
+    if (apps_container_one.app_count > 0u) button_x += 34 + (int)APPS_CONTAINER_BUTTON_GAP;
+    button_y = apps_container_one.y + ((int)apps_container_one.height - 34) / 2;
+    return (u8)(x >= button_x && x < button_x + 34 &&
+                y >= button_y && y < button_y + 34);
 }
 
 u8 apps_container_one_contains(int x, int y) {

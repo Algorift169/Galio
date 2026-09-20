@@ -12,6 +12,7 @@
 #include "mouse/mouse.h"
 #include "display_output.h"
 #include "display_wrapper.h"
+#include "apps_container.h"
 #include "terminal_window.h"
 #include "srver/client.h"
 #include "srver/server.h"
@@ -27,6 +28,8 @@ static volatile u8 spike_launch_state;
 static window_t *spike_render_window;
 static const u8 *spike_render_samples;
 static u32 spike_render_count;
+static u32 spike_window_id;
+static volatile u8 spike_restore_requested;
 
 void spike_window_prepare_launch(void) {
     spike_launch_state = 0u;
@@ -34,6 +37,14 @@ void spike_window_prepare_launch(void) {
 
 u8 spike_window_launch_state(void) {
     return spike_launch_state;
+}
+
+void spike_window_restore(void) {
+    if (spike_window_id != DISPLAY_SERVER_WINDOW_ID_NONE) {
+        spike_restore_requested = 1u;
+        display_server_show_window(spike_window_id);
+        display_server_focus_window(spike_window_id);
+    }
 }
 
 static u8 spike_sample_due(u32 now, u32 next_sample) {
@@ -227,6 +238,7 @@ u8 spike_window_run(const char *args, const char *current_dir) {
         spike_launch_state = 2u;
         return 0u;
     }
+    spike_window_id = window_id;
     display_server_focus_window(window_id);
     spike_render_window = &window;
     spike_render_samples = samples;
@@ -269,6 +281,7 @@ u8 spike_window_run(const char *args, const char *current_dir) {
                 }
                 if (control == TERMINAL_CONTROL_MINIMIZE) {
                     minimized = 1u;
+                    apps_container_one_set_spike_active(1u);
                     display_server_hide_window(window_id);
                     display_server_focus_desktop();
                     last_mouse_buttons = mouse_buttons;
@@ -341,6 +354,11 @@ u8 spike_window_run(const char *args, const char *current_dir) {
         cursor_show();
 
         if (minimized) {
+            if (spike_restore_requested) {
+                spike_restore_requested = 0u;
+                minimized = 0u;
+                spike_window_redraw(&window, samples, count);
+            }
             process_accounting_set_idle(1u);
             __asm__ volatile("hlt" ::: "memory");
             process_accounting_set_idle(0u);
@@ -376,5 +394,7 @@ u8 spike_window_run(const char *args, const char *current_dir) {
     spike_render_count = 0u;
     display_server_client_set_window_render_callback(client_id, window_id, (void (*)(void))0);
     display_server_client_destroy_window(client_id, window_id);
+    spike_window_id = DISPLAY_SERVER_WINDOW_ID_NONE;
+    apps_container_one_set_spike_active(0u);
     return 1u;
 }

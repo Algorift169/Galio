@@ -4,6 +4,8 @@
 #include "mouse/mouse.h"
 #include "desktop.h"
 #include "gsh_button.h"
+#include "apps_container.h"
+#include "spike.h"
 #include "panel.h"
 #include "framebuffer.h"
 #include "srver/server.h"
@@ -180,6 +182,9 @@ void cursor_poll(void)
         if (!panel_handle_click(cursor_x, cursor_y) &&
             gsh_button_is_minimized_icon_at(cursor_x, cursor_y)) {
             gsh_button_click();
+        } else if (!panel_handle_click(cursor_x, cursor_y) &&
+                   apps_container_one_contains_spike(cursor_x, cursor_y)) {
+            spike_window_restore();
         } else if (!panel_handle_click(cursor_x, cursor_y) &&
             !gsh_button_is_any_terminal_control_at(cursor_x, cursor_y) &&
             gsh_button_contains(cursor_x, cursor_y)) {

@@ -566,10 +566,9 @@ void display_server_move_window(u32 window_id, int x, int y) {
         }
     }
 
-    /* Keep drag updates local to the client renderer. A full compositor refresh
-     * on every move causes the desktop to flash, while the current client path
-     * already clears and redraws the affected window bounds. */
-    g_display_server_state.redraw_pending = 0u;
+    /* Recompose after a move so windows exposed by an overlapping drag are
+     * restored through their normal render callbacks. */
+    g_display_server_state.redraw_pending = 1u;
 }
 
 void display_server_resize_window(u32 window_id, u32 width, u32 height) {
