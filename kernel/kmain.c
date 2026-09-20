@@ -501,5 +501,6 @@ void kmain(void *multiboot_ptr) {
         process_accounting_set_idle(1u);
         __asm__ volatile("hlt");
         process_accounting_set_idle(0u);
+        process_yield(); // Yield to other processes in the background
     }
 }

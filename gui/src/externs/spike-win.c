@@ -161,6 +161,12 @@ static void spike_window_redraw(window_t *window, const u8 *samples, u32 count) 
     cursor_show();
 }
 
+static void spike_window_update_graph(window_t *window, const u8 *samples, u32 count) {
+    if (!window) return;
+    spike_draw_graph(window, samples, count);
+    cursor_show();
+}
+
 static void spike_window_server_render(void) {
     if (spike_render_window) {
         spike_window_redraw(spike_render_window, spike_render_samples, spike_render_count);
@@ -348,8 +354,7 @@ u8 spike_window_run(const char *args, const char *current_dir) {
                 samples[SPIKE_SAMPLE_COUNT - 1u] = (u8)sample;
             }
             spike_render_count = count;
-            display_server_surface_damage(window_id, 0u, 0u, window.width, window.height);
-            spike_window_redraw(&window, samples, count);
+            spike_window_update_graph(&window, samples, count);
         }
 
         process_accounting_set_idle(1u);

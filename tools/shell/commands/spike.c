@@ -119,6 +119,7 @@ u8 shell_spike_command(const char *args, const char *current_dir) {
         kprintf("cpu-spike: failed to launch dashboard window\n");
         return 0u;
     }
+    process_detach(spike_pid);
 
     while (spike_window_launch_state() == 0u) {
         process_yield();

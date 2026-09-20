@@ -353,6 +353,16 @@ u32 process_create(void (*entry)(void), u32 priority) {
     return proc->pid;
 }
 
+void process_detach(u32 pid) {
+    process_t *proc = process_get_any(pid);
+
+    if (!proc || proc->state == PROCESS_ZOMBIE) {
+        return;
+    }
+
+    proc->parent_pid = 1u;
+}
+
 void process_free_address_space(process_t *proc) {
     if (!proc || !proc->pagedir) return;
     page_directory_t *pd = proc->pagedir;

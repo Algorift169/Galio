@@ -129,6 +129,7 @@ typedef struct {
 
 void process_init(void);
 u32 process_create(void (*entry)(void), u32 priority);
+void process_detach(u32 pid);
 u32 process_create_user_elf(const char *path);
 u32 process_create_kernel_service(const char *path);
 void process_set_boot_current(void);
