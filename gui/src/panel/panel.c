@@ -57,9 +57,11 @@ static const u8 panel_font_letter[26][7] = {
 
 static void panel_put_char(int x, int y, char character, u32 color) {
     const u8 *glyph = NULL;
+    static const u8 percent_glyph[7] = {0x19, 0x19, 0x02, 0x04, 0x08, 0x13, 0x13};
     u32 pixel = panel_font_pixel();
     if (character >= '0' && character <= '9') glyph = panel_font_digit[character - '0'];
     else if (character >= 'A' && character <= 'Z') glyph = panel_font_letter[character - 'A'];
+    else if (character == '%') glyph = percent_glyph;
     if (!glyph) return;
     for (u32 row = 0u; row < 7u; row++) {
         for (u32 column = 0u; column < 5u; column++) {
