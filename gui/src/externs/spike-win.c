@@ -13,7 +13,6 @@
 #include "display_output.h"
 #include "display_wrapper.h"
 #include "apps_container.h"
-#include "panel.h"
 #include "terminal_window.h"
 #include "srver/client.h"
 #include "srver/server.h"
@@ -122,16 +121,10 @@ static void spike_draw_graph(window_t *window, const u8 *samples, u32 count) {
 
     fb_fill_rect((u32)(window->x + 18), (u32)(window->y + 18), 5u, 7u,
                  FB_COLOR(80u, 210u, 100u));
-    panel_draw_text(window->x + 26, window->y + 18, "GREEN FULLSCREEN",
-                    FB_COLOR(235u, 242u, 245u));
     fb_fill_rect((u32)(window->x + 150), (u32)(window->y + 18), 5u, 7u,
                  FB_COLOR(235u, 190u, 55u));
-    panel_draw_text(window->x + 158, window->y + 18, "YELLOW MINIMIZE",
-                    FB_COLOR(235u, 242u, 245u));
     fb_fill_rect((u32)(window->x + 274), (u32)(window->y + 18), 5u, 7u,
                  FB_COLOR(235u, 70u, 70u));
-    panel_draw_text(window->x + 282, window->y + 18, "RED CLOSE",
-                    FB_COLOR(235u, 242u, 245u));
 
     for (i = 0u; i < chart_w; i += 18u) {
         fb_draw_vline(chart_x + i, chart_y, chart_h, FB_COLOR(38u, 46u, 58u));
