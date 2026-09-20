@@ -11,6 +11,7 @@
 #include "mouse/cursor.h"
 #include "mouse/mouse.h"
 #include "display_output.h"
+#include "display_wrapper.h"
 #include "terminal_window.h"
 #include "srver/client.h"
 #include "srver/server.h"
@@ -167,6 +168,11 @@ static void spike_window_update_graph(window_t *window, const u8 *samples, u32 c
     cursor_show();
 }
 
+static void spike_restore_drag_region(int x, int y, u32 width, u32 height) {
+    cursor_deactivate();
+    display_wrapper_draw_region((u32)x, (u32)y, width, height);
+}
+
 static void spike_window_server_render(void) {
     if (spike_render_window) {
         spike_window_redraw(spike_render_window, spike_render_samples, spike_render_count);
@@ -313,6 +319,7 @@ u8 spike_window_run(const char *args, const char *current_dir) {
                 window.y = mouse_y - window.drag_offset_y;
 
                 if (window.x != old_x || window.y != old_y) {
+                    spike_restore_drag_region(old_x, old_y, window.width, window.height);
                     display_server_client_move_window(client_id, window_id,
                                                       window.x, window.y);
                     spike_window_redraw(&window, samples, count);
