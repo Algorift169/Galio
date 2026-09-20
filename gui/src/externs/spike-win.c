@@ -332,6 +332,7 @@ u8 spike_window_run(const char *args, const char *current_dir) {
         u8 left_pressed;
         u8 left_held;
 
+        mouse_poll_position();
         mouse_get_position(&mouse_x, &mouse_y);
         mouse_buttons = mouse_get_buttons();
         left_pressed = (u8)((mouse_buttons & 0x01u) && !(last_mouse_buttons & 0x01u));
@@ -438,7 +439,6 @@ u8 spike_window_run(const char *args, const char *current_dir) {
             break;
         }
 
-        mouse_poll_position();
         if (!window.dragging) cursor_show();
 
         if (spike_restore_requested) {
