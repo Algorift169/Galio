@@ -233,17 +233,25 @@ void spike_window_handle_pointer(int x, int y) {
 }
 
 static void spike_window_redraw(window_t *window, const u8 *samples, u32 count) {
+    u8 cursor_was_visible;
+
     if (!window) return;
+    cursor_was_visible = cursor_is_visible();
+    cursor_deactivate();
     spike_draw_frame(window);
     spike_draw_graph(window, samples, count);
-    cursor_show();
+    if (cursor_was_visible) cursor_show();
 }
 
 static void spike_window_update_graph(window_t *window, const u8 *samples, u32 count) {
+    u8 cursor_was_visible;
+
     if (!window || !window->visible) return;
     if (display_server_get_active_window_id() == spike_window_id) {
+        cursor_was_visible = cursor_is_visible();
+        cursor_deactivate();
         spike_draw_graph(window, samples, count);
-        cursor_show();
+        if (cursor_was_visible) cursor_show();
         return;
     }
 
