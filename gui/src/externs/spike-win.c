@@ -350,7 +350,7 @@ u8 spike_window_run(const char *args, const char *current_dir) {
             break;
         }
 
-        cursor_poll();
+        mouse_poll_position();
         cursor_show();
 
         if (minimized) {
