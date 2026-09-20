@@ -113,6 +113,11 @@ u8 shell_spike_command(const char *args, const char *current_dir) {
         }
     }
 
+    if (spike_window_launch_state() == 1u) {
+        kprintf("cpu-spike: dashboard is already running\n");
+        return 1u;
+    }
+
     spike_window_prepare_launch();
     u32 spike_pid = process_create(spike_window_task_entry, 1u);
     if (spike_pid == 0u) {

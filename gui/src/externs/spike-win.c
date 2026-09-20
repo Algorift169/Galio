@@ -483,5 +483,6 @@ u8 spike_window_run(const char *args, const char *current_dir) {
     display_server_client_destroy_window(client_id, window_id);
     spike_window_id = DISPLAY_SERVER_WINDOW_ID_NONE;
     apps_container_one_set_spike_active(0u);
+    spike_launch_state = 0u;
     return 1u;
 }
