@@ -254,11 +254,7 @@ static void spike_window_update_graph(window_t *window, const u8 *samples, u32 c
     if (display_server_get_active_window_id() == spike_window_id) {
         spike_draw_graph(window, samples, count);
         cursor_show();
-        return;
     }
-
-    display_server_output_refresh_region((u32)window->x, (u32)window->y,
-                                         window->width, window->height);
 }
 
 static void spike_window_server_render(void) {
@@ -469,9 +465,6 @@ u8 spike_window_run(const char *args, const char *current_dir) {
         }
 
         if (minimized) {
-            process_accounting_set_idle(1u);
-            __asm__ volatile("hlt" ::: "memory");
-            process_accounting_set_idle(0u);
             process_yield();
             continue;
         }

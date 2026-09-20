@@ -72,6 +72,8 @@ void fb_draw_hline(u32 x, u32 y, u32 width, u32 color);
 void fb_draw_vline(u32 x, u32 y, u32 height, u32 color);
 void fb_draw_line(u32 x0, u32 y0, u32 x1, u32 y1, u32 color);
 void fb_draw_rect(u32 x, u32 y, u32 width, u32 height, u32 color);
+u8 fb_begin_backbuffer(u32 x, u32 y, u32 width, u32 height);
+void fb_end_backbuffer(u32 x, u32 y, u32 width, u32 height);
 u32 fb_make_color(u8 r, u8 g, u8 b, u8 a);
 void fb_get_info(u32 *width, u32 *height, u32 *pitch, u32 *bpp);
 

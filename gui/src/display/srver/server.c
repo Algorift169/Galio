@@ -279,8 +279,12 @@ void display_server_output_refresh(void) {
     u32 index;
     u32 order;
     u8 cursor_was_visible = cursor_is_visible();
+    u8 backbuffer_active;
 
     cursor_deactivate();
+    backbuffer_active = fb_begin_backbuffer(0u, 0u,
+                                            display_output_get()->width,
+                                            display_output_get()->height);
 
     /* Preserve the wallpaper: the server should repaint the desktop scene
      * without forcibly clearing the framebuffer first, otherwise the wallpaper
@@ -322,6 +326,11 @@ void display_server_output_refresh(void) {
 
     gsh_button_redraw_windows();
 
+    if (backbuffer_active) {
+        fb_end_backbuffer(0u, 0u, display_output_get()->width,
+                          display_output_get()->height);
+    }
+
     if (cursor_was_visible) cursor_show();
 }
 
@@ -333,6 +342,7 @@ void display_server_output_refresh_region(u32 x, u32 y, u32 width, u32 height) {
     u32 index;
     u32 order;
     u8 cursor_was_visible = cursor_is_visible();
+    u8 backbuffer_active;
     int right;
     int bottom;
 
@@ -341,6 +351,7 @@ void display_server_output_refresh_region(u32 x, u32 y, u32 width, u32 height) {
     if (width > screen_width - x) width = screen_width - x;
     if (height > screen_height - y) height = screen_height - y;
     cursor_deactivate();
+    backbuffer_active = fb_begin_backbuffer(x, y, width, height);
     right = (int)(x + width);
     bottom = (int)(y + height);
 
@@ -384,6 +395,7 @@ void display_server_output_refresh_region(u32 x, u32 y, u32 width, u32 height) {
     }
 
     gsh_button_redraw_windows();
+    if (backbuffer_active) fb_end_backbuffer(x, y, width, height);
     if (cursor_was_visible) cursor_show();
 }
 

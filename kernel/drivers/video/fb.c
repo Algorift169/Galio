@@ -24,9 +24,11 @@
 #include "paging.h"
 #include "kprintf.h"
 #include "fb_console.h"
+#include "mm/heap.h"
 
 #define FB_LINEAR_BASE 0xE0000000u
 #define FB_PAGE_MASK   (PAGE_SIZE - 1u)
+#define FB_BACKBUFFER_PIXELS (FB_DEFAULT_WIDTH * FB_DEFAULT_HEIGHT)
 
 static framebuffer_t g_fb = {
     .width = FB_DEFAULT_WIDTH,
@@ -39,6 +41,10 @@ static framebuffer_t g_fb = {
     .base = (volatile u8 *)FB_LINEAR_BASE,
     .initialized = 0
 };
+static u32 *g_fb_backbuffer;
+static volatile u8 *g_fb_draw_base;
+static u32 g_fb_draw_pitch;
+static u8 g_fb_backbuffer_active;
 
 static u8 fb_mask_valid(u8 position, u8 size, u32 bpp) {
     return size > 0u && size <= 8u && position < bpp && position + size <= bpp;
@@ -69,9 +75,14 @@ static void fb_write_pixel_raw(u32 x, u32 y, u32 value) {
     u64 offset;
     if (!g_fb.bytes || !g_fb.bytes_per_pixel ||
         x >= g_fb.width || y >= g_fb.height) return;
-    offset = (u64)y * g_fb.pitch + (u64)x * g_fb.bytes_per_pixel;
-    if (offset >= g_fb.bytes || (u64)g_fb.bytes_per_pixel > g_fb.bytes - offset) return;
-    volatile u8 *pixel = g_fb.base + offset;
+    offset = (u64)y * (g_fb_backbuffer_active ? g_fb_draw_pitch : g_fb.pitch) +
+             (u64)x * g_fb.bytes_per_pixel;
+    if (g_fb_backbuffer_active) {
+        if (offset >= (u64)FB_BACKBUFFER_PIXELS * sizeof(u32)) return;
+    } else if (offset >= g_fb.bytes || (u64)g_fb.bytes_per_pixel > g_fb.bytes - offset) {
+        return;
+    }
+    volatile u8 *pixel = g_fb_backbuffer_active ? g_fb_draw_base + offset : g_fb.base + offset;
     if (g_fb.bytes_per_pixel == 4u) {
         *(volatile u32 *)pixel = value;
         return;
@@ -93,9 +104,14 @@ static u32 fb_read_pixel_raw(u32 x, u32 y) {
     u64 offset;
     if (!g_fb.bytes || !g_fb.bytes_per_pixel ||
         x >= g_fb.width || y >= g_fb.height) return 0u;
-    offset = (u64)y * g_fb.pitch + (u64)x * g_fb.bytes_per_pixel;
-    if (offset >= g_fb.bytes || (u64)g_fb.bytes_per_pixel > g_fb.bytes - offset) return 0u;
-    volatile u8 *pixel = g_fb.base + offset;
+    offset = (u64)y * (g_fb_backbuffer_active ? g_fb_draw_pitch : g_fb.pitch) +
+             (u64)x * g_fb.bytes_per_pixel;
+    if (g_fb_backbuffer_active) {
+        if (offset >= (u64)FB_BACKBUFFER_PIXELS * sizeof(u32)) return 0u;
+    } else if (offset >= g_fb.bytes || (u64)g_fb.bytes_per_pixel > g_fb.bytes - offset) {
+        return 0u;
+    }
+    volatile u8 *pixel = g_fb_backbuffer_active ? g_fb_draw_base + offset : g_fb.base + offset;
     if (g_fb.bytes_per_pixel == 4u) {
         return *(volatile u32 *)pixel;
     }
@@ -456,6 +472,48 @@ void fb_draw_rect(u32 x, u32 y, u32 width, u32 height, u32 color) {
     fb_draw_hline(x, y + height - 1u, width, color);
     fb_draw_vline(x, y, height, color);
     fb_draw_vline(x + width - 1u, y, height, color);
+}
+
+u8 fb_begin_backbuffer(u32 x, u32 y, u32 width, u32 height) {
+    if (g_fb_backbuffer_active || !g_fb.initialized || !g_fb.base ||
+        g_fb.bytes_per_pixel != 4u || x >= g_fb.width || y >= g_fb.height ||
+        width == 0u || height == 0u || width > g_fb.width - x ||
+        height > g_fb.height - y || g_fb.width > FB_DEFAULT_WIDTH ||
+        g_fb.height > FB_DEFAULT_HEIGHT) {
+        return 0u;
+    }
+
+    if (!g_fb_backbuffer) {
+        g_fb_backbuffer = (u32 *)kmalloc(FB_BACKBUFFER_PIXELS * sizeof(u32));
+        if (!g_fb_backbuffer) return 0u;
+    }
+
+    for (u32 row = 0u; row < height; row++) {
+        for (u32 column = 0u; column < width; column++) {
+            g_fb_backbuffer[(y + row) * FB_DEFAULT_WIDTH + x + column] =
+                ((volatile u32 *)g_fb.base)[(u64)(y + row) * g_fb.pitch / 4u + x + column];
+        }
+    }
+
+    g_fb_draw_base = (volatile u8 *)g_fb_backbuffer;
+    g_fb_draw_pitch = FB_DEFAULT_WIDTH * sizeof(u32);
+    g_fb_backbuffer_active = 1u;
+    return 1u;
+}
+
+void fb_end_backbuffer(u32 x, u32 y, u32 width, u32 height) {
+    if (!g_fb_backbuffer_active) return;
+
+    for (u32 row = 0u; row < height; row++) {
+        for (u32 column = 0u; column < width; column++) {
+            ((volatile u32 *)g_fb.base)[(u64)(y + row) * g_fb.pitch / 4u + x + column] =
+                g_fb_backbuffer[(y + row) * FB_DEFAULT_WIDTH + x + column];
+        }
+    }
+
+    g_fb_draw_base = NULL;
+    g_fb_draw_pitch = 0u;
+    g_fb_backbuffer_active = 0u;
 }
 
 void fb_get_info(u32 *width, u32 *height, u32 *pitch, u32 *bpp) {
