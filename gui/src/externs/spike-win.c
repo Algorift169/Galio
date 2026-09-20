@@ -31,6 +31,8 @@ static const u8 *spike_render_samples;
 static u32 spike_render_count;
 static u32 spike_window_id;
 static volatile u8 spike_restore_requested;
+static volatile u8 spike_close_requested;
+static volatile u8 spike_minimize_requested;
 
 static void spike_draw_frame(const window_t *window) {
     u32 x;
@@ -68,6 +70,8 @@ static void spike_draw_frame(const window_t *window) {
 
 void spike_window_prepare_launch(void) {
     spike_launch_state = 0u;
+    spike_close_requested = 0u;
+    spike_minimize_requested = 0u;
 }
 
 u8 spike_window_launch_state(void) {
@@ -217,11 +221,20 @@ static u8 spike_window_control_at(const window_t *window, int x, int y) {
 
 void spike_window_handle_pointer(int x, int y) {
     if (!spike_render_window || spike_window_id == DISPLAY_SERVER_WINDOW_ID_NONE ||
-        display_server_get_active_window_id() != spike_window_id) {
+        !window_contains(spike_render_window, x, y)) {
         return;
     }
 
-    if (spike_window_control_at(spike_render_window, x, y) == TERMINAL_CONTROL_MINIMIZE) {
+    display_server_focus_at_point(x, y);
+    if (display_server_get_active_window_id() != spike_window_id) return;
+
+    u8 control = spike_window_control_at(spike_render_window, x, y);
+    if (control == TERMINAL_CONTROL_CLOSE) {
+        spike_close_requested = 1u;
+        return;
+    }
+    if (control == TERMINAL_CONTROL_MINIMIZE) {
+        spike_minimize_requested = 1u;
         apps_container_one_set_spike_active(1u);
         display_server_hide_window(spike_window_id);
         display_server_focus_desktop();
@@ -237,14 +250,15 @@ static void spike_window_redraw(window_t *window, const u8 *samples, u32 count) 
 }
 
 static void spike_window_update_graph(window_t *window, const u8 *samples, u32 count) {
-    if (!window || display_server_get_active_window_id() != spike_window_id) return;
-    spike_draw_graph(window, samples, count);
-    cursor_show();
-}
+    if (!window || !window->visible) return;
+    if (display_server_get_active_window_id() == spike_window_id) {
+        spike_draw_graph(window, samples, count);
+        cursor_show();
+        return;
+    }
 
-static void spike_restore_drag_region(int x, int y, u32 width, u32 height) {
-    cursor_deactivate();
-    display_wrapper_draw_region((u32)x, (u32)y, width, height);
+    display_server_output_refresh_region((u32)window->x, (u32)window->y,
+                                         window->width, window->height);
 }
 
 static void spike_window_server_render(void) {
@@ -393,16 +407,33 @@ u8 spike_window_run(const char *args, const char *current_dir) {
                 window.y = mouse_y - window.drag_offset_y;
 
                 if (window.x != old_x || window.y != old_y) {
-                    spike_restore_drag_region(old_x, old_y, window.width, window.height);
+                    cursor_deactivate();
                     display_server_client_move_window(client_id, window_id,
                                                       window.x, window.y);
-                    spike_window_redraw(&window, samples, count);
+                    display_server_output_refresh_region(
+                        (u32)(old_x < window.x ? old_x : window.x),
+                        (u32)(old_y < window.y ? old_y : window.y),
+                        (u32)((old_x + (int)window.width > window.x + (int)window.width ?
+                               old_x + (int)window.width : window.x + (int)window.width) -
+                              (old_x < window.x ? old_x : window.x)),
+                        (u32)((old_y + (int)window.height > window.y + (int)window.height ?
+                               old_y + (int)window.height : window.y + (int)window.height) -
+                              (old_y < window.y ? old_y : window.y)));
                 }
             } else if (!left_held) {
                 window.dragging = 0u;
                 window.drag_offset_x = 0;
                 window.drag_offset_y = 0;
             }
+        }
+
+        if (spike_close_requested) {
+            spike_close_requested = 0u;
+            should_exit = 1u;
+        }
+        if (spike_minimize_requested) {
+            spike_minimize_requested = 0u;
+            minimized = 1u;
         }
 
         last_mouse_buttons = mouse_buttons;
@@ -412,21 +443,13 @@ u8 spike_window_run(const char *args, const char *current_dir) {
         }
 
         mouse_poll_position();
-        cursor_show();
+        if (!window.dragging) cursor_show();
 
         if (spike_restore_requested) {
             spike_restore_requested = 0u;
             minimized = 0u;
             window.visible = 1u;
             spike_window_redraw(&window, samples, count);
-        }
-
-        if (minimized) {
-            process_accounting_set_idle(1u);
-            __asm__ volatile("hlt" ::: "memory");
-            process_accounting_set_idle(0u);
-            process_yield();
-            continue;
         }
 
         now = pit_get_ticks();
@@ -445,9 +468,14 @@ u8 spike_window_run(const char *args, const char *current_dir) {
             spike_window_update_graph(&window, samples, count);
         }
 
-        process_accounting_set_idle(1u);
-        __asm__ volatile("hlt" ::: "memory");
-        process_accounting_set_idle(0u);
+        if (minimized) {
+            process_accounting_set_idle(1u);
+            __asm__ volatile("hlt" ::: "memory");
+            process_accounting_set_idle(0u);
+            process_yield();
+            continue;
+        }
+
         process_yield();
     }
 

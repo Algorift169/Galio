@@ -127,7 +127,7 @@ void cursor_poll(void)
 
     // Handle cursor visibility and position updates to 
     // prevent flickering and ensure the cursor is drawn correctly.
-    if (!cursor_visible) {
+    if (!cursor_visible && !(buttons & 0x01u)) {
         cursor_visible = 1u;
         save_cursor_background();
         draw_cursor();
@@ -135,7 +135,7 @@ void cursor_poll(void)
 
     if (x != cursor_x || y != cursor_y) {
 
-        restore_cursor_background();
+        if (cursor_visible) restore_cursor_background();
 
         cursor_x = x;
         cursor_y = y;
@@ -155,8 +155,10 @@ void cursor_poll(void)
         if (cursor_y > max_y)
             cursor_y = max_y;
 
-        save_cursor_background();
-        draw_cursor();
+        if (cursor_visible) {
+            save_cursor_background();
+            draw_cursor();
+        }
     }
 
     gsh_button_set_hovered(
@@ -178,6 +180,7 @@ void cursor_poll(void)
     if (left_pressed) {
             if (cursor_y >= display_output_get()->usable_y) {
         display_server_focus_at_point(cursor_x, cursor_y);
+        display_server_output_refresh();
             }
         spike_window_handle_pointer(cursor_x, cursor_y);
         if (!panel_handle_click(cursor_x, cursor_y) &&
@@ -270,6 +273,11 @@ void cursor_deactivate(void)
     }
     restore_cursor_background();
     cursor_visible = 0u;
+}
+
+u8 cursor_is_visible(void)
+{
+    return cursor_visible;
 }
 
 void cursor_hide(void)

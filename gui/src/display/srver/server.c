@@ -6,6 +6,7 @@
 #include "clock.h"
 #include "framebuffer.h"
 #include "desktop.h"
+#include "display_wrapper.h"
 #include "panel.h"
 #include "mouse/mouse.h"
 #include "mouse/cursor.h"
@@ -277,6 +278,9 @@ void display_server_output_refresh(void) {
     u32 draw_count = 0u;
     u32 index;
     u32 order;
+    u8 cursor_was_visible = cursor_is_visible();
+
+    cursor_deactivate();
 
     /* Preserve the wallpaper: the server should repaint the desktop scene
      * without forcibly clearing the framebuffer first, otherwise the wallpaper
@@ -318,9 +322,69 @@ void display_server_output_refresh(void) {
 
     gsh_button_redraw_windows();
 
-    if (g_display_server_state.cursor_visible) {
-        cursor_rebase();
+    if (cursor_was_visible) cursor_show();
+}
+
+void display_server_output_refresh_region(u32 x, u32 y, u32 width, u32 height) {
+    u32 screen_width;
+    u32 screen_height;
+    u32 draw_order[DISPLAY_SERVER_MAX_WINDOWS];
+    u32 draw_count = 0u;
+    u32 index;
+    u32 order;
+    u8 cursor_was_visible = cursor_is_visible();
+    int right;
+    int bottom;
+
+    fb_get_info(&screen_width, &screen_height, NULL, NULL);
+    if (x >= screen_width || y >= screen_height || width == 0u || height == 0u) return;
+    if (width > screen_width - x) width = screen_width - x;
+    if (height > screen_height - y) height = screen_height - y;
+    cursor_deactivate();
+    right = (int)(x + width);
+    bottom = (int)(y + height);
+
+    display_wrapper_draw_region(x, y, width, height);
+    for (index = 0u; index < DISPLAY_SERVER_MAX_WINDOWS; index++) {
+        display_server_window_t *window = &g_display_server_state.windows[index];
+        int window_right;
+        int window_bottom;
+
+        if (window->closed || !window->visible ||
+            window->state == DISPLAY_SERVER_WINDOW_STATE_MINIMIZED ||
+            gsh_button_owns_window(window->id)) continue;
+        window_right = window->x + (int)window->width;
+        window_bottom = window->y + (int)window->height;
+        if (window->x >= right || window_right <= (int)x ||
+            window->y >= bottom || window_bottom <= (int)y) continue;
+        draw_order[draw_count++] = index;
     }
+
+    for (order = 0u; order < draw_count; order++) {
+        u32 lowest_order = order;
+        for (index = order + 1u; index < draw_count; index++) {
+            if (g_display_server_state.windows[draw_order[index]].z_order <
+                g_display_server_state.windows[draw_order[lowest_order]].z_order) {
+                lowest_order = index;
+            }
+        }
+        if (lowest_order != order) {
+            u32 swap = draw_order[order];
+            draw_order[order] = draw_order[lowest_order];
+            draw_order[lowest_order] = swap;
+        }
+    }
+
+    for (order = 0u; order < draw_count; order++) {
+        display_server_window_t *window = &g_display_server_state.windows[draw_order[order]];
+        display_server_renderer_fill_rect((u32)window->x, (u32)window->y,
+                                          window->width, window->height,
+                                          FB_COLOR(64u, 64u, 72u));
+        if (window->render_callback) window->render_callback();
+    }
+
+    gsh_button_redraw_windows();
+    if (cursor_was_visible) cursor_show();
 }
 
 void display_server_renderer_clear(u32 color) {

@@ -11,6 +11,7 @@ void cursor_set_position(int x, int y);
 void cursor_move(int dx, int dy);
 void cursor_get_position(int *x, int *y);
 void cursor_deactivate(void);
+u8 cursor_is_visible(void);
 void cursor_hide(void);
 void cursor_show(void);
 

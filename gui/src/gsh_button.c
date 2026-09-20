@@ -426,7 +426,7 @@ static u8 gsh_toggle_fullscreen(terminal_window_t *terminal) {
                                      terminal->window.height);
     }
     if (was_maximized) {
-        display_server_output_refresh();
+         display_server_output_refresh();
     }
     cursor_deactivate();
     gsh_draw_terminal_content(terminal);
@@ -654,9 +654,20 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
         shell_set_exit_region(terminal->window.x + (int)terminal->window.width - 16,
                       terminal->window.y + 2, 12, 12);
 
-        display_server_output_refresh();
+         display_server_output_refresh_region(
+             (u32)(old_window_x < terminal->window.x ? old_window_x : terminal->window.x),
+             (u32)(old_window_y < terminal->window.y ? old_window_y : terminal->window.y),
+             (u32)((old_window_x + (int)terminal->window.width >
+                 terminal->window.x + (int)terminal->window.width ?
+                 old_window_x + (int)terminal->window.width :
+                 terminal->window.x + (int)terminal->window.width) -
+                (old_window_x < terminal->window.x ? old_window_x : terminal->window.x)),
+             (u32)((old_window_y + (int)terminal->window.height >
+                 terminal->window.y + (int)terminal->window.height ?
+                 old_window_y + (int)terminal->window.height :
+                 terminal->window.y + (int)terminal->window.height) -
+                (old_window_y < terminal->window.y ? old_window_y : terminal->window.y)));
         gsh_restore_terminal_cursor(terminal);
-        cursor_show();
     }
 
     gsh_pointer_buttons = buttons;

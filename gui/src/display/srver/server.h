@@ -195,6 +195,7 @@ void display_server_cursor_set_type(u32 type);
 u32 display_server_create_surface(u32 client_id, u32 window_id, u32 width, u32 height);
 void display_server_output_init(void);
 void display_server_output_refresh(void);
+void display_server_output_refresh_region(u32 x, u32 y, u32 width, u32 height);
 void display_server_renderer_clear(u32 color);
 void display_server_renderer_fill_rect(u32 x, u32 y, u32 width, u32 height, u32 color);
 void display_server_renderer_draw_line(int x0, int y0, int x1, int y1, u32 color);
