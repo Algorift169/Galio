@@ -484,6 +484,10 @@ void fb_console_begin_prompt_line(void) {
     if (!console_ready) return;
     u32 left = console_bounds_enabled ? console_bounds_x : 0u;
     u32 width = console_bounds_enabled ? console_bounds_width : console_columns;
+    if (console_row >= console_rows) return;
+    for (u32 column = left; column < left + width; column++) {
+        console_cells[console_row][column] = (u16)' ';
+    }
     fb_fill_rect(left * console_cell_width, console_row * console_cell_height,
                  width * console_cell_width, console_cell_height,
                  console_background);
