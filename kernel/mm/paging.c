@@ -35,11 +35,22 @@
 #define KERNEL_PDE_START (KERNEL_BASE >> 22)
 #define PAGING_ALLOC_START 0x01600000u
 #define PAGING_ALLOC_END   0x04000000u
+#define MMIO_VA_START      0xD2000000u
+#define MMIO_VA_END        0xE0000000u
+#define MMIO_MAX_MAPPINGS  128u
+
+typedef struct {
+    uintptr_t base;
+    u32 pages;
+    void *returned;
+    u8 active;
+} mmio_mapping_t;
 
 static page_directory_t page_directory_pool[MAX_PAGE_DIRS];
 static u32 page_directory_count = 0;
 static page_directory_t *kernel_pd = NULL;
 static page_directory_t *current_page_directory = NULL;
+static mmio_mapping_t mmio_mappings[MMIO_MAX_MAPPINGS];
 
 static inline u32 get_page_directory_index(uintptr_t vaddr) {
     return (u32)((vaddr >> 21) & 0x1FFu);
@@ -641,6 +652,82 @@ void paging_unmap_kernel(uintptr_t vaddr) {
             : "r"(vaddr)
             : "memory"
         );
+    }
+}
+
+static u8 mmio_range_overlaps(uintptr_t base, u32 pages,
+                              const mmio_mapping_t *mapping) {
+    uintptr_t end = base + (uintptr_t)pages * PAGE_SIZE;
+    uintptr_t mapping_end;
+
+    if (!mapping->active) return 0;
+    mapping_end = mapping->base + (uintptr_t)mapping->pages * PAGE_SIZE;
+    return base < mapping_end && mapping->base < end;
+}
+
+void *mmio_map_physical(u64 phys, u64 size) {
+    u64 phys_offset;
+    u64 page_size;
+    uintptr_t candidate;
+    u32 pages;
+    u32 slot = MMIO_MAX_MAPPINGS;
+
+    if (!kernel_pd || !size) return NULL;
+    phys_offset = phys & (PAGE_SIZE - 1u);
+    page_size = (size + phys_offset + PAGE_SIZE - 1u) &
+                ~((u64)PAGE_SIZE - 1u);
+    if (page_size == 0 || page_size > (u64)(MMIO_VA_END - MMIO_VA_START)) {
+        return NULL;
+    }
+    pages = (u32)(page_size / PAGE_SIZE);
+
+    for (u32 i = 0; i < MMIO_MAX_MAPPINGS; i++) {
+        if (!mmio_mappings[i].active) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == MMIO_MAX_MAPPINGS) return NULL;
+
+    for (candidate = MMIO_VA_START;
+         candidate <= MMIO_VA_END - (uintptr_t)page_size;
+         candidate += PAGE_SIZE) {
+        u8 occupied = 0;
+        for (u32 i = 0; i < MMIO_MAX_MAPPINGS; i++) {
+            if (mmio_range_overlaps(candidate, pages, &mmio_mappings[i])) {
+                occupied = 1;
+                break;
+            }
+        }
+        if (!occupied) break;
+    }
+    if (candidate > MMIO_VA_END - (uintptr_t)page_size) return NULL;
+
+    for (u32 i = 0; i < pages; i++) {
+        paging_map_kernel(candidate + (uintptr_t)i * PAGE_SIZE,
+                          (uintptr_t)(phys & ~((u64)PAGE_SIZE - 1u)) +
+                              (uintptr_t)i * PAGE_SIZE,
+                          PAGE_PRESENT | PAGE_RW | PAGE_NOCACHE);
+    }
+
+    mmio_mappings[slot].base = candidate;
+    mmio_mappings[slot].pages = pages;
+    mmio_mappings[slot].returned = (void *)(candidate + (uintptr_t)phys_offset);
+    mmio_mappings[slot].active = 1;
+    return mmio_mappings[slot].returned;
+}
+
+void mmio_unmap_physical(void *virt) {
+    if (!virt) return;
+    for (u32 i = 0; i < MMIO_MAX_MAPPINGS; i++) {
+        if (mmio_mappings[i].active && mmio_mappings[i].returned == virt) {
+            for (u32 page = 0; page < mmio_mappings[i].pages; page++) {
+                paging_unmap_kernel(mmio_mappings[i].base +
+                                    (uintptr_t)page * PAGE_SIZE);
+            }
+            mmio_mappings[i].active = 0;
+            return;
+        }
     }
 }
 

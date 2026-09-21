@@ -41,11 +41,10 @@
 #include "arch/x86/cpu.h"
 #include "arch/x86/irq.h"
 #include "mm/dma.h"
+#include "kernel/workqueue.h"
 
 #define E1000_VENDOR_ID 0x8086
 #define E1000_DEVICE_ID 0x100E
-#define E1000_MMIO_BASE 0xD1000000u
-
 /* Registers */
 #define REG_CTRL    0x00000
 #define REG_STATUS  0x00008
@@ -58,6 +57,7 @@
 #define STATUS_LU      (1 << 1)
 #define STATUS_SPEED_100    (1 << 3)
 #define STATUS_SPEED_1000   (1 << 4)
+#define E1000_LINK_DEBOUNCE_SAMPLES 8u
 
 /* RX */
 #define REG_RCTL    0x00100
@@ -78,6 +78,7 @@
 
 /* RCTL bits */
 #define RCTL_EN     (1 << 1)
+#define RCTL_BAM    (1u << 15)
 #define RCTL_BSIZE_2048 (0 << 16)
 
 #define IMS_TXDW    (1u << 0)
@@ -133,26 +134,21 @@ typedef struct {
     void *rx_buf_virt[E1000_RX_DESC];
     u32 rx_buf_phys[E1000_RX_DESC];
     u32 rx_next;
+    u8 link_state;
+    u8 link_candidate;
+    u8 link_samples;
 } e1000_priv_t;
 
 static net_device_t *e1000_irq_device;
 static volatile u8 e1000_rx_pending;
 static volatile u8 e1000_tx_pending;
+static volatile u8 e1000_work_pending;
 
-static void *map_physical_region(u64 phys, u32 size) {
-    if (!size || phys > 0xFFFFFFFFu ||
-        phys + size - 1 > 0xFFFFFFFFu) {
-        return NULL;
-    }
+static int e1000_poll_rx(net_device_t *dev);
+static int e1000_link_status(struct net_device *dev);
 
-    u32 pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-    for (u32 i = 0; i < pages; i++) {
-        paging_map_kernel(E1000_MMIO_BASE + i * PAGE_SIZE,
-                          (u32)phys + i * PAGE_SIZE,
-                          PAGE_PRESENT | PAGE_RW | PAGE_NOCACHE);
-    }
-
-    return (void *)(uintptr_t)E1000_MMIO_BASE;
+static void e1000_work(void *arg) {
+    (void)e1000_poll_rx((net_device_t *)arg);
 }
 
 static inline void mmio_write32(void *base, u32 offset, u32 val) {
@@ -209,7 +205,7 @@ static int e1000_hw_init(e1000_priv_t *p) {
     mmio_write32(mmio, REG_RDT, E1000_RX_DESC - 1);
 
     /* enable receiver */
-    mmio_write32(mmio, REG_RCTL, RCTL_EN | RCTL_BSIZE_2048);
+    mmio_write32(mmio, REG_RCTL, RCTL_EN | RCTL_BAM | RCTL_BSIZE_2048);
     mmio_write32(mmio, REG_IMS, IMS_RXT0 | IMS_RXDMT0 | IMS_TXDW);
     (void)mmio_read32(mmio, REG_ICR);
 
@@ -225,16 +221,21 @@ static void e1000_irq_handler(registers_t *regs) {
     if (!e1000_irq_device || !e1000_irq_device->priv) return;
     e1000_priv_t *p = (e1000_priv_t *)e1000_irq_device->priv;
     u32 cause = mmio_read32(p->mmio, REG_ICR);
+    if (!(cause & (IMS_RXT0 | IMS_RXDMT0 | IMS_TXDW))) return;
     if (cause & (IMS_RXT0 | IMS_RXDMT0)) e1000_rx_pending = 1;
     if (cause & IMS_TXDW) e1000_tx_pending = 1;
+    if (!e1000_work_pending) {
+        e1000_work_pending = 1;
+        workqueue_schedule(e1000_work, e1000_irq_device);
+    }
 }
 
 static int e1000_poll_rx(net_device_t *dev) {
-    if (!e1000_rx_pending && !e1000_tx_pending) return 0;
+    e1000_work_pending = 0;
     e1000_priv_t *p = (e1000_priv_t *)dev->priv;
     void *mmio = p->mmio;
 
-    if (e1000_tx_pending) {
+    if (e1000_tx_pending || p->tx_inflight > 0u) {
         e1000_tx_pending = 0;
         while (p->tx_inflight > 0) {
             struct e1000_tx_desc *d = &p->tx_ring[p->tx_clean];
@@ -320,10 +321,38 @@ static void e1000_configure_ctrl(void *mmio) {
 }
 
 static int e1000_link_status(struct net_device *dev) {
+    u8 raw_link;
     if (!dev || !dev->priv) return 0;
     e1000_priv_t *p = (e1000_priv_t *)dev->priv;
     u32 status = mmio_read32(p->mmio, REG_STATUS);
-    return (status & STATUS_LU) ? 1 : 0;
+    raw_link = (status & STATUS_LU) ? 1u : 0u;
+
+    if (raw_link == p->link_state) {
+        p->link_candidate = raw_link;
+        p->link_samples = 0u;
+        return p->link_state;
+    }
+
+    if (raw_link != p->link_candidate) {
+        p->link_candidate = raw_link;
+        p->link_samples = 1u;
+        return p->link_state;
+    }
+
+    if (p->link_samples < E1000_LINK_DEBOUNCE_SAMPLES) {
+        p->link_samples++;
+    }
+
+    if (p->link_samples >= E1000_LINK_DEBOUNCE_SAMPLES) {
+        if (p->link_state != raw_link) {
+            p->link_state = raw_link;
+            p->link_samples = 0u;
+            kprintf("e1000: link became %s\n", raw_link ? "active" : "inactive");
+        } else {
+            p->link_samples = 0u;
+        }
+    }
+    return p->link_state;
 }
 
 static int e1000_speed_mbps(struct net_device *dev) {
@@ -342,7 +371,7 @@ static int e1000_open(struct net_device *dev) {
         e1000_enable_pci_device(p->pci);
         u64 phys = p->pci->bars[0];
         p->mmio_phys = phys;
-        p->mmio = map_physical_region(phys, 0x20000);
+        p->mmio = mmio_map_physical(phys, 0x20000);
         if (!p->mmio) {
             kprintf("e1000: mmio mapping unavailable in this environment; skipping Ethernet init\n");
             return -1;
@@ -376,6 +405,12 @@ static int e1000_stop(struct net_device *dev) {
 }
 
 static int e1000_probe(pci_device_t *pd) {
+    if (!pd || pd->vendor_id != E1000_VENDOR_ID ||
+        (pd->device_id != 0x100Eu && pd->device_id != 0x100Fu &&
+         pd->device_id != 0x1010u && pd->device_id != 0x10D3u &&
+         pd->device_id != 0x10CEu && pd->device_id != 0x10DEu &&
+         pd->device_id != 0x1501u && pd->device_id != 0x1533u &&
+         pd->device_id != 0x0D3Au)) return 0;
     kprintf("e1000: detected PCI device %04x:%04x at %u:%u.%u\n",
             pd->vendor_id, pd->device_id, pd->bus, pd->device, pd->function);
 
@@ -428,7 +463,12 @@ static int e1000_probe(pci_device_t *pd) {
     }
 
     e1000_irq_device = ndev;
-    if (pd->irq_line < 16) irq_register_handler(pd->irq_line, e1000_irq_handler);
+    if (pci_enable_msi(pd, 48u) == 0) {
+        interrupt_install_handler(48u, e1000_irq_handler);
+        kprintf("e1000: MSI enabled on vector 48\n");
+    } else if (pd->irq_line < 16u) {
+        irq_register_handler(pd->irq_line, e1000_irq_handler);
+    }
 
     kprintf("e1000: registered net device %s\n", ndev->name);
     return 0;

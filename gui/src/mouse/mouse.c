@@ -23,10 +23,28 @@ static u32 mouse_event_head = 0u;
 static u32 mouse_event_tail = 0u;
 static u64 mouse_event_sequence = 0u;
 
-static void wait_input(void) { while (inb(STATUS) & INBUF) {} }
-static void wait_output(void) { while (!(inb(STATUS) & OUTBUF)) {} }
-static void send_aux(u8 value) {
-    wait_input(); outb(CMD, 0xD4); wait_input(); outb(DATA, value); wait_output(); (void)inb(DATA);
+static u8 wait_input(void) {
+    for (u32 timeout = 0; timeout < 100000u; timeout++) {
+        if (!(inb(STATUS) & INBUF)) return 1u;
+    }
+    return 0u;
+}
+
+static u8 wait_output(void) {
+    for (u32 timeout = 0; timeout < 100000u; timeout++) {
+        if (inb(STATUS) & OUTBUF) return 1u;
+    }
+    return 0u;
+}
+
+static u8 send_aux(u8 value) {
+    if (!wait_input()) return 0u;
+    outb(CMD, 0xD4);
+    if (!wait_input()) return 0u;
+    outb(DATA, value);
+    if (!wait_output()) return 0u;
+    (void)inb(DATA);
+    return 1u;
 }
 
 static void mouse_enqueue_event(s8 dx, s8 dy, u8 next_buttons, s8 wheel) {
@@ -54,19 +72,22 @@ static void mouse_enqueue_event(s8 dx, s8 dy, u8 next_buttons, s8 wheel) {
 }
 
 void mouse_init(void) {
-    wait_input(); outb(CMD, 0xA8);
-    send_aux(0xF6);
-    send_aux(0xF4);
+    u8 mouse_ready = 1u;
+
+    if (!wait_input()) mouse_ready = 0u;
+    if (mouse_ready) outb(CMD, 0xA8);
+    if (mouse_ready && !send_aux(0xF6)) mouse_ready = 0u;
+    if (mouse_ready && !send_aux(0xF4)) mouse_ready = 0u;
 
     /* Force the wheel-capable 4-byte packet format that the parser expects.
        Without this, fast motion will desynchronize the packet stream and the
        cursor will visibly shake or fall back as bytes are misread. */
-    send_aux(0xF3);
-    send_aux(0xC8);
-    send_aux(0xF3);
-    send_aux(0x64);
-    send_aux(0xF3);
-    send_aux(0x50);
+    if (mouse_ready && !send_aux(0xF3)) mouse_ready = 0u;
+    if (mouse_ready && !send_aux(0xC8)) mouse_ready = 0u;
+    if (mouse_ready && !send_aux(0xF3)) mouse_ready = 0u;
+    if (mouse_ready && !send_aux(0x64)) mouse_ready = 0u;
+    if (mouse_ready && !send_aux(0xF3)) mouse_ready = 0u;
+    if (mouse_ready && !send_aux(0x50)) mouse_ready = 0u;
 
     mouse_x = 512; mouse_y = 384; packet_index = 0; packet_length = 4u; buttons = 0; scroll_delta = 0;
     mouse_event_head = 0u;

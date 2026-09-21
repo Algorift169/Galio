@@ -107,6 +107,7 @@ SRCS = kernel/kmain.c \
        kernel/process/spinlock.c \
        kernel/security/security.c \
        kernel/arch/x86/cpu/irq.c \
+       kernel/arch/x86/cpu/apic.c \
        kernel/arch/x86/cpu/isr.c \
        kernel/mm/paging.c \
        kernel/mm/pmem.c \
@@ -162,6 +163,7 @@ SRCS = kernel/kmain.c \
        kernel/time/sched_clock.c \
        kernel/time/timeconv.c \
        kernel/time/sleep_timeout.c \
+       kernel/workqueue.c \
        kernel/power/power_main.c \
        kernel/power/power_suspend.c \
        kernel/power/power_process.c \
@@ -212,6 +214,7 @@ SRCS = kernel/kmain.c \
        gui/src/mouse/cursor.c \
        kernel/pci/pci.c \
        kernel/drivers/net/e1000.c \
+       kernel/drivers/net/rtl8139.c \
        kernel/dev/device.c \
        kernel/dev/device_manager.c \
        kernel/drivers/net/wifi.c \
@@ -229,6 +232,8 @@ SRCS = kernel/kmain.c \
        kernel/tests/dma_test.c \
        kernel/tests/top_spike_stability_test.c \
        kernel/sound/sound_core.c \
+       kernel/sound/ac97.c \
+       kernel/sound/hda.c \
        kernel/sound/sound_pci.c \
        kernel/sound/sound_shell.c \
        init/init.c \

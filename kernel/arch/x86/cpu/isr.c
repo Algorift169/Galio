@@ -29,6 +29,7 @@
 #include "common.h"
 #include "kprintf.h"
 #include "drivers/msr.h"
+#include "arch/x86/apic.h"
 #include <stddef.h>
 
 /* Handlers for each interrupt - initialized to NULL */
@@ -156,9 +157,14 @@ void isr_handler(registers_t *regs) {
 
 /* Main IRQ handler - called from assembly */
 void irq_handler(registers_t *regs) {
-    if (regs->interrupt_number >= 40)
+    if (regs->interrupt_number >= 48) {
+        apic_eoi();
+    } else if (regs->interrupt_number >= 40) {
         outb(0xA0, 0x20);
-    outb(0x20, 0x20);
+        outb(0x20, 0x20);
+    } else if (regs->interrupt_number >= 32) {
+        outb(0x20, 0x20);
+    }
 
     if (handlers[regs->interrupt_number] != NULL)
         handlers[regs->interrupt_number](regs);

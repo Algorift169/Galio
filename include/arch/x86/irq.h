@@ -29,5 +29,6 @@ void irq_install(void);
 void irq_mask(u8 irq);
 void irq_unmask(u8 irq);
 void irq_register_handler(u8 irq, interrupt_handler_t handler);
+void irq_apic_init(void);
 
 #endif /* IRQ_H */

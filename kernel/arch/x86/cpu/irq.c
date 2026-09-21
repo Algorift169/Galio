@@ -25,6 +25,7 @@
 #include "common.h"
 #include "kprintf.h"
 #include "cpu.h"
+#include "arch/x86/apic.h"
 
 /* PIC ports */
 #define PIC1_COMMAND 0x20
@@ -120,7 +121,16 @@ void irq_mask(u8 irq) {
 }
 
 void irq_register_handler(u8 irq, interrupt_handler_t handler) {
-    if (irq >= 16 || !handler) return;
+    if (irq >= 32 || !handler) return;
+    if (apic_is_available()) {
+        apic_register_irq(irq, handler);
+        return;
+    }
+    if (irq >= 16) return;
     interrupt_install_handler(32u + irq, handler);
     irq_unmask(irq);
+}
+
+void irq_apic_init(void) {
+    apic_init();
 }

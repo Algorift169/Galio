@@ -80,4 +80,8 @@ paging_fault_result_t paging_handle_page_fault(registers_t *regs);
  */
 void paging_map_kernel(uintptr_t vaddr, uintptr_t paddr, u32 flags);
 void paging_unmap_kernel(uintptr_t vaddr);
+
+/* Dynamically map PCI and other device MMIO regions. */
+void *mmio_map_physical(u64 phys, u64 size);
+void mmio_unmap_physical(void *virt);
 #endif /* PAGING_H */

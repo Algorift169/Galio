@@ -53,10 +53,12 @@
 #include "kernel_time.h"
 #include "time/galio_time.h"
 #include "kernel/dma/dma.h"
+#include "kernel/workqueue.h"
 #include "pci.h"
 #include "net/net.h"
 #include "net/wifi.h"
 #include "drivers/net/e1000.h"
+#include "drivers/net/rtl8139.h"
 #include "drivers/net/rtl8188eu.h"
 #include "net/dhcp.h"
 #include "net/dns.h"
@@ -298,6 +300,7 @@ void kmain(void *multiboot_ptr) {
 
     kprintf("Initializing paging...\n");
     paging_init();
+    irq_apic_init();
     fb_init_from_multiboot(multiboot_ptr);
     kprintf("Initializing heap...\n");
     heap_init();
@@ -319,11 +322,10 @@ void kmain(void *multiboot_ptr) {
     galio_hrtimer_subsystem_init();
     galio_timekeeping_init();
     pit_init(GALIO_HZ);
+    workqueue_init();
 
     kprintf("Initializing sound subsystem...\n");
     sound_core_init();
-    sound_register_pci_driver();
-    sound_run_self_test();
 
     kprintf("Initializing filesystem...\n");
     extern u8 _binary_initrd_bin_start;
@@ -480,6 +482,8 @@ void kmain(void *multiboot_ptr) {
     wifi_init();
     rtl8188eu_register_driver();
     e1000_register_driver();
+    rtl8139_register_driver();
+    sound_register_pci_driver();
     pci_init();
     gpu_init();
     net_print_devices();

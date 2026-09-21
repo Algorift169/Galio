@@ -126,12 +126,11 @@ sound_device_t *sound_device_find_by_index(u32 index) {
 }
 
 int sound_device_register(sound_device_t *device) {
-    sound_device_t *slot = NULL;
     if (!sound_core_ready || !device) return -1;
     if (sound_device_find(device->name)) return -1;
     for (u32 i = 0; i < SOUND_MAX_DEVICES; i++) {
         if (!sound_devices[i]) {
-            slot = sound_devices[i] = device;
+            sound_devices[i] = device;
             sound_device_count++;
             device->index = i;
             device->state = SOUND_DEVICE_PRESENT;
@@ -211,6 +210,13 @@ int sound_stream_open(sound_stream_t *stream,
     memset(stream->buffer, 0, stream->buffer_size);
     stream->state = SOUND_STREAM_STOPPED;
     stream->owner = true;
+    if (device->ops && device->ops->set_format &&
+        device->ops->set_format(device, stream->channels,
+                                stream->sample_rate, stream->format) != 0) {
+        kfree(stream->buffer);
+        stream->buffer = NULL;
+        return -1;
+    }
     return 0;
 }
 
@@ -230,12 +236,24 @@ int sound_stream_start(sound_stream_t *stream) {
     stream->write_cursor = 0;
     stream->read_cursor = 0;
     stream->bytes_ready = 0;
+    stream->device->active_stream = stream;
+    if (stream->device->ops && stream->device->ops->start &&
+        stream->device->ops->start(stream->device, stream->direction) != 0) {
+        stream->state = SOUND_STREAM_ERROR;
+        return -1;
+    }
     return 0;
 }
 
 int sound_stream_stop(sound_stream_t *stream) {
     if (!stream) return -1;
     stream->state = SOUND_STREAM_STOPPED;
+    if (stream->device && stream->device->ops && stream->device->ops->stop) {
+        int result = stream->device->ops->stop(stream->device);
+        stream->device->active_stream = NULL;
+        return result;
+    }
+    if (stream->device) stream->device->active_stream = NULL;
     return 0;
 }
 
@@ -273,6 +291,8 @@ int sound_set_volume(sound_device_t *device, u32 volume) {
     if (volume > 100u) volume = 100u;
     device->volume = (u8)volume;
     device->muted = volume == 0u ? 1u : 0u;
+    if (device->ops && device->ops->set_volume)
+        return device->ops->set_volume(device, device->volume);
     return 0;
 }
 
@@ -285,6 +305,8 @@ int sound_set_mute(sound_device_t *device, u8 muted) {
     if (!device) return -1;
     device->muted = muted ? 1u : 0u;
     if (device->muted) device->volume = 0u;
+    if (device->ops && device->ops->set_mute)
+        return device->ops->set_mute(device, device->muted != 0u);
     return 0;
 }
 
@@ -294,41 +316,5 @@ u8 sound_get_mute(sound_device_t *device) {
 }
 
 void sound_run_self_test(void) {
-    sound_device_t *device = kmalloc(sizeof(sound_device_t));
-    sound_stream_t stream;
-    static const u8 tone[64] = {
-        0x00, 0x10, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0,
-        0xE0, 0xFF, 0xE0, 0xC0, 0xA0, 0x80, 0x60, 0x40,
-        0x20, 0x10, 0x00, 0x10, 0x20, 0x40, 0x60, 0x80,
-        0xA0, 0xC0, 0xE0, 0xFF, 0xE0, 0xC0, 0xA0, 0x80,
-        0x60, 0x40, 0x20, 0x10, 0x00, 0x10, 0x20, 0x40,
-        0x60, 0x80, 0xA0, 0xC0, 0xE0, 0xFF, 0xE0, 0xC0,
-        0xA0, 0x80, 0x60, 0x40, 0x20, 0x10, 0x00, 0x10,
-        0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xE0, 0xFF
-    };
-
-    if (!device) {
-        kprintf("[SOUND] self-test failed: allocation error\n");
-        return;
-    }
-    memset(device, 0, sizeof(*device));
-    strcpy(device->name, "audio0");
-    device->channels = 2u;
-    device->sample_rates[0] = 48000u;
-    device->sample_rate_count = 1u;
-    device->formats[0] = SOUND_FORMAT_S16_LE;
-    device->format_count = 1u;
-    device->playback_capable = 1u;
-    device->capture_capable = 1u;
-    device->irq = 0;
-    device->dma_channel = 0;
-    device->volume = 80u;
-    device->state = SOUND_DEVICE_INITIALIZED;
-    sound_device_register(device);
-    sound_stream_open(&stream, device, SOUND_DIRECTION_PLAYBACK, 2u, 48000u, SOUND_FORMAT_S16_LE, 256u);
-    sound_stream_start(&stream);
-    sound_stream_write(&stream, tone, sizeof(tone));
-    sound_stream_stop(&stream);
-    sound_stream_close(&stream);
-    kprintf("[SOUND] self-test: PCM tone queued, stream lifecycle ok\n");
+    kprintf("[SOUND] self-test is disabled unless explicitly requested\n");
 }

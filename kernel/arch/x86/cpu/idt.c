@@ -42,6 +42,10 @@ extern void isr30(void), isr31(void);
 extern void irq0(void), irq1(void), irq2(void), irq3(void), irq4(void);
 extern void irq5(void), irq6(void), irq7(void), irq8(void), irq9(void);
 extern void irq10(void), irq11(void), irq12(void), irq13(void), irq14(void), irq15(void);
+extern void irq16(void), irq17(void), irq18(void), irq19(void);
+extern void irq20(void), irq21(void), irq22(void), irq23(void);
+extern void irq24(void), irq25(void), irq26(void), irq27(void);
+extern void irq28(void), irq29(void), irq30(void), irq31(void);
 
 static void (*isr_array[])(void) = {
     isr0, isr1, isr2, isr3, isr4, isr5, isr6, isr7,
@@ -53,6 +57,11 @@ static void (*isr_array[])(void) = {
 static void (*irq_array[])(void) = {
     irq0, irq1, irq2, irq3, irq4, irq5, irq6, irq7,
     irq8, irq9, irq10, irq11, irq12, irq13, irq14, irq15
+};
+
+static void (*pci_irq_array[])(void) = {
+    irq16, irq17, irq18, irq19, irq20, irq21, irq22, irq23,
+    irq24, irq25, irq26, irq27, irq28, irq29, irq30, irq31
 };
 
 void idt_set_gate(int n, uintptr_t handler, u16 sel, u8 flags) {
@@ -79,6 +88,9 @@ void idt_init(void) {
 
     for (int i = 0; i < 16; ++i) {
         idt_set_gate(32 + i, (uintptr_t)irq_array[i], 0x08, 0x8E);
+    }
+    for (int i = 0; i < 16; ++i) {
+        idt_set_gate(48 + i, (uintptr_t)pci_irq_array[i], 0x08, 0x8E);
     }
 
     extern void isr_syscall(void);

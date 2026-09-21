@@ -50,6 +50,23 @@ typedef enum {
     SOUND_DEVICE_ERROR = 4
 } sound_device_state_t;
 
+typedef enum {
+    SOUND_IRQ_IGNORED = 0,
+    SOUND_IRQ_HANDLED = 1
+} irqreturn_t;
+
+struct sound_device;
+typedef struct sound_hw_ops {
+    int (*init)(struct sound_device *device);
+    int (*set_format)(struct sound_device *device, u32 channels,
+                      u32 rate, sound_format_t format);
+    int (*start)(struct sound_device *device, sound_direction_t direction);
+    int (*stop)(struct sound_device *device);
+    int (*set_volume)(struct sound_device *device, u8 percent);
+    int (*set_mute)(struct sound_device *device, bool muted);
+    irqreturn_t (*irq)(struct sound_device *device);
+} sound_hw_ops_t;
+
 typedef struct sound_controller {
     char name[32];
     u32 id;
@@ -101,6 +118,8 @@ typedef struct sound_device {
     sound_codec_t *codec;
     device_t *devnode;
     void *private_data;
+    const sound_hw_ops_t *ops;
+    struct sound_stream *active_stream;
     struct sound_device *next;
 } sound_device_t;
 

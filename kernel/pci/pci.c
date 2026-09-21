@@ -26,6 +26,7 @@
 #include "arch/x86/cpu.h"
 #include "mm/heap.h"
 #include "kernel/dma/dma.h"
+#include "arch/x86/apic.h"
 
 /* internal lists */
 static pci_device_t *pci_dev_list = NULL;
@@ -193,6 +194,46 @@ int pci_register_driver(pci_driver_t *drv) {
     pci_drv_list = drv;
     /* probe existing devices now */
     pci_probe_driver_on_devices(drv);
+    return 0;
+}
+
+int pci_enable_msi(pci_device_t *device, u32 vector) {
+    u8 capability;
+    u16 control;
+    u16 command;
+
+    if (!device || !apic_is_available() || vector < 32u || vector >= 256u) return -1;
+    capability = pci_read_config_u8(device->bus, device->device,
+                                    device->function, 0x34);
+    while (capability >= 0x40u && capability < 0xFCu &&
+           pci_read_config_u8(device->bus, device->device,
+                              device->function, capability) != 0x05u) {
+        capability = pci_read_config_u8(device->bus, device->device,
+                                        device->function, capability + 1u);
+    }
+    if (capability < 0x40u || capability >= 0xFCu ||
+        pci_read_config_u8(device->bus, device->device,
+                           device->function, capability) != 0x05u) return -1;
+    control = pci_read_config_u16(device->bus, device->device,
+                                  device->function, capability + 2u);
+    pci_write_config_u32(device->bus, device->device, device->function,
+                         capability + 4u, 0xFEE00000u | (apic_cpu_id() << 12));
+    if (control & (1u << 7)) {
+        pci_write_config_u32(device->bus, device->device, device->function,
+                             capability + 8u, 0u);
+        pci_write_config_u16(device->bus, device->device, device->function,
+                             capability + 12u, (u16)vector);
+    } else {
+        pci_write_config_u16(device->bus, device->device, device->function,
+                             capability + 8u, (u16)vector);
+    }
+    control |= 1u;
+    pci_write_config_u16(device->bus, device->device, device->function,
+                         capability + 2u, control);
+    command = pci_read_config_u16(device->bus, device->device,
+                                  device->function, 0x04);
+    pci_write_config_u16(device->bus, device->device, device->function,
+                         0x04, command | 0x06u);
     return 0;
 }
 
