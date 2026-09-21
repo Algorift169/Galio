@@ -419,9 +419,6 @@ void kmain(void *multiboot_ptr) {
     vfs_debug();
 #endif
 
-    kprintf("Running kernel self-tests...\n");
-    run_kernel_tests();
-
     kprintf("Initializing ATA driver...\n");
     ata_init();
 
@@ -457,6 +454,9 @@ void kmain(void *multiboot_ptr) {
 
     kprintf("Initializing process manager...\n");
     process_init();
+
+    kprintf("Running kernel self-tests...\n");
+    run_kernel_tests();
 
     kprintf("Initializing power subsystem...\n");
     power_suspend_init();

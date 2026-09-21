@@ -36,7 +36,13 @@
 #define TOP_REFRESH_TICKS 100u
 
 u8 top_refresh_due(u32 now, u32 next_sample, u8 refresh) {
-    return refresh || ((u32)(now - next_sample) >= TOP_REFRESH_TICKS);
+    if (refresh) {
+        return 1u;
+    }
+    if (now < next_sample) {
+        return 0u;
+    }
+    return (u32)(now - next_sample) >= TOP_REFRESH_TICKS;
 }
 
 static const char *process_state_name(process_state_t state) {

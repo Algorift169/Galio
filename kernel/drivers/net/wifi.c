@@ -50,12 +50,12 @@ void wifi_init(void) {
     wifi_scan_count = 0;
     wifi_scan_active = 0;
 
-    /* Initialize the helper, but never create a software-only network device. */
     usb_init();
     if (!wifi_device) {
-        kprintf("wifi: no verified physical adapter detected\n");
+        kprintf("wifi: no verified physical adapter detected in this environment; Wi-Fi scanning disabled\n");
+    } else {
+        kprintf("wifi: physical adapter present and initialized\n");
     }
-    kprintf("wifi: Initialized\n");
 }
 
 void wifi_scan_start(void) {

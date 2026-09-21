@@ -37,6 +37,9 @@
 #define SPIKE_SAMPLE_TICKS 100
 
 u8 spike_sample_due(u32 now, u32 next_sample) {
+    if (now < next_sample) {
+        return 0u;
+    }
     return (u32)(now - next_sample) >= SPIKE_SAMPLE_TICKS;
 }
 

@@ -109,10 +109,11 @@ fi
 # QEMU user networking provides outbound NAT through the host's real network.
 # The guest still needs DHCP or static IP configuration before kernel sockets
 # can use the interface. The disk remains Galio's image; no host disk is used.
-# This uses an e1000 NIC so Ethernet is exposed to the guest while still having
-# real host internet access via QEMU user networking.
-COMMON_ARGS="${QEMU_ACCEL_ARGS} ${QEMU_CPU_ARGS} -smp 1 ${QEMU_DISPLAY_ARGS} -cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m ${GALIO_RAM_MB}M -nic user,model=e1000,ipv6=on"
-echo "Using ${QEMU_CPU_ARGS}, ${GALIO_RAM_MB} MB guest RAM, Galio disk image ${DISK}, and e1000 user networking"
+# This uses an explicit user-mode netdev with an e1000 NIC so the guest sees a
+# standard Ethernet interface while QEMU provides real host Internet access via NAT.
+NETDEV_ARGS="-netdev user,id=net0,restrict=off,ipv6=on -device e1000,netdev=net0"
+COMMON_ARGS="${QEMU_ACCEL_ARGS} ${QEMU_CPU_ARGS} -smp 1 ${QEMU_DISPLAY_ARGS} -cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m ${GALIO_RAM_MB}M ${NETDEV_ARGS}"
+echo "Using ${QEMU_CPU_ARGS}, ${GALIO_RAM_MB} MB guest RAM, Galio disk image ${DISK}, and explicit e1000 user networking (NAT)"
 
 # Run QEMU
 if [ "${NOGRAPHIC}" = true ]; then

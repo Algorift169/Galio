@@ -64,7 +64,7 @@ void usb_init(void) {
     }
 
     if (!dev) {
-        kprintf("USB: No UHCI PCI controller detected\n");
+        kprintf("USB: no UHCI PCI controller detected in this VM; USB helper remains unavailable\n");
         return;
     }
 

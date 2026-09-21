@@ -176,7 +176,7 @@ u8 fb_validate_geometry(u32 width, u32 height, u32 pitch, u32 bpp, u64 *bytes_ou
 
     row_bytes = (u64)width * ((u64)bpp / 8u);
     bytes = (u64)pitch * (u64)height;
-    if (row_bytes == 0u || bytes == 0u || pitch < (u32)row_bytes) {
+    if (row_bytes == 0u || bytes == 0u || (u64)pitch < row_bytes) {
         return 0;
     }
     if (bytes > UINT64_MAX - 4096ull) {

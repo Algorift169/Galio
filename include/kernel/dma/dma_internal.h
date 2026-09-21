@@ -3,7 +3,7 @@
 
 #include "kernel/dma/dma.h"
 
-#define DMA_MAX_BUFFERS 128u
+#define DMA_MAX_BUFFERS 256u
 #define DMA_PHYSICAL_LIMIT 0xFFFFFFFFull
 
 extern dma_buffer_t *dma_buffer_registry[DMA_MAX_BUFFERS];

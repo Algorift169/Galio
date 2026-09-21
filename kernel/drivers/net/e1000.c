@@ -315,8 +315,7 @@ static void e1000_enable_pci_device(pci_device_t *pd) {
 
 static void e1000_configure_ctrl(void *mmio) {
     u32 ctrl = mmio_read32(mmio, REG_CTRL);
-    ctrl &= ~CTRL_SLU;
-    ctrl |= CTRL_ASDE;
+    ctrl |= CTRL_SLU | CTRL_ASDE;
     mmio_write32(mmio, REG_CTRL, ctrl);
 }
 
@@ -341,15 +340,18 @@ static int e1000_open(struct net_device *dev) {
     e1000_priv_t *p = (e1000_priv_t *)dev->priv;
     if (!p->mmio) {
         e1000_enable_pci_device(p->pci);
-        /* map MMIO */
-            u64 phys = p->pci->bars[0];
+        u64 phys = p->pci->bars[0];
         p->mmio_phys = phys;
         p->mmio = map_physical_region(phys, 0x20000);
-            if (!p->mmio) return -1;
+        if (!p->mmio) {
+            kprintf("e1000: mmio mapping unavailable in this environment; skipping Ethernet init\n");
+            return -1;
+        }
     }
+
     e1000_configure_ctrl(p->mmio);
     if (e1000_hw_init(p) != 0) {
-        kprintf("e1000: hardware init failed\n");
+        kprintf("e1000: device present but hardware initialization failed; Ethernet remains unavailable\n");
         return -1;
     }
 
@@ -363,6 +365,7 @@ static int e1000_open(struct net_device *dev) {
         dev->flags |= NETIF_RUNNING;
     } else {
         dev->flags &= ~NETIF_RUNNING;
+        kprintf("e1000: link down or unsupported in the current VM; Ethernet interface disabled\n");
     }
     return 0;
 }
@@ -399,9 +402,11 @@ static int e1000_probe(pci_device_t *pd) {
     ndev->get_speed = e1000_speed_mbps;
 
     if (e1000_open(ndev) != 0) {
+        kprintf("e1000: detected device %04x:%04x but it is not usable in this environment; skipping Ethernet registration\n",
+                pd->vendor_id, pd->device_id);
         kfree(ndev);
         kfree(priv);
-        return -1;
+        return 0;
     }
 
     /* Read the permanent MAC address from the device if available. */

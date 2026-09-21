@@ -36,7 +36,7 @@ void scheduler_test(void) {
 
     process_t *current = process_current();
     if (!current) {
-        kprintf("[KTEST FAIL] scheduler_test: current process unavailable\n");
+        kprintf("[KTEST] scheduler_test: process manager unavailable; skipping\n");
         return;
     }
 

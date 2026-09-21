@@ -3,6 +3,7 @@
 #include "net/netdev.h"
 #include "net/net.h"
 #include "drivers/pit.h"
+#include "lib/kprintf.h"
 #include "lib/string.h"
 
 #define DHCP_CLIENT_PORT 68
@@ -245,7 +246,14 @@ static u32 dhcp_add_option(u8 *options, u32 offset, u8 type, u8 length, const vo
 
 int dhcp_start(void) {
     net_device_t *dev = netdev_get_by_name("eth0");
-    if (!dev) return -1;
+    if (!dev) {
+        kprintf("DHCP: skipped, eth0 is not registered\n");
+        return -1;
+    }
+    if (!netdev_get_link(dev)) {
+        kprintf("DHCP: skipped, eth0 link is down or the interface is not usable in this environment\n");
+        return -1;
+    }
     dhcp_device = dev;
     dev->dhcp_state = NET_DHCP_SELECTING;
     dhcp_done = 0; dhcp_dns = 0; dhcp_message_type = 0;

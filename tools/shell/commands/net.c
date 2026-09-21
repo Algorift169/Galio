@@ -122,10 +122,8 @@ u8 shell_net_command(const char *args, const char *current_dir) {
     }
 
     if (strncmp(args, "stat", 4) == 0 && (args[4] == ' ' || args[4] == '\0')) {
-        /* Find the first device that has an active link (eth or wifi)
-         * If none found, produce no output as requested. */
+        /* Report the first registered device, including a disconnected link. */
         net_device_t *dev = netdev_first();
-        while (dev && !netdev_get_link(dev)) dev = dev->next;
         if (!dev) return 0;
 
         kprintf("Interface : %s\n", dev->name);
