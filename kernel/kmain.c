@@ -63,6 +63,7 @@
 #include "power/power.h"
 #include "shell.h"
 #include "script.h"
+#include "sound/sound.h"
 
 // Disk entry - line: 193
 
@@ -318,6 +319,11 @@ void kmain(void *multiboot_ptr) {
     galio_hrtimer_subsystem_init();
     galio_timekeeping_init();
     pit_init(GALIO_HZ);
+
+    kprintf("Initializing sound subsystem...\n");
+    sound_core_init();
+    sound_register_pci_driver();
+    sound_run_self_test();
 
     kprintf("Initializing filesystem...\n");
     extern u8 _binary_initrd_bin_start;

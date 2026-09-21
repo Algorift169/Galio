@@ -73,6 +73,7 @@ u8 shell_net_command(const char *args, const char *current_dir);
 u8 shell_pkg_command(const char *args, const char *current_dir);
 u8 shell_chuser_command(const char *args, const char *current_dir);
 u8 shell_passwd_command(const char *args, const char *current_dir);
+int cmd_sound(int argc, char **argv);
 
 static int shell_atoi(const char *s) {
     int v = 0;
@@ -1435,6 +1436,24 @@ static void shell_execute_command(void) {
         SHELL_COLOR_OUT();
         shell_net_command(input.buffer + 4, current_dir);
         SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "sound ", 6) == 0) {
+        char *argv_sound[8];
+        char *token = input.buffer + 6;
+        int sound_argc = 0;
+        while (*token == ' ' || *token == '\t') token++;
+        argv_sound[sound_argc++] = "sound";
+        while (*token && sound_argc < 7) {
+            char *next = token;
+            while (*next && *next != ' ' && *next != '\t') next++;
+            if (*next) { *next++ = 0; }
+            argv_sound[sound_argc++] = token;
+            token = next;
+            while (*token == ' ' || *token == '\t') token++;
+        }
+        cmd_sound(sound_argc, argv_sound);
+    } else if (strcmp(input.buffer, "sound") == 0) {
+        char *argv_sound[] = { "sound", "info" };
+        cmd_sound(2, argv_sound);
     } else if (strcmp(input.buffer, "net") == 0) {
         SHELL_COLOR_CMD();
         kprintf("Usage: net <stat|scan|list|devices>\n");

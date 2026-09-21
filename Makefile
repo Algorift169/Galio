@@ -228,6 +228,9 @@ SRCS = kernel/kmain.c \
        kernel/tests/framebuffer_test.c \
        kernel/tests/dma_test.c \
        kernel/tests/top_spike_stability_test.c \
+       kernel/sound/sound_core.c \
+       kernel/sound/sound_pci.c \
+       kernel/sound/sound_shell.c \
        init/init.c \
        tools/shell/shell.c \
        tools/shell/script.c \
