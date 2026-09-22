@@ -34,6 +34,8 @@ net_buf_t *net_buf_alloc(u32 size, u32 headroom) {
     if (!nb) return NULL;
     nb->headroom = headroom;
     nb->len = size;
+    nb->csum_flags = 0u;
+    nb->csum = 0u;
     nb->next = NULL;
     nb->dev = NULL;
     nb->data = kmalloc(headroom + size);

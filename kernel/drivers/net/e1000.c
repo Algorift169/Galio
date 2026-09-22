@@ -60,6 +60,7 @@
 
 #define CTRL_ASDE   (1 << 5)
 #define CTRL_SLU    (1 << 6)
+#define CTRL_VME    (1u << 30)
 
 #define STATUS_LU      (1 << 1)
 #define STATUS_SPEED_100    (1 << 3)
@@ -74,7 +75,6 @@
 #define REG_RDH     0x02810
 #define REG_RDT     0x02818
 #define REG_MTA     0x05200
-#define REG_MTA     0x05200
 
 /* TX */
 #define REG_TCTL    0x00400
@@ -83,6 +83,7 @@
 #define REG_TDLEN   0x03808
 #define REG_TDH     0x03810
 #define REG_TDT     0x03818
+#define REG_TXDCTL  0x03828
 #define REG_TIPG    0x00410
 
 /* RCTL bits */
@@ -94,9 +95,17 @@
 #define IMS_RXT0    (1u << 7)
 #define IMS_RXDMT0  (1u << 4)
 
+#define RXD_STAT_IPCS  (1u << 6)
+#define RXD_STAT_TCPCS (1u << 5)
+#define RXD_ERR_MASK   0x3Fu
+
 /* TCTL bits */
 #define TCTL_EN     (1 << 1)
 #define TCTL_PSP    (1 << 3)
+#define TXDCTL_PTHRESH 0x1Fu
+#define TXDCTL_HTHRESH (1u << 8)
+#define TXDCTL_WTHRESH (1u << 16)
+#define TXDCTL_GRAN    (1u << 24)
 
 /* Descriptor counts */
 #define E1000_TX_DESC 64
@@ -148,6 +157,12 @@ typedef struct {
     u8 link_samples;
 } e1000_priv_t;
 
+static int e1000_is_e1000e(const e1000_priv_t *p) {
+    if (!p || !p->pci) return 0;
+    return p->pci->device_id == 0x10D3u || p->pci->device_id == 0x1501u ||
+           p->pci->device_id == 0x1533u;
+}
+
 static net_device_t *e1000_irq_device;
 static volatile u8 e1000_rx_pending;
 static volatile u8 e1000_tx_pending;
@@ -192,6 +207,11 @@ static int e1000_hw_init(e1000_priv_t *p) {
     mmio_write32(mmio, REG_TDH, 0);
     mmio_write32(mmio, REG_TDT, 0);
     mmio_write32(mmio, REG_TIPG, 0x0060200A);
+    if (e1000_is_e1000e(p)) {
+        mmio_write32(mmio, REG_TXDCTL,
+                     TXDCTL_PTHRESH | TXDCTL_HTHRESH |
+                     TXDCTL_WTHRESH | TXDCTL_GRAN);
+    }
 
     /* enable transmitter */
     mmio_write32(mmio, REG_TCTL, TCTL_EN | (0x10 << 4) | TCTL_PSP);
@@ -215,8 +235,9 @@ static int e1000_hw_init(e1000_priv_t *p) {
 
     /* enable receiver */
     mmio_write32(mmio, REG_RCTL, RCTL_EN | RCTL_BAM | RCTL_BSIZE_2048);
+    /* No multicast filter list is installed, so do not accept all multicast. */
     for (u32 i = 0; i < 128u; i++)
-        mmio_write32(mmio, REG_MTA + i * 4u, 0xFFFFFFFFu);
+        mmio_write32(mmio, REG_MTA + i * 4u, 0u);
     mmio_write32(mmio, REG_IMS, IMS_RXT0 | IMS_RXDMT0 | IMS_TXDW);
     (void)mmio_read32(mmio, REG_ICR);
 
@@ -267,13 +288,15 @@ static int e1000_poll_rx(net_device_t *dev) {
         if (!(status & 0x01)) break; /* DD */
         consumed = 1u;
         u32 len = d->length;
-        if (!(status & 0x02u)) {
+        if (!(status & 0x02u) || (d->errors & RXD_ERR_MASK)) {
             dev->rx_errors++;
         } else if (len > 0 && len <= E1000_BUF_SIZE) {
             /* create net_buf and hand to core */
             net_buf_t *nb = net_buf_clone_from_data(p->rx_buf_virt[idx], len);
             if (nb) {
                 nb->dev = dev;
+                if (status & RXD_STAT_IPCS) nb->csum_flags |= NET_BUF_CSUM_IP_VALID;
+                if (status & RXD_STAT_TCPCS) nb->csum_flags |= NET_BUF_CSUM_TCP_VALID;
                 netdev_receive_skb(dev, nb);
                 net_buf_free(nb);
             }
@@ -311,6 +334,10 @@ static int e1000_tx(struct net_device *dev, net_buf_t *buf) {
     d->addr = p->tx_buf_phys[idx];
     d->length = buf->len;
     d->cmd = (1 << 0) | (1 << 3); /* EOP | RS */
+    if (buf->csum_flags & NET_BUF_CSUM_IP_OFFLOAD) d->cmd |= (1u << 5);
+    if (buf->csum_flags & (NET_BUF_CSUM_TCP_OFFLOAD | NET_BUF_CSUM_UDP_OFFLOAD)) {
+        d->cmd |= (1u << 7);
+    }
     d->status = 0;
     __asm__ volatile("sfence" ::: "memory");
 
@@ -333,7 +360,7 @@ static void e1000_enable_pci_device(pci_device_t *pd) {
 
 static void e1000_configure_ctrl(void *mmio) {
     u32 ctrl = mmio_read32(mmio, REG_CTRL);
-    ctrl |= CTRL_SLU | CTRL_ASDE;
+    ctrl |= CTRL_SLU | CTRL_ASDE | CTRL_VME;
     mmio_write32(mmio, REG_CTRL, ctrl);
 }
 

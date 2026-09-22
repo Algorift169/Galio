@@ -27,10 +27,19 @@
 
 typedef struct net_device net_device_t;
 
+#define NET_BUF_CSUM_IP_VALID    0x0001u
+#define NET_BUF_CSUM_TCP_VALID   0x0002u
+#define NET_BUF_CSUM_UDP_VALID   0x0004u
+#define NET_BUF_CSUM_IP_OFFLOAD  0x0010u
+#define NET_BUF_CSUM_TCP_OFFLOAD 0x0020u
+#define NET_BUF_CSUM_UDP_OFFLOAD 0x0040u
+
 typedef struct net_buf {
     uint8_t *data;
     u32 len;
     u32 headroom;
+    u16 csum_flags;
+    u16 csum;
     net_device_t *dev;
     struct net_buf *next;
 } net_buf_t;
