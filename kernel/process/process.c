@@ -38,6 +38,7 @@
 #include "elf.h"
 #include "vga.h"
 #include "info.h"
+#include "process/pcb.h"
 
 #define PAGE_SIZE 4096
 
@@ -194,11 +195,9 @@ u32 process_create(void (*entry)(void), u32 priority) {
     }
 
     process_t *proc = NULL;
-    u32 proc_index = 0xFFFFFFFFu;
     for (u32 i = 0; i < MAX_PROCESSES; i++) {
         if (processes[i].pid == 0) {
             proc = &processes[i];
-            proc_index = i;
             break;
         }
     }
@@ -208,6 +207,8 @@ u32 process_create(void (*entry)(void), u32 priority) {
         kprintf("process_create: No free process slots\n");
         return 0;
     }
+
+    pcb_initialize(proc);
 
     proc->pid = process_allocate_pid();
     proc->parent_pid = current_process ? current_process->pid : 0;

@@ -129,6 +129,12 @@ SRCS = kernel/kmain.c \
        kernel/cpufreq/governor.c \
        kernel/cpufreq/stats.c \
        kernel/drivers/cpufreq_x86.c \
+       kernel/pcb/proc_state.c \
+       kernel/pcb/proc_num.c \
+       kernel/pcb/counter.c \
+       kernel/pcb/registers.c \
+       kernel/pcb/mem_limits.c \
+       kernel/pcb/list.c \
        kernel/cpu/scheduler.c \
        kernel/process/elf.c \
        kernel/syscall/syscall.c \

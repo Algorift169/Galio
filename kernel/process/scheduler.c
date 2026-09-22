@@ -25,6 +25,7 @@
 #include "process.h"
 #include "pit.h"
 #include "kprintf.h"
+#include "process/pcb.h"
 
 static volatile u64 accounting_total_ticks;
 static volatile u64 accounting_idle_ticks;
@@ -48,12 +49,7 @@ void process_accounting_set_idle(u8 idle) {
 void scheduler_tick(registers_t *regs) {
     process_t *current = process_current();
     if (current) {
-        current->ticks++;
-        current->runtime_ticks++;
-
-        if (current->time_slice > 0) {
-            current->time_slice--;
-        }
+        pcb_accounting_tick(current);
 
         if (regs && (regs->cs & 3) == 3 && current->time_slice == 0 &&
             (current->state == PROCESS_RUNNING || current->state == PROCESS_ZOMBIE ||

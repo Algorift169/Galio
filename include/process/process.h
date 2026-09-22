@@ -53,7 +53,7 @@ typedef enum {
     PROCESS_ZOMBIE
 } process_state_t;
 
-typedef struct {
+typedef struct process {
     uintptr_t rsp;
     uintptr_t rbp;
     uintptr_t rsi;
@@ -126,6 +126,9 @@ typedef struct {
     /* Kernel stack physical base (0 if allocated from kmalloc) */
     u32 kernel_stack_phys;
 } process_t;
+
+/* The process object is the scheduler-owned process control block. */
+typedef process_t pcb_t;
 
 void process_init(void);
 u32 process_create(void (*entry)(void), u32 priority);
