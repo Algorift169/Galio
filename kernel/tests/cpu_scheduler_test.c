@@ -22,6 +22,8 @@
 
 #include "kprintf.h"
 #include "process.h"
+#include "process/signals.h"
+#include "arch/x86/cpu.h"
 
 #define CPU_SCHED_TEST_JOBS 4
 
@@ -50,15 +52,18 @@ static void cpu_scheduler_job_4(void) {
 }
 
 void cpu_scheduler_test(void) {
+    u64 irq_flags;
     kprintf("[KTEST] cpu_scheduler_test starting\n");
     kprintf("[KTEST] About to create first process\n");
 
+    irq_flags = irq_save();
     u32 pid1 = process_create(cpu_scheduler_job_1, 6);
     kprintf("[KTEST] Created PID %u\n", pid1);
     kprintf("[KTEST] entering post-create checks\n");
 
     if (!pid1) {
         kprintf("[KTEST FAIL] process_create failed\n");
+        irq_restore(irq_flags);
         return;
     }
 
@@ -69,14 +74,27 @@ void cpu_scheduler_test(void) {
     kprintf("[KTEST] process_get returned %p\n", (void *)child);
     if (!child) {
         kprintf("[KTEST FAIL] process_get failed for pid %u\n", pid1);
+        irq_restore(irq_flags);
         return;
     }
 
     if (child->state != PROCESS_READY) {
         kprintf("[KTEST FAIL] unexpected child state: %u\n", child->state);
+        irq_restore(irq_flags);
         return;
     }
 
+    if (!process_kill(pid1, SIGKILL)) {
+        kprintf("[KTEST FAIL] process_kill failed for pid %u\n", pid1);
+        irq_restore(irq_flags);
+        return;
+    }
+    if (child->state != PROCESS_ZOMBIE) {
+        kprintf("[KTEST FAIL] killed child remained runnable\n");
+        irq_restore(irq_flags);
+        return;
+    }
     process_reap(child);
+    irq_restore(irq_flags);
     kprintf("[KTEST] cpu_scheduler_test completed\n");
 }

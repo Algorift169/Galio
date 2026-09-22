@@ -80,6 +80,13 @@ u8 process_send_signal(u32 pid, u8 sig) {
         return 1;
     }
 
+    /* SIGKILL is not deferrable: remove a non-current target from the ready
+       queue immediately so callers do not observe it as runnable. */
+    if (sig == SIGKILL) {
+        process_terminate(target, sig);
+        return 1;
+    }
+
     target->pending_signals |= mask;
     if (target == process_current()) {
         process_handle_pending_signals(target);

@@ -504,7 +504,9 @@ void kmain(void *multiboot_ptr) {
     irq_unmask(1);
 
     galio_gui_mode = 1u;
+    kprintf("[GUI] Entering desktop mode\n");
     gui_boot();
+    kprintf("[GUI] Desktop mode initialized\n");
     enable_interrupts();
 
     for (;;) {
