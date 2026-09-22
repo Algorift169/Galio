@@ -28,6 +28,7 @@
 #include "net/ethernet.h"
 #include "net/ipv4.h"
 #include "net/route.h"
+#include "net/loopback.h"
 #include "net/dhcp.h"
 #include "drivers/pit.h"
 #include "lib/kprintf.h"
@@ -39,8 +40,11 @@ static void net_tick(registers_t *regs) {
 }
 
 void net_init(void) {
-    net_core_init();
     route_init();
+    net_core_init();
+    if (loopback_init() != 0)
+        kprintf("NET: loopback initialization failed\n");
+    net_configure_routes();
     arp_init();
     ipv4_init();
     udp_init();

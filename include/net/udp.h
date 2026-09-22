@@ -36,11 +36,22 @@ struct udp_hdr {
 } __attribute__((packed));
 
 typedef void (*udp_receive_callback_t)(u32 src_ip, u16 src_port, u16 dest_port, const void *payload, u32 length);
+typedef struct udp_socket udp_socket_t;
 
 int udp_init(void);
 int udp_register_listener(u16 port, udp_receive_callback_t callback);
 int udp_unregister_listener(u16 port);
 int udp_send(u32 dest_ip, u16 dest_port, u16 src_port, const void *payload, u32 length);
+udp_socket_t *udp_socket_create(void);
+void udp_socket_destroy(udp_socket_t *socket);
+int udp_socket_bind(udp_socket_t *socket, u32 local_ip, u16 local_port);
+int udp_socket_is_bound(const udp_socket_t *socket);
+int udp_socket_sendto(udp_socket_t *socket, u32 dest_ip, u16 dest_port,
+                      const void *payload, u32 length);
+int udp_socket_recvfrom(udp_socket_t *socket, void *buffer, u32 length,
+                        u32 timeout_ms, u32 *source_ip, u16 *source_port);
+u32 udp_socket_drop_count(const udp_socket_t *socket);
+int udp_socket_set_reuseaddr(udp_socket_t *socket, u8 enabled);
 int udp_send_broadcast(net_device_t *dev, u32 src_ip, u32 dest_ip,
                        u16 src_port, u16 dest_port, const void *payload, u32 length);
 void udp_input(net_buf_t *buf, struct ipv4_hdr *ip);

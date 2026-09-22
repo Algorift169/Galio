@@ -84,11 +84,13 @@ SRCS = kernel/kmain.c \
        kernel/drift_compat.c \
        kernel/net/net.c \
        kernel/net/netdev.c \
+       kernel/net/loopback.c \
        kernel/net/packet.c \
        kernel/net/util.c \
        kernel/net/ethernet.c \
        kernel/net/arp.c \
        kernel/net/ipv4.c \
+       kernel/net/icmp.c \
        kernel/net/udp.c \
        kernel/net/dhcp.c \
        kernel/net/dns.c \

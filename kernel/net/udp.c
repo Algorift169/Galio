@@ -27,20 +27,45 @@
 #include "net/ethernet.h"
 #include "net/packet.h"
 #include "drivers/pit.h"
+#include "net/net.h"
 #include "lib/kprintf.h"
 #include "lib/string.h"
 #include <string.h>
 
 #define UDP_MAX_LISTENERS 16
 #define UDP_ARP_WAIT_TICKS 500
+#define UDP_SOCKET_MAX 16u
+#define UDP_SOCKET_QUEUE 8u
+#define UDP_SOCKET_PAYLOAD 2048u
+#define UDP_EPHEMERAL_FIRST 49152u
 
 typedef struct {
     u16 port;
     udp_receive_callback_t callback;
 } udp_listener_t;
 
+typedef struct {
+    u8 data[UDP_SOCKET_PAYLOAD];
+    u16 length;
+    u32 source_ip;
+    u16 source_port;
+} udp_datagram_t;
+
+struct udp_socket {
+    u8 used;
+    u8 reuseaddr;
+    u32 local_ip;
+    u16 local_port;
+    u16 queue_head;
+    u16 queue_count;
+    u32 drops;
+    udp_datagram_t queue[UDP_SOCKET_QUEUE];
+};
+
 static udp_listener_t udp_listeners[UDP_MAX_LISTENERS];
 static u32 udp_listener_count = 0;
+static struct udp_socket udp_sockets[UDP_SOCKET_MAX];
+static u16 udp_next_ephemeral = UDP_EPHEMERAL_FIRST;
 
 static u16 udp_checksum(u32 src, u32 dest, u8 proto, const void *data, u32 len) {
     u32 sum = 0;
@@ -67,7 +92,90 @@ static u16 udp_checksum(u32 src, u32 dest, u8 proto, const void *data, u32 len) 
 int udp_init(void) {
     memset(udp_listeners, 0, sizeof(udp_listeners));
     udp_listener_count = 0;
+    memset(udp_sockets, 0, sizeof(udp_sockets));
+    udp_next_ephemeral = UDP_EPHEMERAL_FIRST;
     return 0;
+}
+
+udp_socket_t *udp_socket_create(void) {
+    for (u32 index = 0; index < UDP_SOCKET_MAX; index++) {
+        if (!udp_sockets[index].used) {
+            memset(&udp_sockets[index], 0, sizeof(udp_sockets[index]));
+            udp_sockets[index].used = 1u;
+            return &udp_sockets[index];
+        }
+    }
+    return NULL;
+}
+
+void udp_socket_destroy(udp_socket_t *socket) {
+    if (socket) socket->used = 0u;
+}
+
+static int udp_port_available(const udp_socket_t *socket, u16 port) {
+    for (u32 index = 0; index < UDP_SOCKET_MAX; index++) {
+        if (&udp_sockets[index] == socket || !udp_sockets[index].used) continue;
+        if (udp_sockets[index].local_port == port &&
+            (!socket->reuseaddr || !udp_sockets[index].reuseaddr)) return 0;
+    }
+    return 1;
+}
+
+int udp_socket_bind(udp_socket_t *socket, u32 local_ip, u16 local_port) {
+    if (!socket || !socket->used) return -1;
+    if (local_port == 0u) {
+        for (u32 attempts = 0; attempts < 16384u; attempts++) {
+            u16 candidate = udp_next_ephemeral++;
+            if (udp_next_ephemeral < UDP_EPHEMERAL_FIRST) udp_next_ephemeral = UDP_EPHEMERAL_FIRST;
+            if (udp_port_available(socket, candidate)) {
+                local_port = candidate;
+                break;
+            }
+        }
+    }
+    if (!local_port || !udp_port_available(socket, local_port)) return -98;
+    socket->local_ip = local_ip;
+    socket->local_port = local_port;
+    return 0;
+}
+
+int udp_socket_is_bound(const udp_socket_t *socket) {
+    return socket && socket->used && socket->local_port != 0u;
+}
+
+int udp_socket_set_reuseaddr(udp_socket_t *socket, u8 enabled) {
+    if (!socket || !socket->used) return -1;
+    socket->reuseaddr = enabled ? 1u : 0u;
+    return 0;
+}
+
+int udp_socket_sendto(udp_socket_t *socket, u32 dest_ip, u16 dest_port,
+                      const void *payload, u32 length) {
+    if (!socket || !socket->used || !socket->local_port) return -22;
+    return udp_send(dest_ip, dest_port, socket->local_port, payload, length);
+}
+
+int udp_socket_recvfrom(udp_socket_t *socket, void *buffer, u32 length,
+                        u32 timeout_ms, u32 *source_ip, u16 *source_port) {
+    u32 start;
+    if (!socket || !socket->used || !buffer || !length) return -22;
+    start = pit_get_ticks();
+    while (!socket->queue_count) {
+        if (!timeout_ms || pit_get_ticks() - start >= timeout_ms) return -11;
+        net_poll();
+    }
+    udp_datagram_t *datagram = &socket->queue[socket->queue_head];
+    u32 copied = datagram->length < length ? datagram->length : length;
+    memcpy(buffer, datagram->data, copied);
+    if (source_ip) *source_ip = datagram->source_ip;
+    if (source_port) *source_port = datagram->source_port;
+    socket->queue_head = (socket->queue_head + 1u) % UDP_SOCKET_QUEUE;
+    socket->queue_count--;
+    return (int)copied;
+}
+
+u32 udp_socket_drop_count(const udp_socket_t *socket) {
+    return socket ? socket->drops : 0u;
 }
 
 int udp_register_listener(u16 port, udp_receive_callback_t callback) {
@@ -212,6 +320,24 @@ void udp_input(net_buf_t *buf, struct ipv4_hdr *ip) {
     if (udp->checksum != 0) {
         u16 expected = udp_checksum(net_ntohl(ip->src), net_ntohl(ip->dest), IPV4_PROTO_UDP, udp, udp_len);
         if (net_ntohs(udp->checksum) != expected) return;
+    }
+
+    for (u32 index = 0; index < UDP_SOCKET_MAX; index++) {
+        udp_socket_t *socket = &udp_sockets[index];
+        if (!socket->used || socket->local_port != dest_port ||
+            (socket->local_ip && socket->local_ip != net_ntohl(ip->dest))) continue;
+        if (socket->queue_count == UDP_SOCKET_QUEUE) {
+            socket->queue_head = (socket->queue_head + 1u) % UDP_SOCKET_QUEUE;
+            socket->queue_count--;
+            socket->drops++;
+        }
+        u32 tail = (socket->queue_head + socket->queue_count) % UDP_SOCKET_QUEUE;
+        udp_datagram_t *datagram = &socket->queue[tail];
+        datagram->length = payload_len > UDP_SOCKET_PAYLOAD ? UDP_SOCKET_PAYLOAD : (u16)payload_len;
+        memcpy(datagram->data, payload, datagram->length);
+        datagram->source_ip = net_ntohl(ip->src);
+        datagram->source_port = src_port;
+        socket->queue_count++;
     }
 
     for (u32 i = 0; i < udp_listener_count; i++) {

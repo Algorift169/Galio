@@ -32,15 +32,18 @@
 #include "lib/kprintf.h"
 #include "lib/string.h"
 
-#define TCP_MAX_CONNECTIONS 4
+#define TCP_MAX_CONNECTIONS 64
+#define TCP_HASH_BUCKETS 64u
 #define TCP_RECV_BUFFER_SIZE 8192
 #define TCP_CONNECT_TIMEOUT_TICKS 3000
 #define TCP_RETRANSMIT_TICKS 1000
 #define TCP_MAX_RETRIES 3
+#define TCP_LISTEN_BACKLOG 8u
 
 typedef enum {
     TCP_STATE_CLOSED = 0,
     TCP_STATE_SYN_SENT,
+    TCP_STATE_SYN_RECEIVED,
     TCP_STATE_ESTABLISHED,
     TCP_STATE_FIN_WAIT,
 } tcp_state_t;
@@ -69,12 +72,60 @@ typedef struct {
     u32 remote_seq;
     u32 last_activity;
     u8 retries;
+    u8 hash_bucket;
+    u8 hash_linked;
+    u16 hash_next;
+    u8 listener;
+    u8 parent_listener;
+    u8 pending_count;
+    u8 pending_head;
+    u16 pending[TCP_LISTEN_BACKLOG];
     u32 recv_len;
     u8 recv_buffer[TCP_RECV_BUFFER_SIZE];
 } tcp_connection_t;
 
 static tcp_connection_t tcp_connections[TCP_MAX_CONNECTIONS];
+static u16 tcp_hash_heads[TCP_HASH_BUCKETS];
 static u16 tcp_ephemeral_port = 30000;
+
+static u32 tcp_tuple_hash(u32 src_ip, u16 src_port, u32 dest_ip,
+                          u16 dest_port) {
+    u32 hash = src_ip ^ dest_ip ^ ((u32)src_port << 16) ^ dest_port;
+    hash ^= hash >> 16;
+    return hash & (TCP_HASH_BUCKETS - 1u);
+}
+
+static void tcp_hash_insert(tcp_connection_t *connection) {
+    u32 bucket;
+    u32 index;
+    if (!connection || connection->hash_linked) return;
+    index = (u32)(connection - tcp_connections);
+    bucket = tcp_tuple_hash(connection->src_ip, connection->src_port,
+                            connection->dest_ip, connection->dest_port);
+    connection->hash_bucket = (u8)bucket;
+    connection->hash_next = tcp_hash_heads[bucket];
+    tcp_hash_heads[bucket] = (u16)index;
+    connection->hash_linked = 1u;
+}
+
+static void tcp_hash_remove(tcp_connection_t *connection) {
+    u32 bucket;
+    u16 *link;
+    u16 index;
+    if (!connection || !connection->hash_linked) return;
+    bucket = connection->hash_bucket;
+    index = (u16)(connection - tcp_connections);
+    link = &tcp_hash_heads[bucket];
+    while (*link != TCP_MAX_CONNECTIONS) {
+        if (*link == index) {
+            *link = connection->hash_next;
+            connection->hash_linked = 0u;
+            return;
+        }
+        link = &tcp_connections[*link].hash_next;
+    }
+    connection->hash_linked = 0u;
+}
 
 static u16 tcp_checksum(const struct ipv4_hdr *ip, const struct tcp_hdr *tcp, const void *data, u32 len) {
     u32 sum = 0;
@@ -110,6 +161,7 @@ static tcp_connection_t *tcp_alloc(void) {
         if (!tcp_connections[i].used) {
             memset(&tcp_connections[i], 0, sizeof(tcp_connection_t));
             tcp_connections[i].used = 1;
+            tcp_connections[i].hash_next = TCP_MAX_CONNECTIONS;
             tcp_connections[i].state = TCP_STATE_CLOSED;
             return &tcp_connections[i];
         }
@@ -118,14 +170,25 @@ static tcp_connection_t *tcp_alloc(void) {
 }
 
 static tcp_connection_t *tcp_lookup(u32 src_ip, u16 src_port, u32 dest_ip, u16 dest_port) {
-    for (u32 i = 0; i < TCP_MAX_CONNECTIONS; i++) {
-        if (!tcp_connections[i].used) continue;
-        if (tcp_connections[i].src_ip == dest_ip &&
-            tcp_connections[i].dest_ip == src_ip &&
-            tcp_connections[i].src_port == dest_port &&
-            tcp_connections[i].dest_port == src_port) {
-            return &tcp_connections[i];
-        }
+    u32 bucket = tcp_tuple_hash(dest_ip, dest_port, src_ip, src_port);
+    u16 index = tcp_hash_heads[bucket];
+    while (index != TCP_MAX_CONNECTIONS) {
+        tcp_connection_t *connection = &tcp_connections[index];
+        if (connection->used && connection->src_ip == dest_ip &&
+            connection->dest_ip == src_ip && connection->src_port == dest_port &&
+            connection->dest_port == src_port) return connection;
+        index = connection->hash_next;
+    }
+    return NULL;
+}
+
+static tcp_connection_t *tcp_find_listener(u32 destination, u16 port) {
+    for (u32 index = 0; index < TCP_MAX_CONNECTIONS; index++) {
+        tcp_connection_t *connection = &tcp_connections[index];
+        if (connection->used && connection->listener &&
+            connection->src_port == port &&
+            (!connection->src_ip || connection->src_ip == destination))
+            return connection;
     }
     return NULL;
 }
@@ -209,6 +272,7 @@ static int tcp_send_segment(tcp_connection_t *conn, const void *payload, u32 pay
 
 int tcp_init(void) {
     memset(tcp_connections, 0, sizeof(tcp_connections));
+    for (u32 i = 0; i < TCP_HASH_BUCKETS; i++) tcp_hash_heads[i] = TCP_MAX_CONNECTIONS;
     tcp_ephemeral_port = 30000;
     return 0;
 }
@@ -233,8 +297,10 @@ int tcp_connect(u32 dest_ip, u16 dest_port) {
     conn->state = TCP_STATE_SYN_SENT;
     conn->last_activity = pit_get_ticks();
     conn->retries = 0;
+    tcp_hash_insert(conn);
 
     if (tcp_send_segment(conn, NULL, 0, TCP_FLAG_SYN) != 0) {
+        tcp_hash_remove(conn);
         conn->used = 0;
         return -1;
     }
@@ -245,10 +311,45 @@ int tcp_connect(u32 dest_ip, u16 dest_port) {
     }
 
     if (conn->state != TCP_STATE_ESTABLISHED) {
+        tcp_hash_remove(conn);
         conn->used = 0;
         return -1;
     }
     return (int)(conn - tcp_connections) + 1;
+}
+
+int tcp_listen(u32 local_ip, u16 local_port, u32 backlog) {
+    tcp_connection_t *listener;
+    if (!local_port || backlog == 0u) return -22;
+    listener = tcp_alloc();
+    if (!listener) return -12;
+    listener->listener = 1u;
+    listener->state = TCP_STATE_CLOSED;
+    listener->src_ip = local_ip;
+    listener->src_port = local_port;
+    listener->dest_ip = 0u;
+    listener->dest_port = 0u;
+    listener->pending_count = 0u;
+    listener->pending_head = 0u;
+    return (int)(listener - tcp_connections) + 1;
+}
+
+int tcp_accept(u32 listener_id, u32 timeout_ms, u32 *remote_ip, u16 *remote_port) {
+    u32 start = pit_get_ticks();
+    if (listener_id == 0u || listener_id > TCP_MAX_CONNECTIONS) return -9;
+    tcp_connection_t *listener = &tcp_connections[listener_id - 1u];
+    if (!listener->used || !listener->listener) return -22;
+    while (!listener->pending_count) {
+        if (!timeout_ms || pit_get_ticks() - start >= timeout_ms) return -11;
+        net_poll();
+    }
+    u16 child_index = listener->pending[listener->pending_head];
+    listener->pending_head = (listener->pending_head + 1u) % TCP_LISTEN_BACKLOG;
+    listener->pending_count--;
+    tcp_connection_t *child = &tcp_connections[child_index];
+    if (remote_ip) *remote_ip = child->dest_ip;
+    if (remote_port) *remote_port = child->dest_port;
+    return (int)child_index + 1;
 }
 
 int tcp_send(u32 conn_id, const void *data, u32 length) {
@@ -290,6 +391,7 @@ int tcp_close(u32 conn_id) {
     if (conn->state == TCP_STATE_ESTABLISHED) {
         tcp_send_segment(conn, NULL, 0, TCP_FLAG_FIN | TCP_FLAG_ACK);
     }
+    tcp_hash_remove(conn);
     conn->used = 0;
     return 0;
 }
@@ -310,6 +412,27 @@ void tcp_input(net_buf_t *buf, struct ipv4_hdr *ip) {
     u32 packet_data_len = total_len - ihl - tcp_hdr_len;
     const uint8_t *payload = (uint8_t *)tcp + tcp_hdr_len;
     tcp_connection_t *conn = tcp_lookup(net_ntohl(ip->src), net_ntohs(tcp->src_port), net_ntohl(ip->dest), net_ntohs(tcp->dest_port));
+    if (!conn && (tcp->flags & TCP_FLAG_SYN) && !(tcp->flags & TCP_FLAG_ACK)) {
+        tcp_connection_t *listener = tcp_find_listener(net_ntohl(ip->dest),
+                                                       net_ntohs(tcp->dest_port));
+        if (listener && listener->pending_count < TCP_LISTEN_BACKLOG) {
+            conn = tcp_alloc();
+            if (conn) {
+                conn->parent_listener = (u8)(listener - tcp_connections);
+                conn->state = TCP_STATE_SYN_SENT;
+                conn->src_ip = net_ntohl(ip->dest);
+                conn->dest_ip = net_ntohl(ip->src);
+                conn->src_port = net_ntohs(tcp->dest_port);
+                conn->dest_port = net_ntohs(tcp->src_port);
+                conn->seq = 0x1000u + pit_get_ticks();
+                conn->remote_seq = net_ntohl(tcp->seq) + 1u;
+                tcp_hash_insert(conn);
+                (void)tcp_send_segment(conn, NULL, 0, TCP_FLAG_SYN | TCP_FLAG_ACK);
+                conn->state = TCP_STATE_SYN_RECEIVED;
+            }
+        }
+        return;
+    }
     if (!conn) return;
 
     u16 expected = tcp_checksum(ip, tcp, payload, packet_data_len);
@@ -326,6 +449,19 @@ void tcp_input(net_buf_t *buf, struct ipv4_hdr *ip) {
         conn->seq += 1;
         conn->state = TCP_STATE_ESTABLISHED;
         tcp_send_segment(conn, NULL, 0, TCP_FLAG_ACK);
+        return;
+    }
+
+    if (conn->state == TCP_STATE_SYN_RECEIVED && (flags & TCP_FLAG_ACK) &&
+        net_ntohl(tcp->ack) == conn->seq) {
+        conn->state = TCP_STATE_ESTABLISHED;
+        tcp_connection_t *listener = &tcp_connections[conn->parent_listener];
+        if (listener->used && listener->listener &&
+            listener->pending_count < TCP_LISTEN_BACKLOG) {
+            u32 tail = (listener->pending_head + listener->pending_count) % TCP_LISTEN_BACKLOG;
+            listener->pending[tail] = (u16)(conn - tcp_connections);
+            listener->pending_count++;
+        }
         return;
     }
 
@@ -357,6 +493,7 @@ void tcp_poll(void) {
         if (!conn->used || conn->state != TCP_STATE_SYN_SENT) continue;
         if (now - conn->last_activity >= TCP_RETRANSMIT_TICKS) {
             if (conn->retries++ >= TCP_MAX_RETRIES) {
+                tcp_hash_remove(conn);
                 conn->used = 0;
             } else {
                 tcp_send_segment(conn, NULL, 0, TCP_FLAG_SYN);

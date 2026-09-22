@@ -36,6 +36,8 @@
 
 int tcp_init(void);
 int tcp_connect(u32 dest_ip, u16 dest_port);
+int tcp_listen(u32 local_ip, u16 local_port, u32 backlog);
+int tcp_accept(u32 listener_id, u32 timeout_ms, u32 *remote_ip, u16 *remote_port);
 int tcp_send(u32 conn_id, const void *data, u32 length);
 int tcp_receive(u32 conn_id, void *buffer, u32 buffer_len, u32 timeout_ms);
 int tcp_close(u32 conn_id);
