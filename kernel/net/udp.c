@@ -112,7 +112,9 @@ udp_socket_t *udp_socket_create(void) {
 }
 
 void udp_socket_destroy(udp_socket_t *socket) {
-    if (socket) socket->used = 0u;
+    if (!socket) return;
+    process_wait_queue_wake_all(&socket->recv_waiters);
+    socket->used = 0u;
 }
 
 static int udp_port_available(const udp_socket_t *socket, u16 port) {

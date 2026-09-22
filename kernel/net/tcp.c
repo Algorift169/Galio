@@ -506,6 +506,8 @@ void tcp_poll(void) {
         if (!conn->used || conn->state != TCP_STATE_SYN_SENT) continue;
         if (now - conn->last_activity >= TCP_RETRANSMIT_TICKS) {
             if (conn->retries++ >= TCP_MAX_RETRIES) {
+                process_wait_queue_wake_all(&conn->accept_waiters);
+                process_wait_queue_wake_all(&conn->recv_waiters);
                 tcp_hash_remove(conn);
                 conn->used = 0;
             } else {
