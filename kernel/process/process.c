@@ -60,6 +60,58 @@ static u32 next_arrival_order = 1;
 static process_t *current_process = NULL;
 static u32 process_count = 0;
 static spinlock_t process_table_lock;
+static process_t *ready_heads[8];
+static process_t *ready_tails[8];
+
+void process_ready_remove(process_t *proc) {
+    process_t *previous;
+    process_t *current;
+    u32 priority;
+    if (!proc || !proc->ready_queued) return;
+    priority = proc->priority <= 7u ? proc->priority : 4u;
+    previous = NULL;
+    current = ready_heads[priority];
+    while (current) {
+        if (current == proc) {
+            if (previous) previous->ready_next = current->ready_next;
+            else ready_heads[priority] = current->ready_next;
+            if (ready_tails[priority] == current)
+                ready_tails[priority] = previous;
+            current->ready_next = NULL;
+            current->ready_queued = 0u;
+            return;
+        }
+        previous = current;
+        current = current->ready_next;
+    }
+    proc->ready_queued = 0u;
+    proc->ready_next = NULL;
+}
+
+void process_ready_enqueue(process_t *proc) {
+    u32 priority;
+    if (!proc || proc->state != PROCESS_READY || proc->ready_queued) return;
+    priority = proc->priority <= 7u ? proc->priority : 4u;
+    proc->ready_next = NULL;
+    proc->ready_queued = 1u;
+    if (ready_tails[priority]) ready_tails[priority]->ready_next = proc;
+    else ready_heads[priority] = proc;
+    ready_tails[priority] = proc;
+}
+
+static process_t *process_ready_peek(void) {
+    for (u32 priority = 0u; priority < 8u; priority++) {
+        if (ready_heads[priority]) return ready_heads[priority];
+    }
+    return NULL;
+}
+
+static process_t *process_ready_dequeue(void) {
+    process_t *proc = process_ready_peek();
+    if (!proc) return NULL;
+    process_ready_remove(proc);
+    return proc;
+}
 
 /* Allocate a PID safely, avoid returning 0 and avoid collisions on wrap-around.
  * This scans the process table for active PIDs to ensure uniqueness.
@@ -115,7 +167,7 @@ static void kernel_service_main(void) {
 }
 
 u32 process_create_kernel_service(const char *path) {
-    u32 pid = process_create(kernel_service_main, 0);
+    u32 pid = process_create(kernel_service_main, 4);
     if (pid) {
         process_set_path(process_get(pid), path);
     }
@@ -126,7 +178,7 @@ u32 process_create_user_elf(const char *path) {
     u32 pid;
     process_t *proc;
     if (!path) return 0;
-    pid = process_create(process_user_elf_entry, 1);
+    pid = process_create(process_user_elf_entry, 4);
     proc = process_get(pid);
     if (!proc) return 0;
     process_set_path(proc, path);
@@ -160,6 +212,9 @@ static void process_user_elf_entry(void) {
 void process_init(void) {
     kprintf("Process manager initialized\n");
     
+    memset(ready_heads, 0, sizeof(ready_heads));
+    memset(ready_tails, 0, sizeof(ready_tails));
+
     /* Reserve boot process slot at index 0 */
     processes[0].pid = 0xFFFFFFFF;
     processes[0].state = PROCESS_ZOMBIE;
@@ -177,6 +232,7 @@ void process_init(void) {
     /* Create idle process */
     process_create(idle_main, 0);
     current_process = &processes[1];
+    process_ready_remove(current_process);
     process_set_path(current_process, "/kernel/boot-shell");
     current_process->state = PROCESS_RUNNING;
     current_process->time_slice = PROCESS_TIME_SLICE;
@@ -213,8 +269,8 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->pid = process_allocate_pid();
     proc->parent_pid = current_process ? current_process->pid : 0;
     proc->state = PROCESS_READY;
-    proc->priority = priority;
-    proc->burst_time = priority == 0 ? 1 : priority;
+    proc->priority = priority <= 7u ? priority : 4u;
+    proc->burst_time = proc->priority;
     proc->arrival_order = next_arrival_order++;
     proc->ticks = 0;
     proc->runtime_ticks = 0;
@@ -347,6 +403,7 @@ u32 process_create(void (*entry)(void), u32 priority) {
     for (u32 fd_idx = 0; fd_idx < PROCESS_MAX_FDS; fd_idx++) {
         proc->fd_table[fd_idx] = VFS_INVALID_FD;
     }
+    process_ready_enqueue(proc);
     process_count++;
     spin_unlock(&process_table_lock);
     // kprintf("Process created: PID=%u, priority=%u\n", proc->pid, priority);
@@ -508,15 +565,7 @@ void process_yield(void) {
 
     /* Find next ready process */
     process_t *next = NULL;
-    u32 start = (current_process - processes + 1) % MAX_PROCESSES;
-
-    for (u32 i = 0; i < MAX_PROCESSES; i++) {
-        u32 idx = (start + i) % MAX_PROCESSES;
-        if (processes[idx].pid != 0 && processes[idx].state == PROCESS_READY) {
-            next = &processes[idx];
-            break;
-        }
-    }
+    next = process_ready_peek();
 
     if (!next) {
         /* A waiting or exited process must not continue running itself.  The
@@ -538,12 +587,14 @@ void process_yield(void) {
 
     if (next != current_process) {
         process_t *old = current_process;
+        process_ready_dequeue();
         process_accounting_set_idle(0);
         current_process = next;
         next->state = PROCESS_RUNNING;
         next->time_slice = PROCESS_TIME_SLICE;
         if (old->pid != 0xFFFFFFFF && old->state != PROCESS_ZOMBIE && old->state != PROCESS_WAITING) {
             old->state = PROCESS_READY;
+            process_ready_enqueue(old);
         }
         process_switch(old, next);
     }
@@ -555,25 +606,10 @@ void process_set_boot_current(void) {
 }
 
 static process_t *find_next_ready_process(void) {
-    process_t *next = NULL;
     if (!current_process) {
         return NULL;
     }
-
-    u32 start = (current_process - processes + 1) % MAX_PROCESSES;
-    for (u32 i = 0; i < MAX_PROCESSES; i++) {
-        u32 idx = (start + i) % MAX_PROCESSES;
-        process_t *candidate = &processes[idx];
-        if (candidate->pid == 0 || candidate->state != PROCESS_READY) {
-            continue;
-        }
-
-        if (!next || candidate->burst_time < next->burst_time ||
-            (candidate->burst_time == next->burst_time && candidate->arrival_order < next->arrival_order)) {
-            next = candidate;
-        }
-    }
-    return next;
+    return process_ready_peek();
 }
 
 static void save_current_registers(registers_t *regs) {
@@ -624,12 +660,14 @@ void process_preempt(registers_t *regs) {
     }
 
     process_t *old = current_process;
+    process_ready_dequeue();
     process_accounting_set_idle(0);
     current_process = next;
     next->state = PROCESS_RUNNING;
     next->time_slice = PROCESS_TIME_SLICE;
     if (old->pid != 0xFFFFFFFF && old->state != PROCESS_ZOMBIE && old->state != PROCESS_WAITING) {
         old->state = PROCESS_READY;
+        process_ready_enqueue(old);
     }
 
     if (next->pagedir && next->regs.cs != KERNEL_CS) {
@@ -682,6 +720,7 @@ void process_exit(i32 code) {
     process_t *parent = process_get_any(current_process->parent_pid);
     if (parent && parent != current_process && parent->state != PROCESS_ZOMBIE) {
         parent->state = PROCESS_READY;
+        process_ready_enqueue(parent);
     }
     process_send_signal(current_process->parent_pid, SIGCHLD);
     if ((current_process->regs.cs & 3) != 0 && parent &&

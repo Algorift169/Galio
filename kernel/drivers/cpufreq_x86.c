@@ -35,11 +35,8 @@ static cpufreq_status_t x86_init(cpufreq_policy_t *policy) {
     if (!policy || !capabilities) return CPUFREQ_ERR_INVALID;
     if (!capabilities->has_msr || !capabilities->has_aperf_mperf ||
         !capabilities->base_frequency_mhz) return CPUFREQ_ERR_UNSUPPORTED;
-    policy->min_khz = (u64)capabilities->base_frequency_mhz * 1000;
-    policy->max_khz = (u64)(capabilities->max_frequency_mhz ? capabilities->max_frequency_mhz : capabilities->base_frequency_mhz) * 1000;
-    policy->current_khz = policy->min_khz;
-    policy->requested_khz = policy->current_khz;
-    return CPUFREQ_OK;
+    (void)policy;
+    return CPUFREQ_ERR_UNSUPPORTED;
 }
 
 static cpufreq_status_t x86_get_frequency(u32 cpu_id, u64 *frequency_khz) {

@@ -48,6 +48,7 @@ static void process_terminate(process_t *proc, u8 sig) {
 
     proc->exit_code = sig;
     proc->pending_signals = 0;
+    process_ready_remove(proc);
     proc->state = PROCESS_ZOMBIE;
 
     if (proc->parent_pid != 0 && proc->parent_pid != proc->pid) {
@@ -73,6 +74,7 @@ u8 process_send_signal(u32 pid, u8 sig) {
             process_t *source = process_current();
             if (waiting_pid == -1 || (source && waiting_pid == (i32)source->pid)) {
                 target->state = PROCESS_READY;
+                process_ready_enqueue(target);
             }
         }
         return 1;

@@ -45,7 +45,7 @@
 #include "ext2.h"
 #include "init.h"
 #include "cpu/cpu.h"
-#include "cpu/scheduler.h"
+#include "process/scheduler.h"
 #include "cpufreq/cpufreq.h"
 #include "auth.h"
 #include "string.h"
@@ -59,7 +59,6 @@
 #include "net/wifi.h"
 #include "drivers/net/e1000.h"
 #include "drivers/net/rtl8139.h"
-#include "drivers/net/rtl8188eu.h"
 #include "net/dhcp.h"
 #include "net/dns.h"
 #include "power/power.h"
@@ -464,7 +463,7 @@ void kmain(void *multiboot_ptr) {
 
     kprintf("Initializing power subsystem...\n");
     power_suspend_init();
-    kprintf("[POWER] self-test: reset=ready, shutdown=ready, suspend=ready\n");
+    kprintf("[POWER] self-test: reset=ready, shutdown=ready, suspend=not supported\n");
 
     kprintf("Installing system call handler...\n");
     syscall_init();
@@ -474,7 +473,7 @@ void kmain(void *multiboot_ptr) {
     cpufreq_init();
 
     kprintf("Initializing scheduler...\n");
-    cpu_scheduler_init();
+    scheduler_init();
 
     kprintf("Running memory stabilization tests...\n");
     mem_test_run();
@@ -482,7 +481,6 @@ void kmain(void *multiboot_ptr) {
     kprintf("Initializing networking subsystem...\n");
     net_init();
     wifi_init();
-    rtl8188eu_register_driver();
     e1000_register_driver();
     rtl8139_register_driver();
     sound_register_pci_driver();

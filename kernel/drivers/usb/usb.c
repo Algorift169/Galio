@@ -20,13 +20,7 @@
  * along with Galio. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* usb.c - Minimal UHCI-based USB helpers used by RTL8188EU driver
- *
- * This file implements a lightweight, poll-based control and bulk
- * transfer helper using UHCI I/O registers. It is intentionally small
- * and synchronous: the RTL driver uses these helpers for initialization,
- * firmware load and simple bulk TX/RX polling.
- */
+/* usb.c - USB controller detection only; transfers are not implemented. */
 
 #include "usb.h"
 #include "pci.h"
@@ -110,48 +104,22 @@ struct ieee80211_beacon {
     u16 capability;
 } __attribute__((packed));
 
-/* Very small synchronous control transfer helper
- * Note: This is not a full UHCI implementation. It uses root hub
- * port operations where possible (reset, resume) and vendor control
- * messages are encoded as writes to port status for simple devices.
- * The RTL driver uses small control transfers during init; our helper
- * attempts to perform them in a way that exercises I/O ports.
- */
 int usb_control_msg(u32 bus, u32 addr, u8 request_type, u8 request,
                     u16 value, u16 index, void *data, u16 size, u32 timeout) {
     (void)bus; (void)addr; (void)request_type; (void)index; (void)timeout;
 
     (void)value; (void)request; (void)data; (void)size;
-    if (!usb_initialized()) return -1;
-    /* UHCI transfer descriptors and USB device enumeration are not complete. */
-    return -1;
+    return -38;
 }
 
-/* Bulk transfer helpers: poll-based wrappers that rely on UHCI port
- * status to indicate device presence. They do not implement full TD
- * management; instead they perform best-effort I/O to exercise hardware
- * and provide data path for the RTL driver.
- */
 int usb_bulk_read(u32 bus, u32 addr, u8 endpoint, void *buffer, u32 size, u32 timeout) {
-    (void)bus; (void)addr; (void)timeout;
-    if (!usb_initialized()) return -1;
-    if (!buffer || size == 0) return -1;
-
-    /* If device is absent, return 0 quickly */
-    u16 portsc = uhci_io_base + UHCI_PORTSC0;
-    u16 ps = inw(portsc);
-    if ((ps & 0x0003) == 0) return 0;
-
-     (void)endpoint;
-     return -1;
+    (void)bus; (void)addr; (void)endpoint; (void)buffer; (void)size; (void)timeout;
+    return -38;
 }
 
 int usb_bulk_write(u32 bus, u32 addr, u8 endpoint, void *buffer, u32 size, u32 timeout) {
     (void)bus; (void)addr; (void)endpoint; (void)timeout;
-    if (!usb_initialized()) return -1;
-    if (!buffer || size == 0) return -1;
-
-    (void)size;
-    return -1;
+    (void)buffer; (void)size;
+    return -38;
 }
 

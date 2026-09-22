@@ -51,12 +51,12 @@ void cpufreq_init(void) {
     }
     kprintf("[CPUFREQ] Initializing CPU frequency subsystem...\n");
     if (cpufreq_register_driver(cpufreq_x86_driver()) != CPUFREQ_OK) {
-        kprintf("[CPUFREQ] No usable x86 frequency driver; control unsupported\n");
+        kprintf("[CPUFREQ] frequency control unsupported on this hardware\n");
         return;
     }
     if (active_driver->init(policy) != CPUFREQ_OK) {
         active_driver = NULL;
-        kprintf("[CPUFREQ] No compatible hardware frequency interface; monitoring/control unsupported\n");
+        kprintf("[CPUFREQ] frequency control unsupported on this hardware\n");
         return;
     }
     policy->driver = active_driver;
@@ -67,7 +67,6 @@ void cpufreq_init(void) {
         kprintf("[CPUFREQ] Governor: %s, hardware control: %s\n",
             cpufreq_governor_name(active_governor),
             policy->max_khz ? "monitoring only" : "unsupported");
-    pit_install_callback(cpufreq_tick);
 }
 
 cpufreq_status_t cpufreq_register_driver(cpufreq_driver_t *driver) {

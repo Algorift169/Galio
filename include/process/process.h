@@ -53,7 +53,7 @@ typedef enum {
     PROCESS_ZOMBIE
 } process_state_t;
 
-typedef struct process {
+typedef struct {
     uintptr_t rsp;
     uintptr_t rbp;
     uintptr_t rsi;
@@ -95,10 +95,12 @@ typedef struct {
     u8 anonymous;
 } mmap_region_t;
 
-typedef struct {
+typedef struct process {
     u32 pid;
     u32 parent_pid;
     process_state_t state;
+    struct process *ready_next;
+    u8 ready_queued;
     register_state_t regs;
     uintptr_t *stack;
     u32 stack_size;
@@ -161,6 +163,8 @@ u32 process_chdir(const char *path);
 u32 process_getcwd(char *buffer, u32 size);
 void process_oom_kill(void);
 void process_preempt(registers_t *regs);
+void process_ready_enqueue(process_t *proc);
+void process_ready_remove(process_t *proc);
 char *process_resolve_path(const char *cwd, const char *path, char *output, u32 output_size);
 
 /* CPU statistics functions */

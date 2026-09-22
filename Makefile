@@ -224,7 +224,6 @@ SRCS = kernel/kmain.c \
        kernel/dev/device.c \
        kernel/dev/device_manager.c \
        kernel/drivers/net/wifi.c \
-       kernel/drivers/net/rtl8188eu.c \
        kernel/tests/run_tests.c \
        kernel/tests/scheduler_test.c \
        kernel/tests/cpu_scheduler_test.c \
@@ -314,7 +313,7 @@ WALLPAPER_ASSET = assets/wallpapers/wal1.png
 all: $(OBJS) $(KERNEL_BIN) $(KERNEL_ISO) $(DISK_IMAGE) $(DRIFT_BIN)
 	@echo "Build complete!"
 	@echo "Network stack: Ethernet, ARP, IPv4, ICMP"
-	@echo "Wi-Fi: RTL8188EU driver with real 802.11 scanning"
+       @echo "Wi-Fi: no wireless hardware supported"
 
 drift-source:
 	@test -n "$(DRIFT_SRCS)" || { echo "Drift sources missing"; exit 1; }

@@ -49,6 +49,7 @@ void process_accounting_set_idle(u8 idle) {
 void scheduler_tick(registers_t *regs) {
     process_t *current = process_current();
     if (current) {
+        process_accounting_tick();
         pcb_accounting_tick(current);
 
         if (regs && (regs->cs & 3) == 3 && current->time_slice == 0 &&
@@ -63,9 +64,7 @@ void scheduler_tick(registers_t *regs) {
 /* Initialize scheduler - preemptive round-robin mode */
 void scheduler_init(void) {
     pit_install_callback(scheduler_tick);
-    kprintf("Scheduler initialized (preemptive mode)\n");
-    kprintf("  - Timer running at 1000Hz with time slice %u\n", PROCESS_TIME_SLICE);
-    kprintf("  - Context switches on yield() or when a process exhausts its slice\n");
+    kprintf("Scheduler: preemptive round-robin, 8 priority levels, FIFO queues, 10 ms slice\n");
 }
 
 /* CPU statistics - calculate from all processes via process_t accessors */

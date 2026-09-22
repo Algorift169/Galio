@@ -9,6 +9,7 @@
 #include "mm/heap.h"
 #include "mm/dma.h"
 #include "kernel/workqueue.h"
+#include "drivers/pit.h"
 
 /*
  * Real hardware: rtl8139 MAC, TX completion, RX wrap handling, and polling.
@@ -28,6 +29,7 @@
 #define RTL_REG_ISR 0x3Eu
 #define RTL_REG_RX_CONFIG 0x44u
 #define RTL_REG_TX_CONFIG 0x40u
+#define RTL_REG_PHY_BMSR 0x6Cu
 #define RTL_REG_CAPR 0x38u
 #define RTL_REG_CBR 0x3Au
 #define RTL_RX_SIZE 8192u
@@ -44,6 +46,9 @@ typedef struct {
     u8 tx_index;
     u16 rx_offset;
     net_device_t *device;
+    u8 link_state;
+    u8 link_candidate;
+    u32 link_candidate_tick;
 } rtl8139_state_t;
 
 static net_device_t *rtl8139_irq_device;
@@ -148,8 +153,29 @@ static int rtl8139_tx(net_device_t *device, net_buf_t *buffer) {
 }
 
 static int rtl8139_link(net_device_t *device) {
-    (void)device;
-    return 1;
+    rtl8139_state_t *state;
+    u8 raw_link;
+    u32 now;
+    if (!device || !device->priv) return 0;
+    state = (rtl8139_state_t *)device->priv;
+    raw_link = (rtl_in16(state, RTL_REG_PHY_BMSR) & 0x0004u) ? 1u : 0u;
+    now = pit_get_ticks();
+    if (raw_link == state->link_state) {
+        state->link_candidate = raw_link;
+        state->link_candidate_tick = now;
+        return state->link_state;
+    }
+    if (raw_link != state->link_candidate) {
+        state->link_candidate = raw_link;
+        state->link_candidate_tick = now;
+        return state->link_state;
+    }
+    if ((now - state->link_candidate_tick) >= 100u) {
+        state->link_state = raw_link;
+        state->link_candidate_tick = now;
+        kprintf("rtl8139: link became %s\n", raw_link ? "active" : "inactive");
+    }
+    return state->link_state;
 }
 
 static int rtl8139_open(net_device_t *device) {
@@ -163,7 +189,8 @@ static int rtl8139_open(net_device_t *device) {
     rtl_out16(state, RTL_REG_CAPR, (u16)(RTL_RX_SIZE - 16u));
     rtl_out8(state, RTL_REG_COMMAND, 0x0Cu);
     rtl_out16(state, RTL_REG_IMR, 0x0005u);
-    device->flags |= NETIF_UP | NETIF_RUNNING;
+    device->flags |= NETIF_UP;
+    if (rtl8139_link(device)) device->flags |= NETIF_RUNNING;
     return 0;
 }
 
