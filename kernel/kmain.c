@@ -75,6 +75,8 @@ void syscall_init(void);
 /* Assembly handoff that enters the full-resolution GUI after authentication. */
 extern void gui_boot(void);
 
+volatile u8 galio_gui_mode = 0u;
+
 /* Memory test declaration */
 void mem_test_run(void);
 
@@ -503,6 +505,7 @@ void kmain(void *multiboot_ptr) {
     __asm__ volatile("sti");
     irq_unmask(1);
 
+    galio_gui_mode = 1u;
     gui_boot();
     enable_interrupts();
 

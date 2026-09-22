@@ -9,6 +9,7 @@
 #include "kernel/dma/dma.h"
 #include "dev/device.h"
 #include "lib/string.h"
+#include "process/spinlock.h"
 
 extern u32 sound_device_count;
 
@@ -62,6 +63,7 @@ typedef struct sound_hw_ops {
                       u32 rate, sound_format_t format);
     int (*start)(struct sound_device *device, sound_direction_t direction);
     int (*stop)(struct sound_device *device);
+    void (*destroy)(struct sound_device *device);
     int (*set_volume)(struct sound_device *device, u8 percent);
     int (*set_mute)(struct sound_device *device, bool muted);
     irqreturn_t (*irq)(struct sound_device *device);
@@ -142,6 +144,7 @@ typedef struct sound_stream {
     u32 overruns;
     u32 completed_events;
     bool owner;
+    spinlock_t lock;
 } sound_stream_t;
 
 int sound_core_init(void);
@@ -164,6 +167,8 @@ int sound_stream_open(sound_stream_t *stream,
 int sound_stream_close(sound_stream_t *stream);
 int sound_stream_start(sound_stream_t *stream);
 int sound_stream_stop(sound_stream_t *stream);
+int sound_stream_pause(sound_stream_t *stream);
+int sound_stream_resume(sound_stream_t *stream);
 int sound_stream_write(sound_stream_t *stream, const void *data, size_t length);
 int sound_stream_read(sound_stream_t *stream, void *data, size_t length);
 

@@ -48,6 +48,79 @@ int workqueue_schedule(workqueue_fn function, void *arg) {
     return 0;
 }
 
+static u32 workqueue_filter(work_fn_t function, void *arg) {
+    work_item_t pending[WORKQUEUE_MAX_ITEMS];
+    work_item_t kept[WORKQUEUE_MAX_ITEMS];
+    u32 pending_count = 0u;
+    u32 kept_count = 0u;
+    u32 removed = 0u;
+
+    while (work_head != work_tail) {
+        pending[pending_count++] = work_items[work_head];
+        work_items[work_head].function = NULL;
+        work_items[work_head].arg = NULL;
+        work_head = (work_head + 1u) % WORKQUEUE_MAX_ITEMS;
+    }
+    work_head = 0u;
+    work_tail = 0u;
+    for (u32 i = 0; i < pending_count; i++) {
+        work_item_t item = pending[i];
+        if (item.function == function && item.arg == arg) {
+            removed++;
+        } else if (kept_count < WORKQUEUE_MAX_ITEMS) {
+            kept[kept_count++] = item;
+        }
+    }
+
+    work_tail = kept_count;
+    for (u32 i = 0; i < kept_count; i++) work_items[i] = kept[i];
+    return removed;
+}
+
+int workqueue_cancel(work_fn_t function, void *arg) {
+    u64 flags;
+    u32 removed;
+    if (!function) return -1;
+    flags = irq_save();
+    removed = workqueue_filter(function, arg);
+    irq_restore(flags);
+    return (int)removed;
+}
+
+void workqueue_flush_fn(work_fn_t function, void *arg) {
+    work_item_t pending[WORKQUEUE_MAX_ITEMS];
+    work_item_t kept[WORKQUEUE_MAX_ITEMS];
+    work_item_t matching[WORKQUEUE_MAX_ITEMS];
+    u32 pending_count = 0u;
+    u32 kept_count = 0u;
+    u32 matching_count = 0u;
+    u64 flags;
+    if (!function) return;
+    flags = irq_save();
+    while (work_head != work_tail) {
+        pending[pending_count++] = work_items[work_head];
+        work_items[work_head].function = NULL;
+        work_items[work_head].arg = NULL;
+        work_head = (work_head + 1u) % WORKQUEUE_MAX_ITEMS;
+    }
+    work_head = 0u;
+    work_tail = 0u;
+    for (u32 i = 0; i < pending_count; i++) {
+        work_item_t item = pending[i];
+        if (item.function == function && item.arg == arg) {
+            if (matching_count < WORKQUEUE_MAX_ITEMS) {
+                matching[matching_count++] = item;
+            }
+        } else if (kept_count < WORKQUEUE_MAX_ITEMS) {
+            kept[kept_count++] = item;
+        }
+    }
+    work_tail = kept_count;
+    for (u32 i = 0; i < kept_count; i++) work_items[i] = kept[i];
+    irq_restore(flags);
+    for (u32 i = 0; i < matching_count; i++) matching[i].function(matching[i].arg);
+}
+
 void workqueue_run(void) {
     for (;;) {
         workqueue_fn function;

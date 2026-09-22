@@ -43,6 +43,13 @@
 #include "mm/dma.h"
 #include "kernel/workqueue.h"
 
+/*
+ * Real hardware: legacy e1000 IDs, multicast reception, and batched RX return.
+ * Real hardware: MAC validation prevents zero-address interfaces.
+ * QEMU-only: newer e1000e variants remain in legacy register compatibility mode.
+ * QEMU-only: MSI still uses the existing fixed-vector interrupt interface.
+ */
+
 #define E1000_VENDOR_ID 0x8086
 #define E1000_DEVICE_ID 0x100E
 /* Registers */
@@ -66,6 +73,8 @@
 #define REG_RDLEN   0x02808
 #define REG_RDH     0x02810
 #define REG_RDT     0x02818
+#define REG_MTA     0x05200
+#define REG_MTA     0x05200
 
 /* TX */
 #define REG_TCTL    0x00400
@@ -206,6 +215,8 @@ static int e1000_hw_init(e1000_priv_t *p) {
 
     /* enable receiver */
     mmio_write32(mmio, REG_RCTL, RCTL_EN | RCTL_BAM | RCTL_BSIZE_2048);
+    for (u32 i = 0; i < 128u; i++)
+        mmio_write32(mmio, REG_MTA + i * 4u, 0xFFFFFFFFu);
     mmio_write32(mmio, REG_IMS, IMS_RXT0 | IMS_RXDMT0 | IMS_TXDW);
     (void)mmio_read32(mmio, REG_ICR);
 
@@ -234,6 +245,7 @@ static int e1000_poll_rx(net_device_t *dev) {
     e1000_work_pending = 0;
     e1000_priv_t *p = (e1000_priv_t *)dev->priv;
     void *mmio = p->mmio;
+    u8 consumed = 0u;
 
     if (e1000_tx_pending || p->tx_inflight > 0u) {
         e1000_tx_pending = 0;
@@ -251,9 +263,13 @@ static int e1000_poll_rx(net_device_t *dev) {
     while (1) {
         u32 idx = p->rx_next;
         struct e1000_rx_desc *d = &p->rx_ring[idx];
-        if (!(d->status & 0x01)) break; /* DD */
+        u8 status = d->status;
+        if (!(status & 0x01)) break; /* DD */
+        consumed = 1u;
         u32 len = d->length;
-        if (len > 0 && len <= E1000_BUF_SIZE) {
+        if (!(status & 0x02u)) {
+            dev->rx_errors++;
+        } else if (len > 0 && len <= E1000_BUF_SIZE) {
             /* create net_buf and hand to core */
             net_buf_t *nb = net_buf_clone_from_data(p->rx_buf_virt[idx], len);
             if (nb) {
@@ -264,10 +280,11 @@ static int e1000_poll_rx(net_device_t *dev) {
         }
         d->status = 0;
         __asm__ volatile("sfence" ::: "memory");
-        /* Return this consumed descriptor to hardware through RDT. */
-        mmio_write32(mmio, REG_RDT, idx);
         p->rx_next = (idx + 1) % E1000_RX_DESC;
     }
+    if (consumed) mmio_write32(mmio, REG_RDT,
+                                       (p->rx_next + E1000_RX_DESC - 1u) %
+                                       E1000_RX_DESC);
     return 0;
 }
 
@@ -347,7 +364,8 @@ static int e1000_link_status(struct net_device *dev) {
         if (p->link_state != raw_link) {
             p->link_state = raw_link;
             p->link_samples = 0u;
-            kprintf("e1000: link became %s\n", raw_link ? "active" : "inactive");
+            if (!galio_gui_mode)
+                kprintf("e1000: link became %s\n", raw_link ? "active" : "inactive");
         } else {
             p->link_samples = 0u;
         }
@@ -413,6 +431,8 @@ static int e1000_probe(pci_device_t *pd) {
          pd->device_id != 0x0D3Au)) return 0;
     kprintf("e1000: detected PCI device %04x:%04x at %u:%u.%u\n",
             pd->vendor_id, pd->device_id, pd->bus, pd->device, pd->function);
+    if (pd->device_id == 0x10D3u || pd->device_id == 0x1501u)
+        kprintf("e1000e-compatible basic mode\n");
 
     e1000_priv_t *priv = kmalloc(sizeof(e1000_priv_t));
     if (!priv) return -1;
@@ -454,6 +474,22 @@ static int e1000_probe(pci_device_t *pd) {
         ndev->mac[3] = (ral >> 24) & 0xFF;
         ndev->mac[4] = rah & 0xFF;
         ndev->mac[5] = (rah >> 8) & 0xFF;
+        bool invalid_mac = true;
+        for (u32 i = 0; i < 6u; i++) {
+            if (ndev->mac[i] != 0u && ndev->mac[i] != 0xFFu) {
+                invalid_mac = false;
+                break;
+            }
+        }
+        if (invalid_mac) {
+            ndev->mac[0] = 0x02u;
+            ndev->mac[1] = pd->bus;
+            ndev->mac[2] = pd->device;
+            ndev->mac[3] = pd->function;
+            ndev->mac[4] = 0xE1u;
+            ndev->mac[5] = (u8)(pd->device_id & 0xFFu);
+            kprintf("e1000: invalid hardware MAC, using locally administered address\n");
+        }
     }
 
     if (netdev_register(ndev) != 0) {
@@ -476,7 +512,7 @@ static int e1000_probe(pci_device_t *pd) {
 
 static pci_driver_t e1000_driver = {
     .vendor_id = E1000_VENDOR_ID,
-    .device_id = E1000_DEVICE_ID,
+    .device_id = 0xFFFFu,
     .probe = e1000_probe,
     .next = NULL,
 };

@@ -54,6 +54,9 @@ typedef struct net_device {
     int (*get_link)(struct net_device *dev);
     int (*get_speed)(struct net_device *dev);
     int (*set_channel)(struct net_device *dev, u8 channel);
+    int (*set_multicast_list)(struct net_device *dev);
+    int (*set_mac_address)(struct net_device *dev, const u8 *mac);
+    int (*ndo_ioctl)(struct net_device *dev, u32 request, void *arg);
     u32 ip_addr;
     u32 netmask;
     u32 broadcast;

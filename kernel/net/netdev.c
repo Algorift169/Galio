@@ -31,12 +31,36 @@
 /* Simple singly-linked list of devices */
 static net_device_t *dev_list = NULL;
 
+static void netdev_name_from_index(char *name, u32 index) {
+    char digits[10];
+    u32 count = 0u;
+    if (!name) return;
+    name[0] = 'e'; name[1] = 't'; name[2] = 'h';
+    do {
+        digits[count++] = (char)('0' + (index % 10u));
+        index /= 10u;
+    } while (index != 0u && count < sizeof(digits));
+    for (u32 i = 0; i < count; i++) name[3u + i] = digits[count - 1u - i];
+    name[3u + count] = 0;
+}
+
 void net_core_init(void) {
     dev_list = NULL;
 }
 
 int netdev_register(net_device_t *dev) {
-    if (!dev || !dev->name[0]) return -1;
+    if (!dev) return -1;
+    if (!dev->name[0]) {
+        for (u32 index = 0u; index < 100u; index++) {
+            char candidate[NET_NAME_LEN];
+            netdev_name_from_index(candidate, index);
+            if (!netdev_get_by_name(candidate)) {
+                strcpy(dev->name, candidate);
+                break;
+            }
+        }
+        if (!dev->name[0]) return -1;
+    }
     /* ensure not already registered */
     net_device_t *it = dev_list;
     while (it) {

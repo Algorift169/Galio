@@ -51,4 +51,7 @@ void stack_trace(void);
 /* Kernel status reporting */
 void kernel_status(void);
 
+/* Set immediately before the desktop takes over the framebuffer. */
+extern volatile u8 galio_gui_mode;
+
 #endif /* COMMON_H */

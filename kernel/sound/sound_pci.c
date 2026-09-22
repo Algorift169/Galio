@@ -7,34 +7,32 @@
 #include "ac97.h"
 #include "hda.h"
 
+/*
+ * Real hardware: Intel HDA and AC97 PCI classes are dispatched separately.
+ * Real hardware: supported Intel HDA IDs and legacy AC97 IDs are recognized.
+ * QEMU-only: codec topology and non-legacy interrupt routing remain limited.
+ * QEMU-only: unsupported multimedia audio functions are intentionally ignored.
+ */
+
 #define PCI_CLASS_MULTIMEDIA 0x04u
 #define PCI_SUBCLASS_AUDIO 0x01u
-#define PCI_AUDIO_DEVICE_ID 0x8086u
-
-static void galio_audio_name_from_index(char *buffer, size_t buffer_size, u32 index) {
-    char temp[16];
-    u32 digits = 0;
-    u32 value = index;
-    if (!buffer || buffer_size == 0u) return;
-    while (value > 0u) {
-        temp[digits++] = (char)('0' + (value % 10u));
-        value /= 10u;
-    }
-    if (digits == 0u) temp[digits++] = '0';
-    for (u32 i = 0; i < digits; i++) {
-        if (i + 1u >= buffer_size) break;
-        buffer[i] = temp[digits - 1u - i];
-    }
-    buffer[digits] = 0;
-}
 
 static int galio_sound_pci_probe(pci_device_t *dev) {
-    if (!dev || dev->class_id != PCI_CLASS_MULTIMEDIA ||
-        dev->subclass != PCI_SUBCLASS_AUDIO) return 0;
-    if (dev->device_id == 0x2668u || dev->device_id == 0x2698u ||
-        dev->device_id == 0x293Eu || dev->device_id == 0x3A6Eu ||
-        dev->device_id == 0x1C20u) return hda_probe(dev);
-    return ac97_probe(dev);
+    if (!dev || dev->class_id != PCI_CLASS_MULTIMEDIA) return 0;
+    if (dev->subclass == 0x03u) return hda_probe(dev);
+    if (dev->subclass != PCI_SUBCLASS_AUDIO) return 0;
+    if (dev->vendor_id == 0x8086u &&
+        (dev->device_id == 0x2668u || dev->device_id == 0x2698u ||
+         dev->device_id == 0x27D8u || dev->device_id == 0x293Eu ||
+         dev->device_id == 0x3A6Eu || dev->device_id == 0x1C20u ||
+         dev->device_id == 0x1E20u || dev->device_id == 0xA170u))
+        return hda_probe(dev);
+    if (dev->class_id == PCI_CLASS_MULTIMEDIA && dev->subclass == 0x01u &&
+        ((dev->vendor_id == 0x8086u &&
+          (dev->device_id == 0x2415u || dev->device_id == 0x2425u ||
+           dev->device_id == 0x2445u)) || dev->prog_if == 0x00u))
+        return ac97_probe(dev);
+    return 0;
 }
 
 static pci_driver_t galio_sound_pci_driver = {

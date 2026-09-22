@@ -2,6 +2,7 @@
 #include "kprintf.h"
 #include "string.h"
 #include "kernel/dma/dma.h"
+#include "mm/dma.h"
 #include "mm/heap.h"
 #include "dev/device_manager.h"
 #include "vfs_core.h"
@@ -149,16 +150,27 @@ int sound_device_register(sound_device_t *device) {
 }
 
 int sound_device_unregister(sound_device_t *device) {
+    int result = 0;
+    if (!device) return -1;
     for (u32 i = 0; i < SOUND_MAX_DEVICES; i++) {
         if (sound_devices[i] == device) {
+            if (device->ops && device->ops->stop) {
+                result = device->ops->stop(device);
+                if (device->active_stream) {
+                    device->active_stream->state = SOUND_STREAM_STOPPED;
+                    device->active_stream = NULL;
+                }
+            }
+            (void)sound_unregister_device_node(device);
             sound_devices[i] = NULL;
             if (sound_device_count > 0) sound_device_count--;
             if (device->codec) {
                 kfree(device->codec);
                 device->codec = NULL;
             }
+            if (device->ops && device->ops->destroy) device->ops->destroy(device);
             kprintf("[SOUND] unregistered device %s\n", device->name);
-            return 0;
+            return result;
         }
     }
     return -1;
@@ -205,15 +217,26 @@ int sound_stream_open(sound_stream_t *stream,
     else if (stream->format == SOUND_FORMAT_S24_LE) stream->frame_size = 3u * stream->channels;
     else if (stream->format == SOUND_FORMAT_S32_LE) stream->frame_size = 4u * stream->channels;
     else stream->frame_size = 1u * stream->channels;
-    stream->buffer = kmalloc(stream->buffer_size);
+    u32 buffer_phys = 0u;
+    stream->buffer = (u8 *)dma_alloc_coherent((u32)stream->buffer_size,
+                                              &buffer_phys);
     if (!stream->buffer) return -1;
+    memset(&stream->dma, 0, sizeof(stream->dma));
+    stream->dma.vaddr = stream->buffer;
+    stream->dma.phys_addr = buffer_phys;
+    stream->dma.dma_addr = stream->dma.phys_addr;
+    stream->dma.size = stream->buffer_size;
+    stream->dma.allocated = true;
+    stream->dma.flags = DMA_BUFFER_ALLOCATED | DMA_BUFFER_COHERENT;
+    spinlock_init(&stream->lock);
     memset(stream->buffer, 0, stream->buffer_size);
     stream->state = SOUND_STREAM_STOPPED;
     stream->owner = true;
     if (device->ops && device->ops->set_format &&
         device->ops->set_format(device, stream->channels,
                                 stream->sample_rate, stream->format) != 0) {
-        kfree(stream->buffer);
+        dma_free_coherent(stream->buffer, (u32)stream->dma.phys_addr,
+                  (u32)stream->buffer_size);
         stream->buffer = NULL;
         return -1;
     }
@@ -222,8 +245,13 @@ int sound_stream_open(sound_stream_t *stream,
 
 int sound_stream_close(sound_stream_t *stream) {
     if (!stream) return -1;
+    if (stream->state == SOUND_STREAM_RUNNING ||
+        stream->state == SOUND_STREAM_PAUSED) {
+        (void)sound_stream_stop(stream);
+    }
     if (stream->buffer) {
-        kfree(stream->buffer);
+        dma_free_coherent(stream->buffer, (u32)stream->dma.phys_addr,
+                  (u32)stream->buffer_size);
         stream->buffer = NULL;
     }
     memset(stream, 0, sizeof(*stream));
@@ -232,10 +260,12 @@ int sound_stream_close(sound_stream_t *stream) {
 
 int sound_stream_start(sound_stream_t *stream) {
     if (!stream || !stream->device || !stream->buffer) return -1;
-    stream->state = SOUND_STREAM_RUNNING;
+    spin_lock(&stream->lock);
     stream->write_cursor = 0;
     stream->read_cursor = 0;
     stream->bytes_ready = 0;
+    stream->state = SOUND_STREAM_RUNNING;
+    spin_unlock(&stream->lock);
     stream->device->active_stream = stream;
     if (stream->device->ops && stream->device->ops->start &&
         stream->device->ops->start(stream->device, stream->direction) != 0) {
@@ -245,11 +275,38 @@ int sound_stream_start(sound_stream_t *stream) {
     return 0;
 }
 
-int sound_stream_stop(sound_stream_t *stream) {
+int sound_stream_pause(sound_stream_t *stream) {
     if (!stream) return -1;
+    spin_lock(&stream->lock);
+    if (stream->state != SOUND_STREAM_RUNNING) {
+        spin_unlock(&stream->lock);
+        return -1;
+    }
+    stream->state = SOUND_STREAM_PAUSED;
+    spin_unlock(&stream->lock);
+    return 0;
+}
+
+int sound_stream_resume(sound_stream_t *stream) {
+    if (!stream) return -1;
+    spin_lock(&stream->lock);
+    if (stream->state != SOUND_STREAM_PAUSED) {
+        spin_unlock(&stream->lock);
+        return -1;
+    }
+    stream->state = SOUND_STREAM_RUNNING;
+    spin_unlock(&stream->lock);
+    return 0;
+}
+
+int sound_stream_stop(sound_stream_t *stream) {
+    int result = 0;
+    if (!stream) return -1;
+    spin_lock(&stream->lock);
     stream->state = SOUND_STREAM_STOPPED;
+    spin_unlock(&stream->lock);
     if (stream->device && stream->device->ops && stream->device->ops->stop) {
-        int result = stream->device->ops->stop(stream->device);
+        result = stream->device->ops->stop(stream->device);
         stream->device->active_stream = NULL;
         return result;
     }
@@ -258,31 +315,46 @@ int sound_stream_stop(sound_stream_t *stream) {
 }
 
 int sound_stream_write(sound_stream_t *stream, const void *data, size_t length) {
-    size_t available;
+    size_t free_space;
+    size_t first;
     if (!stream || !data || !stream->buffer || stream->state == SOUND_STREAM_ERROR) return -1;
     if (stream->state != SOUND_STREAM_RUNNING) return 0;
-    available = stream->buffer_size - stream->write_cursor;
-    if (length > available) {
+    spin_lock(&stream->lock);
+    free_space = stream->buffer_size - stream->bytes_ready;
+    if (length > free_space) {
         stream->overruns++;
-        length = available;
+        length = free_space;
     }
-    memcpy(stream->buffer + stream->write_cursor, data, length);
-    stream->write_cursor += length;
+    first = stream->buffer_size - stream->write_cursor;
+    if (first > length) first = length;
+    memcpy(stream->buffer + stream->write_cursor, data, first);
+    if (length > first) memcpy(stream->buffer, (const u8 *)data + first,
+                               length - first);
+    stream->write_cursor = (stream->write_cursor + length) % stream->buffer_size;
     stream->bytes_ready += length;
-    if (stream->write_cursor >= stream->buffer_size) stream->write_cursor = 0;
+    spin_unlock(&stream->lock);
     return (int)length;
 }
 
 int sound_stream_read(sound_stream_t *stream, void *data, size_t length) {
     size_t available;
+    size_t first;
     if (!stream || !data || !stream->buffer || stream->state == SOUND_STREAM_ERROR) return -1;
-    if (stream->bytes_ready == 0) return 0;
+    spin_lock(&stream->lock);
+    if (stream->bytes_ready == 0) {
+        spin_unlock(&stream->lock);
+        return 0;
+    }
     available = stream->bytes_ready;
     if (length > available) length = available;
-    memcpy(data, stream->buffer + stream->read_cursor, length);
-    stream->read_cursor += length;
+    first = stream->buffer_size - stream->read_cursor;
+    if (first > length) first = length;
+    memcpy(data, stream->buffer + stream->read_cursor, first);
+    if (length > first) memcpy((u8 *)data + first, stream->buffer,
+                               length - first);
+    stream->read_cursor = (stream->read_cursor + length) % stream->buffer_size;
     stream->bytes_ready -= length;
-    if (stream->read_cursor >= stream->buffer_size) stream->read_cursor = 0;
+    spin_unlock(&stream->lock);
     return (int)length;
 }
 
