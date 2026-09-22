@@ -28,6 +28,7 @@
 #include "net/packet.h"
 #include "drivers/pit.h"
 #include "net/net.h"
+#include "process/process.h"
 #include "lib/kprintf.h"
 #include "lib/string.h"
 #include <string.h>
@@ -59,6 +60,7 @@ struct udp_socket {
     u16 queue_head;
     u16 queue_count;
     u32 drops;
+    process_wait_queue_t recv_waiters;
     udp_datagram_t queue[UDP_SOCKET_QUEUE];
 };
 
@@ -102,6 +104,7 @@ udp_socket_t *udp_socket_create(void) {
         if (!udp_sockets[index].used) {
             memset(&udp_sockets[index], 0, sizeof(udp_sockets[index]));
             udp_sockets[index].used = 1u;
+            process_wait_queue_init(&udp_sockets[index].recv_waiters);
             return &udp_sockets[index];
         }
     }
@@ -162,7 +165,8 @@ int udp_socket_recvfrom(udp_socket_t *socket, void *buffer, u32 length,
     start = pit_get_ticks();
     while (!socket->queue_count) {
         if (!timeout_ms || pit_get_ticks() - start >= timeout_ms) return -11;
-        net_poll();
+        process_wait_queue_sleep_until(&socket->recv_waiters,
+                                       start + timeout_ms);
     }
     udp_datagram_t *datagram = &socket->queue[socket->queue_head];
     u32 copied = datagram->length < length ? datagram->length : length;
@@ -338,6 +342,7 @@ void udp_input(net_buf_t *buf, struct ipv4_hdr *ip) {
         datagram->source_ip = net_ntohl(ip->src);
         datagram->source_port = src_port;
         socket->queue_count++;
+        process_wait_queue_wake_one(&socket->recv_waiters);
     }
 
     for (u32 i = 0; i < udp_listener_count; i++) {

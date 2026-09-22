@@ -28,6 +28,7 @@
 #include "net/net.h"
 #include "net/ethernet.h"
 #include "net/packet.h"
+#include "process/process.h"
 #include "drivers/pit.h"
 #include "lib/kprintf.h"
 #include "lib/string.h"
@@ -80,6 +81,8 @@ typedef struct {
     u8 pending_count;
     u8 pending_head;
     u16 pending[TCP_LISTEN_BACKLOG];
+    process_wait_queue_t accept_waiters;
+    process_wait_queue_t recv_waiters;
     u32 recv_len;
     u8 recv_buffer[TCP_RECV_BUFFER_SIZE];
 } tcp_connection_t;
@@ -163,6 +166,8 @@ static tcp_connection_t *tcp_alloc(void) {
             tcp_connections[i].used = 1;
             tcp_connections[i].hash_next = TCP_MAX_CONNECTIONS;
             tcp_connections[i].state = TCP_STATE_CLOSED;
+            process_wait_queue_init(&tcp_connections[i].accept_waiters);
+            process_wait_queue_init(&tcp_connections[i].recv_waiters);
             return &tcp_connections[i];
         }
     }
@@ -341,11 +346,13 @@ int tcp_accept(u32 listener_id, u32 timeout_ms, u32 *remote_ip, u16 *remote_port
     if (!listener->used || !listener->listener) return -22;
     while (!listener->pending_count) {
         if (!timeout_ms || pit_get_ticks() - start >= timeout_ms) return -11;
-        net_poll();
+        process_wait_queue_sleep_until(&listener->accept_waiters,
+                                       start + timeout_ms);
     }
     u16 child_index = listener->pending[listener->pending_head];
     listener->pending_head = (listener->pending_head + 1u) % TCP_LISTEN_BACKLOG;
     listener->pending_count--;
+    process_wait_queue_wake_one(&listener->accept_waiters);
     tcp_connection_t *child = &tcp_connections[child_index];
     if (remote_ip) *remote_ip = child->dest_ip;
     if (remote_port) *remote_port = child->dest_port;
@@ -367,7 +374,8 @@ int tcp_receive(u32 conn_id, void *buffer, u32 buffer_len, u32 timeout_ms) {
 
     u32 start = pit_get_ticks();
     while (conn->recv_len == 0 && (pit_get_ticks() - start) < timeout_ms) {
-        net_poll();
+        process_wait_queue_sleep_until(&conn->recv_waiters,
+                                       start + timeout_ms);
     }
     if (conn->recv_len == 0) return 0;
 
@@ -391,6 +399,8 @@ int tcp_close(u32 conn_id) {
     if (conn->state == TCP_STATE_ESTABLISHED) {
         tcp_send_segment(conn, NULL, 0, TCP_FLAG_FIN | TCP_FLAG_ACK);
     }
+    process_wait_queue_wake_all(&conn->accept_waiters);
+    process_wait_queue_wake_all(&conn->recv_waiters);
     tcp_hash_remove(conn);
     conn->used = 0;
     return 0;
@@ -461,6 +471,7 @@ void tcp_input(net_buf_t *buf, struct ipv4_hdr *ip) {
             u32 tail = (listener->pending_head + listener->pending_count) % TCP_LISTEN_BACKLOG;
             listener->pending[tail] = (u16)(conn - tcp_connections);
             listener->pending_count++;
+            process_wait_queue_wake_one(&listener->accept_waiters);
         }
         return;
     }
@@ -476,12 +487,14 @@ void tcp_input(net_buf_t *buf, struct ipv4_hdr *ip) {
                 conn->recv_len += copy_len;
                 conn->remote_seq += packet_data_len;
                 tcp_send_segment(conn, NULL, 0, TCP_FLAG_ACK);
+                process_wait_queue_wake_all(&conn->recv_waiters);
             }
         }
         if ((flags & TCP_FLAG_FIN) && incoming_seq == conn->remote_seq) {
             conn->remote_seq++;
             tcp_send_segment(conn, NULL, 0, TCP_FLAG_ACK);
             conn->state = TCP_STATE_FIN_WAIT;
+            process_wait_queue_wake_all(&conn->recv_waiters);
         }
     }
 }

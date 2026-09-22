@@ -124,10 +124,19 @@ typedef struct process {
     u32 pending_signals;
     u32 exit_code;
     u8 accounting_idle;
+    struct process *wait_next;
+    struct process_wait_queue *wait_queue;
+    u32 wait_deadline;
+    u8 wait_deadline_active;
     char path[PROCESS_PATH_MAX];
     /* Kernel stack physical base (0 if allocated from kmalloc) */
     u32 kernel_stack_phys;
 } process_t;
+
+typedef struct process_wait_queue {
+    process_t *head;
+    process_t *tail;
+} process_wait_queue_t;
 
 /* The process object is the scheduler-owned process control block. */
 typedef process_t pcb_t;
@@ -165,6 +174,12 @@ void process_oom_kill(void);
 void process_preempt(registers_t *regs);
 void process_ready_enqueue(process_t *proc);
 void process_ready_remove(process_t *proc);
+void process_wait_queue_init(process_wait_queue_t *queue);
+void process_wait_queue_sleep(process_wait_queue_t *queue);
+void process_wait_queue_sleep_until(process_wait_queue_t *queue, u32 deadline);
+void process_wait_queue_wake_one(process_wait_queue_t *queue);
+void process_wait_queue_wake_all(process_wait_queue_t *queue);
+void process_wait_queue_poll_timeouts(u32 now);
 char *process_resolve_path(const char *cwd, const char *path, char *output, u32 output_size);
 
 /* CPU statistics functions */

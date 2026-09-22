@@ -113,6 +113,91 @@ static process_t *process_ready_dequeue(void) {
     return proc;
 }
 
+void process_wait_queue_init(process_wait_queue_t *queue) {
+    if (!queue) return;
+    queue->head = NULL;
+    queue->tail = NULL;
+}
+
+void process_wait_queue_sleep(process_wait_queue_t *queue) {
+    process_wait_queue_sleep_until(queue, 0u);
+}
+
+void process_wait_queue_sleep_until(process_wait_queue_t *queue, u32 deadline) {
+    process_t *current = current_process;
+    if (!queue || !current || current->state == PROCESS_ZOMBIE) return;
+
+    current->state = PROCESS_WAITING;
+    current->wait_queue = queue;
+    current->wait_next = NULL;
+    current->wait_deadline = deadline;
+    current->wait_deadline_active = deadline != 0u;
+    if (queue->tail) queue->tail->wait_next = current;
+    else queue->head = current;
+    queue->tail = current;
+    process_yield();
+}
+
+static process_t *process_wait_queue_remove_head(process_wait_queue_t *queue) {
+    process_t *proc;
+    if (!queue) return NULL;
+    proc = queue->head;
+    if (!proc) return NULL;
+    queue->head = proc->wait_next;
+    if (!queue->head) queue->tail = NULL;
+    proc->wait_next = NULL;
+    proc->wait_queue = NULL;
+    proc->wait_deadline = 0u;
+    proc->wait_deadline_active = 0u;
+    return proc;
+}
+
+void process_wait_queue_wake_one(process_wait_queue_t *queue) {
+    process_t *proc = process_wait_queue_remove_head(queue);
+    if (!proc) return;
+    proc->state = PROCESS_READY;
+    process_ready_enqueue(proc);
+}
+
+void process_wait_queue_wake_all(process_wait_queue_t *queue) {
+    if (!queue) return;
+    while (queue->head) process_wait_queue_wake_one(queue);
+}
+
+void process_wait_queue_poll_timeouts(u32 now) {
+    for (u32 index = 0u; index < MAX_PROCESSES; index++) {
+        process_t *proc = &processes[index];
+        process_wait_queue_t *queue;
+        process_t *previous;
+        process_t **link;
+
+        if (proc->state != PROCESS_WAITING || !proc->wait_queue ||
+            !proc->wait_deadline_active ||
+            (u32)(now - proc->wait_deadline) >= 0x80000000u) {
+            continue;
+        }
+
+        queue = proc->wait_queue;
+        previous = NULL;
+        link = &queue->head;
+        while (*link && *link != proc) {
+            previous = *link;
+            link = &(*link)->wait_next;
+        }
+        if (*link == proc) {
+            *link = proc->wait_next;
+            if (queue->tail == proc) queue->tail = previous;
+            if (!queue->head) queue->tail = NULL;
+        }
+        proc->wait_next = NULL;
+        proc->wait_queue = NULL;
+        proc->wait_deadline = 0u;
+        proc->wait_deadline_active = 0u;
+        proc->state = PROCESS_READY;
+        process_ready_enqueue(proc);
+    }
+}
+
 /* Allocate a PID safely, avoid returning 0 and avoid collisions on wrap-around.
  * This scans the process table for active PIDs to ensure uniqueness.
  */

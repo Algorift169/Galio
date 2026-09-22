@@ -56,6 +56,7 @@ static const char *process_state_name(process_state_t state) {
 }
 
 static u32 top_previous_time;
+static u64 top_previous_total_runtime;
 
 typedef enum {
     TOP_SORT_CPU,
@@ -146,10 +147,10 @@ static void top_sort_processes(process_info_t *processes, u32 *cpus, u32 count, 
 
 static void print_process_table(const process_info_t *current, u32 current_count,
                                 const process_info_t *previous, u32 previous_count,
-                                u32 now, top_sort_t sort) {
+                                u32 now, u64 total_runtime_delta, top_sort_t sort) {
     process_info_t sorted[TOP_MAX_PROCESSES];
     u32 cpus[TOP_MAX_PROCESSES];
-    u64 total_delta = 0;
+    u64 total_delta = total_runtime_delta;
     u32 running = 0;
     u32 sleeping = 0;
     u32 kernel = 0;
@@ -182,7 +183,7 @@ static void print_process_table(const process_info_t *current, u32 current_count
     vga_puts(" kernel\n");
     vga_puts("CPU: sample ");
     top_put_padded_u32(now - top_previous_time, 5);
-    vga_puts(" ticks | refresh 1s\n");
+    vga_puts(" runtime units | refresh 1s\n");
     vga_puts("PID   PPID  STATE   CPU%   MEMORY   TYPE  COMMAND\n");
     vga_puts("-------------------------------------------------------------\n");
     for (u32 i = 0; i < current_count && i < 18; i++) {
@@ -278,6 +279,7 @@ u8 shell_top_command(const char *args, const char *current_dir) {
     cursor_show();
     next_sample = pit_get_ticks();
     top_previous_time = next_sample;
+    top_previous_total_runtime = process_get_total_ticks();
     terminal_id = gsh_button_get_active_window_id();
     terminal_event = gsh_button_get_terminal_event();
     gsh_button_set_monitor_active(1u);
@@ -306,13 +308,17 @@ u8 shell_top_command(const char *args, const char *current_dir) {
         vga_get_bounds(&start_x, &start_y, &width, &height);
         if (top_refresh_due(now, next_sample, refresh)) {
             u32 current_count = process_snapshot(current, TOP_MAX_PROCESSES);
+            u64 total_runtime = process_get_total_ticks();
+            u64 total_runtime_delta = total_runtime - top_previous_total_runtime;
             cursor_deactivate();
             vga_set_cursor_position(start_x, start_y);
-            print_process_table(current, current_count, previous, previous_count, now, sort);
+            print_process_table(current, current_count, previous, previous_count,
+                                now, total_runtime_delta, sort);
             cursor_show();
             for (u32 i = 0; i < current_count; i++) previous[i] = current[i];
             previous_count = current_count;
             top_previous_time = now;
+            top_previous_total_runtime = total_runtime;
             next_sample = now + TOP_REFRESH_TICKS;
         } else {
             process_accounting_set_idle(1);

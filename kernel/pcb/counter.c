@@ -23,6 +23,5 @@ void pcb_get_accounting(const pcb_t *pcb, pcb_accounting_t *accounting) {
 void pcb_accounting_tick(pcb_t *pcb) {
     if (!pcb) return;
     pcb->ticks++;
-    pcb->runtime_ticks++;
     if (pcb->time_slice > 0u) pcb->time_slice--;
 }
