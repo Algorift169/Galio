@@ -142,10 +142,12 @@ rex syscall mmap 400
 
 ## Development status
 
-- Boot and kernel startup: active and stable
-- Shell and privilege layer: active
-- Filesystem and process layer: active
-- Syscall compatibility: expanding
-- Power lifecycle support: being layered in as kernel scaffolding
+- x86_64 boot and kernel startup: operational through GRUB Multiboot2
+- Shell and privilege layer: operational, with `gsh` as the native scripting language
+- Filesystem and process layer: operational VFS/EXT2 path with file-backed device nodes
+- Native syscall path: x86_64 `SYSCALL/SYSRET` operational with INT 0x80 compatibility
+- Storage path: ATA fallback operational; NVMe/MSI-X support integrated and under hardware validation
+- Power lifecycle support: kernel interfaces and platform scaffolding available
 
-This README reflects the current x86_64 project state rather than the older 32-bit kernel layout.
+This README reflects the current x86_64 project state, including the Multiboot2 boot contract,
+Galio's file-centric VFS model, and `gsh` rather than a Linux shell or userland layout.
