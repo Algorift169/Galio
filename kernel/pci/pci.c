@@ -33,6 +33,22 @@
 /* internal lists */
 static pci_device_t *pci_dev_list = NULL;
 static pci_driver_t *pci_drv_list = NULL;
+static u8 pci_enumerated;
+
+static u8 pci_find_capability(const pci_device_t *device, u8 id) {
+    u8 capability;
+    u8 guard = 0;
+    if (!device) return 0;
+    capability = pci_read_config_u8(device->bus, device->device, device->function, 0x34);
+    while (capability >= 0x40u && capability < 0xFCu && guard++ < 48u) {
+        u8 current = pci_read_config_u8(device->bus, device->device,
+                                        device->function, capability);
+        if (current == id) return capability;
+        capability = pci_read_config_u8(device->bus, device->device,
+                                        device->function, capability + 1u);
+    }
+    return 0;
+}
 
 static u32 pci_ecam_read32(u8 bus, u8 device, u8 function, u8 offset) {
     u64 base = acpi_mcfg_base();
@@ -224,17 +240,8 @@ int pci_enable_msi(pci_device_t *device, u32 vector) {
     u16 command;
 
     if (!device || !apic_is_available() || vector < 32u || vector >= 256u) return -1;
-    capability = pci_read_config_u8(device->bus, device->device,
-                                    device->function, 0x34);
-    while (capability >= 0x40u && capability < 0xFCu &&
-           pci_read_config_u8(device->bus, device->device,
-                              device->function, capability) != 0x05u) {
-        capability = pci_read_config_u8(device->bus, device->device,
-                                        device->function, capability + 1u);
-    }
-    if (capability < 0x40u || capability >= 0xFCu ||
-        pci_read_config_u8(device->bus, device->device,
-                           device->function, capability) != 0x05u) return -1;
+    capability = pci_find_capability(device, 0x05u);
+    if (!capability) return -1;
     control = pci_read_config_u16(device->bus, device->device,
                                   device->function, capability + 2u);
     pci_write_config_u32(device->bus, device->device, device->function,
@@ -258,6 +265,46 @@ int pci_enable_msi(pci_device_t *device, u32 vector) {
     return 0;
 }
 
+int pci_enable_msix(pci_device_t *device, u32 vector) {
+    u8 capability;
+    u16 control;
+    u32 table_info;
+    u8 table_bar;
+    u64 table_phys;
+    volatile u32 *entry;
+    u16 table_size;
+    u16 command;
+
+    if (!device || !apic_is_available() || vector < 32u || vector >= 256u) return -1;
+    capability = pci_find_capability(device, 0x11u);
+    if (!capability) return -1;
+    control = pci_read_config_u16(device->bus, device->device,
+                                   device->function, capability + 2u);
+    table_size = (control & 0x07FFu) + 1u;
+    table_info = pci_read_config_u32(device->bus, device->device,
+                                     device->function, capability + 4u);
+    table_bar = table_info & 0x07u;
+    if (table_bar >= 6u || !device->bar_is_mem[table_bar] ||
+        vector >= 256u || table_size == 0u) return -1;
+    table_phys = device->bars[table_bar] + (table_info & ~0x07u);
+    entry = (volatile u32 *)mmio_map_physical(table_phys, 16u);
+    if (!entry) return -1;
+    command = pci_read_config_u16(device->bus, device->device,
+                                  device->function, 0x04);
+    pci_write_config_u16(device->bus, device->device, device->function,
+                         0x04, command | 0x06u);
+    entry[3] = 1u;
+    entry[0] = 0xFEE00000u | (apic_cpu_id() << 12);
+    entry[1] = 0u;
+    entry[2] = (u32)vector;
+    entry[3] = 0u;
+    control &= (u16)~(1u << 14);
+    control |= (u16)(1u << 15);
+    pci_write_config_u16(device->bus, device->device, device->function,
+                         capability + 2u, control);
+    return 0;
+}
+
 pci_device_t *pci_find_device(u16 vendor, u16 device) {
     pci_device_t *it = pci_dev_list;
     while (it) {
@@ -272,7 +319,10 @@ pci_device_t *pci_device_next(pci_device_t *cur) { return cur ? cur->next : NULL
 
 void pci_init(void) {
     kprintf("PCI: Enumerating devices...\n");
-    pci_enumerate_bus();
+    if (!pci_enumerated) {
+        pci_enumerate_bus();
+        pci_enumerated = 1;
+    }
     /* Probe drivers already registered */
     pci_driver_t *drv = pci_drv_list;
     while (drv) {

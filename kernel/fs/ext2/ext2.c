@@ -22,7 +22,7 @@
 
 /* ext2.c - Simplified EXT2 filesystem driver with working writes */
 #include "ext2.h"
-#include "ata.h"
+#include "drivers/block.h"
 #include "heap.h"
 #include "kprintf.h"
 #include "string.h"
@@ -90,7 +90,7 @@ static i32 ext2_cache_read_block(u32 block_num, void *buffer) {
 
     u32 sector = ext2_block_to_lba(block_num);
     u32 sectors = block_size / 512;
-    if (ata_read_sectors(sector, sectors, buffer) < 0) return -1;
+    if (block_read(sector, sectors, buffer) < 0) return -1;
     ext2_cache_store(block_num, buffer);
     return 0;
 }
@@ -98,7 +98,7 @@ static i32 ext2_cache_read_block(u32 block_num, void *buffer) {
 static i32 ext2_cache_write_block(u32 block_num, const void *buffer) {
     u32 sector = ext2_block_to_lba(block_num);
     u32 sectors = block_size / 512;
-    if (ata_write_sectors(sector, sectors, buffer) < 0) return -1;
+    if (block_write(sector, sectors, buffer) < 0) return -1;
     ext2_cache_store(block_num, buffer);
     return 0;
 }
@@ -238,7 +238,7 @@ static i32 ext2_read_group_descriptors(void) {
 /* Read superblock from disk image/partition start (offset 1024 bytes) */
 static i32 ext2_read_superblock(void) {
     u8 buffer[1024];
-    if (ata_read_sectors(ext2_partition_lba + 2, 2, buffer) < 0) return -1;
+    if (block_read(ext2_partition_lba + 2, 2, buffer) < 0) return -1;
     memcpy(&superblock, buffer, sizeof(ext2_superblock_t));
     return 0;
 }
@@ -248,8 +248,7 @@ static i32 ext2_write_superblock(void) {
     u8 buffer[1024];
     memset(buffer, 0, 1024);
     memcpy(buffer, &superblock, sizeof(ext2_superblock_t));
-    /* ata_write_sectors returns count on success */
-    return ata_write_sectors(ext2_partition_lba + 2, 2, buffer) < 0 ? -1 : 0;
+    return block_write(ext2_partition_lba + 2, 2, buffer) < 0 ? -1 : 0;
 }
 
 static i32 ext2_initialize_root_inode(void);
@@ -303,9 +302,8 @@ i32 ext2_fsync(void) {
         return -1;
     }
     
-    /* Flush the ATA write cache to ensure data reaches the physical disk */
-    if (ata_flush_cache() != 0) {
-        kprintf("[EXT2] fsync: Warning - ATA cache flush failed\n");
+    if (block_flush() != 0) {
+        kprintf("[EXT2] fsync: Warning - block-device flush failed\n");
         return -1;
     }
     

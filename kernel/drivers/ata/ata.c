@@ -23,6 +23,7 @@
 /* ata.c - ATA/IDE disk driver */
 
 #include "ata.h"
+#include "drivers/block.h"
 #include "kprintf.h"
 #include "cpu.h"
 
@@ -32,6 +33,31 @@ static u16 ata_io_base = ATA_PRIMARY_IO;
 static u16 ata_ctrl_base = ATA_PRIMARY_CTRL;
 static u32 ata_sector_count = 0;  /* Total sectors on disk */
 static u32 ata_initialized = 0;
+
+static i32 ata_block_read(block_device_t *device, u64 lba, u32 count, void *buffer) {
+    (void)device;
+    if (lba > 0xFFFFFFFFu) return -1;
+    return ata_read_sectors((u32)lba, count, buffer);
+}
+
+static i32 ata_block_write(block_device_t *device, u64 lba, u32 count, const void *buffer) {
+    (void)device;
+    if (lba > 0xFFFFFFFFu) return -1;
+    return ata_write_sectors((u32)lba, count, buffer);
+}
+
+static i32 ata_block_flush(block_device_t *device) {
+    (void)device;
+    return ata_flush_cache();
+}
+
+static block_device_t ata_block_device = {
+    .name = "ata",
+    .sector_size = 512,
+    .read = ata_block_read,
+    .write = ata_block_write,
+    .flush = ata_block_flush
+};
 
 static u64 ata_irq_save(void) {
     u64 flags;
@@ -156,6 +182,8 @@ void ata_init(void) {
         kprintf("ATA: Warning - sector count is 0, using fallback\n");
         ata_sector_count = 1024 * 1024;  /* Fallback to 512 MB */
     }
+    ata_block_device.sector_count = ata_sector_count;
+    block_device_register(&ata_block_device);
 }
 
 i32 ata_read_sectors(u32 lba, u32 count, void *buffer) {

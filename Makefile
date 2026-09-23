@@ -81,6 +81,8 @@ USER_ELF_BASE = 0x40000000
 SRCS = kernel/kmain.c \
        kernel/acpi/acpi.c \
        kernel/drivers/hpet.c \
+       kernel/drivers/block.c \
+       kernel/drivers/nvme.c \
        kernel/auth.c \
        kernel/drift_platform.c \
        kernel/drift_compat.c \

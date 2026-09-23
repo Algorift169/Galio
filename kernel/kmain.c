@@ -45,6 +45,7 @@
 #include "dev/device_manager.h"
 #include "vfs_core.h"
 #include "ata.h"
+#include "drivers/nvme.h"
 #include "ext2.h"
 #include "init.h"
 #include "cpu/cpu.h"
@@ -432,6 +433,10 @@ void kmain(void *multiboot_ptr) {
 #if GALIO_BOOT_DEBUG
     vfs_debug();
 #endif
+
+    /* Storage controllers must be ready before EXT2 selects its backend. */
+    nvme_register_driver();
+    pci_init();
 
     kprintf("Initializing ATA driver...\n");
     ata_init();

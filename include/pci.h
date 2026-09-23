@@ -74,5 +74,6 @@ pci_device_t *pci_device_next(pci_device_t *cur);
 /* Driver registration */
 int pci_register_driver(pci_driver_t *drv);
 int pci_enable_msi(pci_device_t *device, u32 vector);
+int pci_enable_msix(pci_device_t *device, u32 vector);
 
 #endif /* PCI_H */

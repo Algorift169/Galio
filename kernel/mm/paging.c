@@ -35,8 +35,8 @@
 #define KERNEL_PDE_START (KERNEL_BASE >> 22)
 #define PAGING_ALLOC_START 0x01600000u
 #define PAGING_ALLOC_END   0x04000000u
-#define MMIO_VA_START      0xD2000000u
-#define MMIO_VA_END        0xE0000000u
+#define MMIO_VA_START      0x05000000u
+#define MMIO_VA_END        0x0C000000u
 #define MMIO_MAX_MAPPINGS  128u
 
 typedef struct {
