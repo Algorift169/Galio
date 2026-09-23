@@ -21,9 +21,14 @@
  */
 
 #include "power/power.h"
+#include "acpi/acpi.h"
 #include "kprintf.h"
 #include "string.h"
 #include "arch/x86/cpu.h"
+#include "drivers/pit.h"
+#include "drivers/hpet.h"
+#include "net/netdev.h"
+#include "sound/sound.h"
 #include <stdbool.h>
 
 void poweroff_trigger(void)
@@ -53,6 +58,11 @@ void power_system_shutdown(void)
 {
     kprintf("[POWER] shutdown requested - powering off\n");
 
+    if (acpi_enter_sleep(5u) == 0) {
+        asm volatile("cli");
+        while (1) asm volatile("hlt");
+    }
+
     /* QEMU exposes the ACPI power-management control register at 0x604.
      * Keep the legacy ports as fallbacks for other emulators/firmware. */
     outw(0x604, 0x2000);
@@ -67,8 +77,40 @@ void power_system_shutdown(void)
 
 int power_system_suspend(void)
 {
-    kprintf("[POWER] suspend not supported: ACPI sleep states are not implemented\n");
-    return -38;
+    net_device_t *net_device;
+    sound_device_t *sound_device;
+    int result;
+
+    if (!acpi_has_sleep_state(3u)) {
+        kprintf("[POWER] suspend not supported: ACPI S3 is unavailable\n");
+        return -38;
+    }
+    kprintf("[POWER] entering ACPI S3 suspend\n");
+    for (net_device = netdev_first(); net_device; net_device = netdev_next(net_device)) {
+        if ((net_device->flags & NETIF_UP) && net_device->stop)
+            net_device->stop(net_device);
+    }
+    for (sound_device = sound_device_first(); sound_device; sound_device = sound_device->next) {
+        if (sound_device->active_stream)
+            sound_stream_stop(sound_device->active_stream);
+        if (sound_device->ops && sound_device->ops->stop)
+            sound_device->ops->stop(sound_device);
+    }
+    pit_disable();
+    hpet_stop_periodic();
+    result = acpi_enter_sleep(3u);
+    if (result == 0) {
+        for (net_device = netdev_first(); net_device; net_device = netdev_next(net_device)) {
+            if (net_device->open) net_device->open(net_device);
+        }
+        for (sound_device = sound_device_first(); sound_device; sound_device = sound_device->next) {
+            if (sound_device->ops && sound_device->ops->init)
+                sound_device->ops->init(sound_device);
+        }
+        pit_enable();
+        (void)hpet_start_periodic(1000u);
+    }
+    return result;
 }
 
 const char *const pm_labels[] = {

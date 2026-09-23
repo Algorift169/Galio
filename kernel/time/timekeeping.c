@@ -56,17 +56,15 @@ void galio_timekeeping_init(void)
  * ------------------------------------------------------------------ */
 galio_ktime_t galio_ktime_get(void)
 {
-    /* Base monotonic time is uptime seconds + microseconds */
+    /* Prefer a registered hardware clocksource, with PIT-backed uptime as fallback. */
     u32 secs = kernel_time_get_uptime_seconds();
     u32 usecs = kernel_time_get_microseconds();
     
-    /* Plus high-resolution interpolation from the best clocksource (if any) */
     u64 ns = (u64)secs * GALIO_NSEC_PER_SEC + (u64)usecs * GALIO_NSEC_PER_USEC;
     
     struct galio_clocksource *cs = galio_clocksource_get_best();
     if (cs && cs->read) {
-        /* In a full implementation, we'd add cycles since last tick.
-         * For now, the base time is precise enough for Galio's current scale. */
+        ns = galio_clocksource_cyc2ns(cs, cs->read(cs));
     }
     
     return ns;

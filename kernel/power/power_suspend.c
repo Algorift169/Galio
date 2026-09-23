@@ -21,6 +21,7 @@
  */
 
 #include "power/power.h"
+#include "acpi/acpi.h"
 #include "kprintf.h"
 #include <stdbool.h>
 
@@ -57,7 +58,11 @@ void suspend_set_ops(const struct platform_suspend_ops *ops)
 
 void power_suspend_init(void)
 {
-    kprintf("[POWER] suspend not supported: ACPI sleep states are not implemented\n");
+    if (acpi_has_sleep_state(3u)) {
+        kprintf("[POWER] ACPI S3 suspend available\n");
+    } else {
+        kprintf("[POWER] suspend not supported: ACPI S3 is unavailable\n");
+    }
 }
 
 int power_suspend_enter(suspend_state_t state)

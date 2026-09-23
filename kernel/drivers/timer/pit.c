@@ -33,6 +33,7 @@
 #define PIT_CONTROL   0x43
 
 static u32 ticks = 0;
+static u8 external_tick_source;
 #define MAX_TIMER_CALLBACKS 8
 static timer_callback_t timer_callbacks[MAX_TIMER_CALLBACKS] = {0};
 
@@ -71,15 +72,19 @@ void pit_init(u32 frequency) {
     outb(PIT_CHANNEL0, divisor & 0xFF);
     outb(PIT_CHANNEL0, (divisor >> 8) & 0xFF);
 
-    /* Install IRQ0 handler */
-    /* Install IRQ0 handler */
-    interrupt_install_handler(32, pit_handler);
-
-
-    /* Unmask IRQ0 */
-    irq_unmask(0);
+    /* Route IRQ0 through the active PIC or IOAPIC implementation. */
+    irq_register_handler(0u, pit_handler);
 
     __asm__ volatile ("sti");
+}
+
+void pit_use_external_tick(void) {
+    /* Stop the PIT rate generator; IRQ0 is subsequently driven by HPET legacy
+       replacement mode while retaining the existing callback fan-out. */
+    outb(PIT_CONTROL, 0x30);
+    outb(PIT_CHANNEL0, 0u);
+    outb(PIT_CHANNEL0, 0u);
+    external_tick_source = 1u;
 }
 
 u32 pit_get_ticks(void) {

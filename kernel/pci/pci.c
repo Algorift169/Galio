@@ -25,12 +25,25 @@
 #include "lib/string.h"
 #include "arch/x86/cpu.h"
 #include "mm/heap.h"
+#include "mm/paging.h"
 #include "kernel/dma/dma.h"
 #include "arch/x86/apic.h"
+#include "acpi/acpi.h"
 
 /* internal lists */
 static pci_device_t *pci_dev_list = NULL;
 static pci_driver_t *pci_drv_list = NULL;
+
+static u32 pci_ecam_read32(u8 bus, u8 device, u8 function, u8 offset) {
+    u64 base = acpi_mcfg_base();
+    u64 address;
+    volatile u32 *register_address;
+    if (!base || bus == 0u) return 0xFFFFFFFFu;
+    address = base + ((u64)bus << 20) + ((u64)device << 15) +
+              ((u64)function << 12) + (offset & 0xFFCu);
+    register_address = (volatile u32 *)mmio_map_physical(address, PAGE_SIZE);
+    return register_address ? *register_address : 0xFFFFFFFFu;
+}
 
 static u32 pci_config_address(u8 bus, u8 device, u8 function, u8 offset) {
     u32 address = (u32)((u32)1 << 31) | ((u32)bus << 16) | ((u32)device << 11) |
@@ -39,12 +52,20 @@ static u32 pci_config_address(u8 bus, u8 device, u8 function, u8 offset) {
 }
 
 u32 pci_read_config_u32(u8 bus, u8 device, u8 function, u8 offset) {
+    if (acpi_mcfg_base() && bus != 0u) return pci_ecam_read32(bus, device, function, offset);
     u32 addr = pci_config_address(bus, device, function, offset);
     outl(PCI_CONFIG_ADDRESS, addr);
     return inl(PCI_CONFIG_DATA);
 }
 
 void pci_write_config_u32(u8 bus, u8 device, u8 function, u8 offset, u32 value) {
+    if (acpi_mcfg_base() && bus != 0u) {
+        u64 address = acpi_mcfg_base() + ((u64)bus << 20) + ((u64)device << 15) +
+                      ((u64)function << 12) + (offset & 0xFFCu);
+        volatile u32 *register_address = (volatile u32 *)mmio_map_physical(address, PAGE_SIZE);
+        if (register_address) *register_address = value;
+        return;
+    }
     u32 addr = pci_config_address(bus, device, function, offset);
     outl(PCI_CONFIG_ADDRESS, addr);
     outl(PCI_CONFIG_DATA, value);

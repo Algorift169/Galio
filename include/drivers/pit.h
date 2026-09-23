@@ -34,5 +34,6 @@ u32 pit_get_ticks(void);
 void pit_install_callback(timer_callback_t callback);
 void pit_enable(void);
 void pit_disable(void);
+void pit_use_external_tick(void);
 
 #endif /* PIT_H */

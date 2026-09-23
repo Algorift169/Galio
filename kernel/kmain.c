@@ -29,6 +29,8 @@
 #include "idt.h"
 #include "irq.h"
 #include "kprintf.h"
+#include "acpi/acpi.h"
+#include "drivers/hpet.h"
 #include "display/display.h"
 #include "mouse/cursor.h"
 #include "serial.h"
@@ -302,6 +304,9 @@ void kmain(void *multiboot_ptr) {
     kprintf("Initializing paging...\n");
     paging_init();
     irq_apic_init();
+    acpi_init();
+    if (hpet_init(acpi_hpet_base()) != 0)
+        kprintf("HPET: unavailable; using PIT clocksource and timer\n");
     fb_init_from_multiboot(multiboot_ptr);
     kprintf("Initializing heap...\n");
     heap_init();
@@ -323,6 +328,8 @@ void kmain(void *multiboot_ptr) {
     galio_hrtimer_subsystem_init();
     galio_timekeeping_init();
     pit_init(GALIO_HZ);
+    if (hpet_start_periodic(GALIO_HZ) != 0)
+        kprintf("PIT: using PIT periodic event source\n");
     workqueue_init();
 
     kprintf("Initializing sound subsystem...\n");
