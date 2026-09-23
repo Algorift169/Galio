@@ -12,5 +12,6 @@ u32 apic_cpu_id(void);
 void apic_start_aps(void);
 u32 apic_cpu_count(void);
 u32 apic_online_cpu_count(void);
+u32 apic_cpu_slot(void);
 
 #endif /* GALIO_APIC_H */

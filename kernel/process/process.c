@@ -39,8 +39,10 @@
 #include "vga.h"
 #include "info.h"
 #include "process/pcb.h"
+#include "arch/x86/apic.h"
 
 #define PAGE_SIZE 4096
+#define PROCESS_MAX_CPUS 16u
 
 extern void process_switch_asm(register_state_t *old_regs, register_state_t *new_regs);
 
@@ -60,8 +62,26 @@ static u32 next_arrival_order = 1;
 static process_t *current_process = NULL;
 static u32 process_count = 0;
 static spinlock_t process_table_lock;
-static process_t *ready_heads[8];
-static process_t *ready_tails[8];
+static process_t *ready_heads[PROCESS_MAX_CPUS][8];
+static process_t *ready_tails[PROCESS_MAX_CPUS][8];
+
+static u32 process_current_cpu(void) {
+    u32 cpu = apic_cpu_slot();
+    return cpu < PROCESS_MAX_CPUS ? cpu : 0u;
+}
+
+static u32 process_queue_cpu(const process_t *proc) {
+    return proc && proc->runqueue_cpu < PROCESS_MAX_CPUS ? proc->runqueue_cpu : 0u;
+}
+
+static u32 process_queue_length(u32 cpu) {
+    u32 count = 0u;
+    for (u32 priority = 0u; priority < 8u; priority++) {
+        for (process_t *proc = ready_heads[cpu][priority]; proc; proc = proc->ready_next)
+            count++;
+    }
+    return count;
+}
 
 void process_ready_remove(process_t *proc) {
     process_t *previous;
@@ -70,13 +90,13 @@ void process_ready_remove(process_t *proc) {
     if (!proc || !proc->ready_queued) return;
     priority = proc->priority <= 7u ? proc->priority : 4u;
     previous = NULL;
-    current = ready_heads[priority];
+    current = ready_heads[process_queue_cpu(proc)][priority];
     while (current) {
         if (current == proc) {
             if (previous) previous->ready_next = current->ready_next;
-            else ready_heads[priority] = current->ready_next;
-            if (ready_tails[priority] == current)
-                ready_tails[priority] = previous;
+            else ready_heads[process_queue_cpu(proc)][priority] = current->ready_next;
+            if (ready_tails[process_queue_cpu(proc)][priority] == current)
+                ready_tails[process_queue_cpu(proc)][priority] = previous;
             current->ready_next = NULL;
             current->ready_queued = 0u;
             return;
@@ -94,14 +114,16 @@ void process_ready_enqueue(process_t *proc) {
     priority = proc->priority <= 7u ? proc->priority : 4u;
     proc->ready_next = NULL;
     proc->ready_queued = 1u;
-    if (ready_tails[priority]) ready_tails[priority]->ready_next = proc;
-    else ready_heads[priority] = proc;
-    ready_tails[priority] = proc;
+    if (ready_tails[process_queue_cpu(proc)][priority])
+        ready_tails[process_queue_cpu(proc)][priority]->ready_next = proc;
+    else ready_heads[process_queue_cpu(proc)][priority] = proc;
+    ready_tails[process_queue_cpu(proc)][priority] = proc;
 }
 
 static process_t *process_ready_peek(void) {
+    u32 cpu = process_current_cpu();
     for (u32 priority = 0u; priority < 8u; priority++) {
-        if (ready_heads[priority]) return ready_heads[priority];
+        if (ready_heads[cpu][priority]) return ready_heads[cpu][priority];
     }
     return NULL;
 }
@@ -317,6 +339,7 @@ void process_init(void) {
     /* Create idle process */
     process_create(idle_main, 0);
     current_process = &processes[1];
+    current_process->runqueue_cpu = 0u;
     process_ready_remove(current_process);
     process_set_path(current_process, "/kernel/boot-shell");
     current_process->state = PROCESS_RUNNING;
@@ -355,6 +378,7 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->parent_pid = current_process ? current_process->pid : 0;
     proc->state = PROCESS_READY;
     proc->priority = priority <= 7u ? priority : 4u;
+    proc->runqueue_cpu = 0u;
     proc->burst_time = proc->priority;
     proc->arrival_order = next_arrival_order++;
     proc->ticks = 0;
@@ -484,6 +508,21 @@ u32 process_create(void (*entry)(void), u32 priority) {
     proc->regs.user_ss_compat = 0;
     proc->time_slice = PROCESS_TIME_SLICE;
 
+    {
+        u32 cpu_total = apic_online_cpu_count();
+        u32 selected_cpu = 0u;
+        u32 selected_load = process_queue_length(0u);
+        if (cpu_total > PROCESS_MAX_CPUS) cpu_total = PROCESS_MAX_CPUS;
+        for (u32 cpu = 1u; cpu < cpu_total; cpu++) {
+            u32 load = process_queue_length(cpu);
+            if (load < selected_load) {
+                selected_cpu = cpu;
+                selected_load = load;
+            }
+        }
+        proc->runqueue_cpu = (u8)selected_cpu;
+    }
+
     /* Initialize file descriptor table */
     for (u32 fd_idx = 0; fd_idx < PROCESS_MAX_FDS; fd_idx++) {
         proc->fd_table[fd_idx] = VFS_INVALID_FD;
@@ -494,6 +533,28 @@ u32 process_create(void (*entry)(void), u32 priority) {
     // kprintf("Process created: PID=%u, priority=%u\n", proc->pid, priority);
 
     return proc->pid;
+}
+
+void process_balance_runqueues(void) {
+    u32 cpu_total = apic_online_cpu_count();
+    u32 local_cpu = process_current_cpu();
+    u32 local_load;
+    if (cpu_total < 2u || local_cpu >= PROCESS_MAX_CPUS) return;
+    if (cpu_total > PROCESS_MAX_CPUS) cpu_total = PROCESS_MAX_CPUS;
+    local_load = process_queue_length(local_cpu);
+    if (local_load > 0u) return;
+
+    for (u32 source = 0u; source < cpu_total; source++) {
+        if (source == local_cpu || process_queue_length(source) < 2u) continue;
+        for (u32 priority = 0u; priority < 8u; priority++) {
+            process_t *proc = ready_heads[source][priority];
+            if (!proc) continue;
+            process_ready_remove(proc);
+            proc->runqueue_cpu = (u8)local_cpu;
+            process_ready_enqueue(proc);
+            return;
+        }
+    }
 }
 
 void process_detach(u32 pid) {

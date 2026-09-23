@@ -101,6 +101,7 @@ typedef struct process {
     process_state_t state;
     struct process *ready_next;
     u8 ready_queued;
+    u8 runqueue_cpu;
     register_state_t regs;
     uintptr_t *stack;
     u32 stack_size;
@@ -174,6 +175,7 @@ void process_oom_kill(void);
 void process_preempt(registers_t *regs);
 void process_ready_enqueue(process_t *proc);
 void process_ready_remove(process_t *proc);
+void process_balance_runqueues(void);
 void process_wait_queue_init(process_wait_queue_t *queue);
 void process_wait_queue_sleep(process_wait_queue_t *queue);
 void process_wait_queue_sleep_until(process_wait_queue_t *queue, u32 deadline);

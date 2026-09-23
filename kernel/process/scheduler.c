@@ -101,6 +101,7 @@ void scheduler_tick(registers_t *regs) {
     process_t *current = process_current();
     // Poll wait queues for timeouts and update accounting
     process_wait_queue_poll_timeouts(pit_get_ticks());
+    process_balance_runqueues();
     if (current) {
         process_accounting_tick();
         pcb_accounting_tick(current);

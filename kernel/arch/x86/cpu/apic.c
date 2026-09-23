@@ -219,6 +219,13 @@ u32 apic_cpu_id(void) {
 
 u32 apic_cpu_count(void) { return cpu_count; }
 u32 apic_online_cpu_count(void) { return online_cpu_count; }
+u32 apic_cpu_slot(void) {
+    u32 id = apic_cpu_id();
+    for (u32 index = 0u; index < cpu_count; index++) {
+        if (cpu_ids[index] == id) return index;
+    }
+    return 0u;
+}
 
 static void apic_wait_delivery(void) {
     for (u32 delay = 0u; delay < 100000u; delay++) {
