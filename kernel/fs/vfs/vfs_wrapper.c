@@ -879,58 +879,6 @@ i32 vfs_chmod(const char *path, u32 mode) {
     return 0;
 }
 
-static u32 vfs_mount_root_entry(const char *mountpoint, u32 device) {
-    char normalized[VFS_MAX_PATH];
-    path_normalize(mountpoint, normalized, sizeof(normalized));
-    if (!vfs_core_create_dir(normalized, 1)) return 0;
-    if (device == VFS_DEVFS) {
-        if (strcmp(normalized, ".") == 0) return 1;
-        char dev_path[VFS_MAX_PATH];
-        strncpy(dev_path, normalized, VFS_MAX_PATH - 1);
-        dev_path[VFS_MAX_PATH - 1] = 0;
-        u32 dev_len = strlen(dev_path);
-        if (strcmp(normalized, ".") != 0 && dev_len > 0 && dev_path[dev_len - 1] != '/') {
-            strncat(dev_path, "/", VFS_MAX_PATH - strlen(dev_path) - 1);
-        }
-        strncat(dev_path, "null", VFS_MAX_PATH - strlen(dev_path) - 1);
-        vfs_core_create_device(dev_path, 0644, 1);
-        if (strcmp(normalized, ".") != 0) {
-            strncpy(dev_path, normalized, VFS_MAX_PATH - 1);
-            dev_path[VFS_MAX_PATH - 1] = 0;
-            strncat(dev_path, "/zero", VFS_MAX_PATH - strlen(dev_path) - 1);
-            vfs_core_create_device(dev_path, 0644, 2);
-            strncpy(dev_path, normalized, VFS_MAX_PATH - 1);
-            dev_path[VFS_MAX_PATH - 1] = 0;
-            strncat(dev_path, "/random", VFS_MAX_PATH - strlen(dev_path) - 1);
-            vfs_core_create_device(dev_path, 0644, 3);
-        }
-    }
-    return 1;
-}
-
-i32 vfs_mount(const char *mountpoint, u32 device) {
-    if (!vfs_root) {
-        kprintf("[VFS] ERROR: Filesystem not mounted\n");
-        return -1;
-    }
-    if (!mountpoint) return -1;
-    if (!vfs_mount_root_entry(mountpoint, device)) {
-        kprintf("[VFS] ERROR: Mount failed: %s\n", mountpoint);
-        return -1;
-    }
-    kprintf("[VFS] Mounted device %u at %s\n", device, mountpoint);
-    return 0;
-}
-
-i32 vfs_unmount(const char *mountpoint) {
-    if (!vfs_root) {
-        kprintf("[VFS] ERROR: Filesystem not mounted\n");
-        return -1;
-    }
-    kprintf("[VFS] Unmount not implemented for %s\n", mountpoint);
-    return -1;
-}
-
 static u8 vfs_disk_entry_is_dot(const ext2_dirent_t *dent) {
     return (dent->name_len == 1 && dent->name[0] == '.') ||
            (dent->name_len == 2 && dent->name[0] == '.' && dent->name[1] == '.');
@@ -1092,7 +1040,6 @@ u32 vfs_remove_dir_contents(const char *path) {
             kprintf("[VFS] ERROR: Could not read directory inode: %s\n", path);
             return 0;
         }
-        u32 removed = 0;
         u8 success = 1;
         u32 block_size_local = ext2_get_block_size();
         u8 *buffer = kmalloc(block_size_local);
@@ -1112,7 +1059,6 @@ u32 vfs_remove_dir_contents(const char *path) {
                     char child_path[VFS_MAX_PATH];
                     vfs_build_disk_child_path(path, dent, child_path);
                     if (vfs_remove_recursive_disk(child_path)) {
-                        removed++;
                     } else {
                         kprintf("[VFS] ERROR: Could not remove entry: %.*s\n", dent->name_len, dent->name);
                         success = 0;
@@ -1132,7 +1078,6 @@ u32 vfs_remove_dir_contents(const char *path) {
         kprintf("[VFS] ERROR: Directory not found: %s\n", path);
         return 0;
     }
-    u32 removed = 0;
     u8 success = 1;
     vfs_dentry_t *child = dentry->first_child;
     while (child) {
@@ -1141,7 +1086,6 @@ u32 vfs_remove_dir_contents(const char *path) {
             char fullpath[VFS_MAX_PATH];
             vfs_core_build_path(child, fullpath);
             if (vfs_remove_recursive_dentry(child)) {
-                removed++;
             } else {
                 kprintf("[VFS] ERROR: Could not remove entry: %s\n", fullpath);
                 success = 0;

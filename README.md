@@ -18,6 +18,23 @@ The project is currently built as a freestanding x86_64 kernel with a custom GRU
 - power subsystem scaffolding for reset, shutdown, and suspend
 - desktop-style shell utilities and process view
 
+## Filesystem model
+
+Galio keeps a familiar Unix-shaped directory layout where it helps users and
+tools, but the filesystem is Galio's VFS rather than a Linux userland clone.
+The supported persistent filesystem is the VFS initrd plus the EXT2-backed
+disk store. The usual objects are represented uniformly as filesystem entries:
+regular files, directories, symbolic links, and registered device files.
+Character devices such as `./dev/console`, `./dev/null`, `./dev/keyboard`, and
+`./dev/mouse` are opened, read, and written through the same file-descriptor
+path as regular files.
+
+Galio does not create unsupported Linux compatibility surfaces such as `/proc`,
+`/sys`, `/run` service state, `/etc/fstab`, foreign shell profiles, SSH/cron/udev
+configuration, fake init scripts, or placeholder shell binaries. Runtime
+information belongs in real kernel APIs and registered device files; a path is
+not advertised merely because Linux uses that name.
+
 ---
 
 ## Current build

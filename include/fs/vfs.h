@@ -53,11 +53,6 @@
 #define VFS_O_CREAT  0x100
 #define VFS_O_TRUNC  0x200
 
-#define VFS_DEVFS  2
-#define VFS_PROCFS 3
-#define VFS_SYSFS  4
-#define VFS_TMPFS  5
-
 typedef struct {
     char path[VFS_MAX_PATH];
     u32 size;
@@ -149,13 +144,6 @@ typedef struct {
     u32 flags;
 } vfs_fd_t;
 
-/* Mount point structure */
-typedef struct {
-    char mountpoint[256];
-    u32 device;  /* 0 for RAM, 1 for disk */
-    u32 start_block;
-} vfs_mount_t;
-
 /* Global file descriptor table */
 #define MAX_FDS 32
 extern vfs_fd_t fd_table[MAX_FDS];
@@ -168,11 +156,5 @@ u32 vfs_readlink(const char *path, char *buffer, u32 size);
 
 /* Change file permissions */
 i32 vfs_chmod(const char *path, u32 mode);
-
-/* Mount filesystem */
-i32 vfs_mount(const char *mountpoint, u32 device);
-
-/* Unmount filesystem */
-i32 vfs_unmount(const char *mountpoint);
 
 #endif /* VFS_H */

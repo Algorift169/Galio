@@ -93,44 +93,31 @@ extern u8 _binary_test_elf_bin_end;
 /* Populate disk with initrd contents on first boot */
 static void vfs_populate_disk_from_initrd(void) {
     if (!vfs_core_is_disk_mode()) return;
+
+    /* Remove artifacts from older Linux-shaped Galio images. The disk is
+     * persistent, so changing the initrd alone cannot remove old entries. */
+    const char *legacy_paths[] = {
+        "./proc", "./sys", "./fuse", "./opt", "./bin", "./sbin",
+        "./etc/.fstab", "./etc/.os-release", "./etc/.profile", "./etc/.bashrc",
+        "./etc/.sysctl.conf", "./etc/.passwd", "./etc/.group", "./etc/ssh",
+        "./etc/security", "./etc/cron.d", "./etc/cron.daily", "./etc/cron.weekly",
+        "./etc/cron.monthly", "./etc/cron.hourly", "./etc/init.d", "./etc/rc.d",
+        "./etc/modprobe.d", "./root/.bashrc", "./root/.profile", "./usr/lib/modules.txt",
+        "./var/log/boot.log", "./var/log/system.log", "./var/log/dmesg", NULL
+    };
+    for (u32 i = 0; legacy_paths[i]; i++) {
+        vfs_remove_recursive(legacy_paths[i]);
+    }
     
     /* List of directories to create from initrd */
     const char *dirs[] = {
         /* Core directories */
-        "./boot", "./bin", "./sbin", "./dev", "./etc", "./usr/home", "./lib", 
-        "./mnt", "./media", "./proc", "./root", "./run", "./srv", "./sys", "./tmp", 
-        "./fuse", "./lost+found",
+            "./boot", "./dev", "./etc", "./usr", "./usr/home", "./usr/lib",
+            "./usr/share", "./var", "./var/log", "./var/account", "./tmp",
+            "./root", "./run", "./mnt", "./media", "./srv", "./lost+found",
 
         /* Built-in GUI assets */
         "./assets", "./assets/wallpapers",
-        
-        /* /usr subdirectories */
-        "./usr", "./usr/bin", "./usr/sbin", "./usr/lib", "./usr/local", 
-        "./usr/local/bin", "./usr/local/sbin", "./usr/local/lib", 
-        "./usr/local/share", "./usr/share", "./usr/share/doc", 
-        "./usr/share/man", "./usr/share/info", "./usr/include", 
-        "./usr/src", "./usr/games", "./usr/libexec",
-        
-        /* /var subdirectories */
-        "./var", "./var/log", "./var/run", "./var/spool", "./var/spool/cron", 
-        "./var/spool/mail", "./var/crash", "./var/lock", "./var/account", 
-        "./var/mail", "./var/tmp", "./var/cache", "./var/cache/apt", "./var/games",
-        
-        /* /etc subdirectories */
-        "./etc/X11", "./etc/X11/xorg.conf.d", "./etc/opt", "./etc/sgml", 
-        "./etc/init.d", "./etc/rc.d", "./etc/rc.d/init.d", "./etc/share", 
-        "./etc/xml", "./etc/ssl", "./etc/ssl/certs", "./etc/ssl/private", 
-        "./etc/skel", "./etc/pam.d", "./etc/sysconfig", "./etc/cron.d", 
-        "./etc/cron.daily", "./etc/cron.weekly", "./etc/cron.monthly", 
-        "./etc/cron.hourly", "./etc/security", "./etc/selinux", "./etc/iptables", 
-        "./etc/network", "./etc/network/if-up.d", "./etc/network/if-down.d", 
-        "./etc/network/if-pre-up.d", "./etc/network/if-post-down.d", 
-        "./etc/profile.d", "./etc/modprobe.d", "./etc/ssh",
-        
-        /* /opt subdirectories */
-        "./opt", "./opt/bin", "./opt/sbin", "./opt/etc", "./opt/var", 
-        "./opt/lib", "./opt/share", "./opt/share/doc", "./opt/share/man", 
-        "./opt/local", "./opt/src",
         
         /* /home subdirectories (moved under /usr) */
         "./usr/home/desktop", "./usr/home/desktop/recycle", "./usr/home/downloads",

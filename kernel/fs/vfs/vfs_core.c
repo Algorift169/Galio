@@ -634,14 +634,7 @@ void vfs_core_init(void *initrd_addr) {
     vfs_build_from_initrd(header);
     kprintf("[VFS] InitRD entries built\n");
     
-    /* Always create system info virtual nodes under /proc */
-    vfs_core_create_dir("./proc", 1);
-    vfs_core_create_device("./proc/cpu", 0444, 10);
-    vfs_core_create_device("./proc/mem", 0444, 11);
-    vfs_core_create_device("./proc/battery", 0444, 12);
-
     if (!vfs_disk_mode) {
-        vfs_core_create_dir("./sys", 1);
         vfs_core_create_dir("./tmp", 1);
     }
     kprintf("[VFS] Core filesystem initialized in RAM\n");
