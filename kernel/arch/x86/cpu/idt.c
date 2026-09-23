@@ -100,3 +100,7 @@ void idt_init(void) {
 
     kprintf("IDT initialized with %d handlers\n", 48);
 }
+
+void idt_load_current_cpu(void) {
+    idt_load((uintptr_t)&idtp);
+}

@@ -14,6 +14,7 @@ SECTIONS
 
   .text ALIGN(4K) : {
     KEEP(*(.multiboot))
+    KEEP(*(.ap_trampoline))
     *(.text)
     *(.text.*)
     *(.rodata)

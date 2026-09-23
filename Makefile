@@ -297,6 +297,7 @@ GAS_OBJS = $(patsubst %.s,$(OBJ_DIR)/%.o,$(GAS_SRCS))
 ASM_OBJS = $(OBJ_DIR)/kernel/arch/x86/cpu/asm.o \
            $(OBJ_DIR)/kernel/arch/x86/cpu/isr_asm.o \
            $(OBJ_DIR)/kernel/arch/x86/boot/boot.o \
+           $(OBJ_DIR)/kernel/arch/x86/boot/ap_trampoline.o \
            $(OBJ_DIR)/gui/boot/gui.o
 EMBEDDED_OBJS = $(OBJ_DIR)/src/embedded_test.o \
                 $(OBJ_DIR)/src/embedded_initrd.o
@@ -392,6 +393,10 @@ $(OBJ_DIR)/kernel/arch/x86/cpu/isr_asm.o: kernel/arch/x86/cpu/isr_asm.s
 	$(AS) $(ASFLAGS) $< -o $@
 
 $(OBJ_DIR)/kernel/arch/x86/boot/boot.o: kernel/arch/x86/boot/boot.S
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ_DIR)/kernel/arch/x86/boot/ap_trampoline.o: kernel/arch/x86/boot/ap_trampoline.S
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 

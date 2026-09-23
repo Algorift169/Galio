@@ -30,7 +30,7 @@
 #define PAGE_SIZE 4096
 #endif
 
-#define HEAP_START      0x500000
+#define HEAP_START      0x600000
 #define HEAP_MAX_SIZE   0x1000000   /* 16 MB */
 #define MIN_BLOCK_SIZE  32
 
@@ -137,7 +137,8 @@ void *krealloc(void *ptr, size_t new_size) {
     if (block->size >= new_size) return ptr;
     void *new_ptr = kmalloc(new_size);
     if (!new_ptr) return NULL;
-    __builtin_memcpy(new_ptr, ptr, block->size);
+    size_t copy_size = block->size < new_size ? block->size : new_size;
+    __builtin_memcpy(new_ptr, ptr, copy_size);
     kfree(ptr);
     return new_ptr;
 }

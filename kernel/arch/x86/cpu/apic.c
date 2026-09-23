@@ -2,6 +2,8 @@
 #include "mm/paging.h"
 #include "lib/kprintf.h"
 #include "lib/string.h"
+#include "gdt.h"
+#include "idt.h"
 
 #define APIC_REG_ID       0x020
 #define APIC_REG_EOI      0x0B0
@@ -10,6 +12,16 @@
 #define IOAPIC_WIN        0x10
 #define IOAPIC_VER        0x01
 #define IOAPIC_REDTBL     0x10
+#define APIC_REG_ICR_LOW  0x300
+#define APIC_REG_ICR_HIGH 0x310
+#define APIC_ICR_DELIVERY 0x1000u
+#define APIC_ICR_DEASSERT 0x0500u
+#define APIC_ICR_INIT     0x4500u
+#define APIC_ICR_STARTUP  0x4600u
+#define AP_TRAMPOLINE_PHYS 0x8000u
+#define AP_PARAMS_PHYS     0x9000u
+#define AP_MAX_CPUS        16u
+#define AP_STACK_SIZE      16384u
 
 typedef struct {
     u32 gsi;
@@ -24,6 +36,16 @@ static u32 ioapic_redirections;
 static u8 apic_ready;
 static u8 lapic_id;
 static irq_override_t irq_overrides[16];
+static u8 cpu_ids[AP_MAX_CPUS];
+static u32 cpu_count;
+static volatile u32 online_cpu_count;
+static u8 ap_stacks[AP_MAX_CPUS][AP_STACK_SIZE] __attribute__((aligned(16)));
+
+extern u8 ap_trampoline_start;
+extern u8 ap_trampoline_end;
+extern u8 ap_protected_mode;
+extern u8 ap_long_mode;
+extern void ap_entry(void);
 
 static u8 acpi_checksum(const u8 *data, u32 length) {
     u8 sum = 0;
@@ -115,7 +137,15 @@ static void apic_parse_madt(u8 *madt) {
         u8 type = madt[offset];
         u8 entry_length = madt[offset + 1];
         if (entry_length < 2 || offset + entry_length > length) break;
-        if (type == 1 && entry_length >= 12 && !ioapic_base) {
+        if (type == 0 && entry_length >= 8u && (madt[offset + 4u] & 1u) &&
+            cpu_count < AP_MAX_CPUS) {
+            cpu_ids[cpu_count++] = madt[offset + 3u];
+        } else if (type == 9 && entry_length >= 16u &&
+                   (*(u32 *)(madt + offset + 8u) & 1u) &&
+                   *(u32 *)(madt + offset + 4u) <= 0xFFu &&
+                   cpu_count < AP_MAX_CPUS) {
+            cpu_ids[cpu_count++] = (u8)*(u32 *)(madt + offset + 4u);
+        } else if (type == 1 && entry_length >= 12 && !ioapic_base) {
             u32 phys = *(u32 *)(madt + offset + 4);
             ioapic_gsi_base = *(u32 *)(madt + offset + 8);
             ioapic_base = (volatile u32 *)mmio_map_physical(phys, PAGE_SIZE);
@@ -139,6 +169,11 @@ void apic_init(void) {
     u32 entries;
 
     memset(irq_overrides, 0, sizeof(irq_overrides));
+    apic_ready = 0u;
+    lapic_base = NULL;
+    ioapic_base = NULL;
+    cpu_count = 0u;
+    online_cpu_count = 0u;
     rsdp = acpi_find_rsdp();
     if (!rsdp || !acpi_get_root(rsdp, &root)) {
         kprintf("APIC: ACPI unavailable; using legacy PIC\n");
@@ -168,6 +203,7 @@ void apic_init(void) {
         return;
     }
     lapic_id = (u8)(lapic_base[APIC_REG_ID / 4] >> 24);
+    online_cpu_count = 1u;
     lapic_base[APIC_REG_SVR / 4] |= 0x100u;
     ioapic_redirections = ((ioapic_read(IOAPIC_VER) >> 16) & 0xFFu) + 1u;
     apic_ready = 1;
@@ -177,7 +213,90 @@ void apic_init(void) {
 
 u8 apic_is_available(void) { return apic_ready; }
 void apic_eoi(void) { if (lapic_base) lapic_base[APIC_REG_EOI / 4] = 0; }
-u32 apic_cpu_id(void) { return lapic_id; }
+u32 apic_cpu_id(void) {
+    return lapic_base ? (lapic_base[APIC_REG_ID / 4] >> 24) : lapic_id;
+}
+
+u32 apic_cpu_count(void) { return cpu_count; }
+u32 apic_online_cpu_count(void) { return online_cpu_count; }
+
+static void apic_wait_delivery(void) {
+    for (u32 delay = 0u; delay < 100000u; delay++) {
+        if (!(lapic_base[APIC_REG_ICR_LOW / 4] & APIC_ICR_DELIVERY)) return;
+        __asm__ volatile("pause");
+    }
+}
+
+static void apic_send_ipi(u8 destination, u32 command) {
+    lapic_base[APIC_REG_ICR_HIGH / 4] = (u32)destination << 24;
+    lapic_base[APIC_REG_ICR_LOW / 4] = command;
+    apic_wait_delivery();
+}
+
+static void ap_prepare_trampoline(u8 apic_id, uintptr_t stack_top) {
+    u8 *params = (u8 *)(uintptr_t)AP_PARAMS_PHYS;
+    u64 code32 = 0x00CF9A000000FFFFull;
+    u64 data = 0x00CF92000000FFFFull;
+    u64 code64 = 0x00AF9A000000FFFFull;
+    u32 protected_offset = AP_TRAMPOLINE_PHYS +
+        (u32)((uintptr_t)ap_protected_mode - (uintptr_t)ap_trampoline_start);
+    u32 long_offset = AP_TRAMPOLINE_PHYS +
+        (u32)((uintptr_t)ap_long_mode - (uintptr_t)ap_trampoline_start);
+    uintptr_t cr3;
+
+    (void)apic_id;
+    memcpy((void *)(uintptr_t)AP_TRAMPOLINE_PHYS,
+           &ap_trampoline_start,
+           (size_t)(&ap_trampoline_end - &ap_trampoline_start));
+    __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
+    *(u32 *)(params + 0u) = (u32)cr3;
+    *(u64 *)(params + 8u) = (u64)stack_top;
+    *(u64 *)(params + 16u) = (u64)(uintptr_t)&ap_entry;
+    *(u16 *)(params + 24u) = 31u;
+    *(u32 *)(params + 26u) = AP_PARAMS_PHYS + 48u;
+    memcpy(params + 48u, &code32, sizeof(code32));
+    memcpy(params + 56u, &data, sizeof(data));
+    memcpy(params + 64u, &code64, sizeof(code64));
+    *(u16 *)(params + 30u) = 0x08u;
+    *(u32 *)(params + 32u) = protected_offset;
+    *(u16 *)(params + 34u) = 0x18u;
+    *(u32 *)(params + 36u) = long_offset;
+    *(u16 *)(params + 40u) = 0x18u;
+}
+
+void ap_entry(void) {
+    disable_interrupts();
+    gdt_load_current_cpu();
+    idt_load_current_cpu();
+    __sync_fetch_and_add(&online_cpu_count, 1u);
+    for (;;) halt();
+}
+
+void apic_start_aps(void) {
+    u32 started = 0u;
+    if (!apic_ready || cpu_count < 2u) {
+        kprintf("APIC: no secondary CPUs to start\n");
+        return;
+    }
+    for (u32 i = 0u; i < cpu_count; i++) {
+        if (cpu_ids[i] == lapic_id) continue;
+        ap_prepare_trampoline(cpu_ids[i],
+                              (uintptr_t)&ap_stacks[i][AP_STACK_SIZE]);
+        apic_send_ipi(cpu_ids[i], APIC_ICR_INIT);
+        for (volatile u32 delay = 0u; delay < 10000u; delay++) __asm__ volatile("pause");
+        apic_send_ipi(cpu_ids[i], APIC_ICR_DEASSERT);
+        apic_send_ipi(cpu_ids[i], APIC_ICR_STARTUP | (AP_TRAMPOLINE_PHYS >> 12));
+        for (volatile u32 delay = 0u; delay < 10000u; delay++) __asm__ volatile("pause");
+        apic_send_ipi(cpu_ids[i], APIC_ICR_STARTUP | (AP_TRAMPOLINE_PHYS >> 12));
+        for (u32 delay = 0u; delay < 100000u; delay++) {
+            if (online_cpu_count > started + 1u) break;
+            __asm__ volatile("pause");
+        }
+        if (online_cpu_count > started + 1u) started++;
+    }
+    kprintf("APIC: %u/%u CPUs online; AP scheduler handoff pending\n",
+            online_cpu_count, cpu_count);
+}
 
 void apic_register_irq(u8 irq, interrupt_handler_t handler) {
     u32 vector = irq < 16u ? 32u + irq : 48u + ((u32)irq - 16u);

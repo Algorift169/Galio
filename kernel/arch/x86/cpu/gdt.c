@@ -85,3 +85,7 @@ void gdt_init(void) {
     tss_load();
     kprintf("gdt_init: done!\n");
 }
+
+void gdt_load_current_cpu(void) {
+    gdt_flush((uintptr_t)&gp);
+}

@@ -41,6 +41,7 @@ struct idt_ptr {
 } __attribute__((packed));
 
 void idt_init(void);
+void idt_load_current_cpu(void);
 void idt_set_gate(int n, uintptr_t handler, u16 sel, u8 flags);
 
 #endif /* IDT_H */

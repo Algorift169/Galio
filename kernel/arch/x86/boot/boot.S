@@ -130,6 +130,8 @@ gdt64:
 gdt64_pointer:
     .word gdt64_pointer - gdt64 - 1
     .quad gdt64
+.global boot_gdt64_pointer
+boot_gdt64_pointer = gdt64_pointer
 
 .code64
 long_mode:

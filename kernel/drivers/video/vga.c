@@ -245,7 +245,7 @@ void vga_init(void) {
 }
 
 void vga_putch(char c) {
-    if (fb_console_active()) {
+    if (fb_console_active() && galio_gui_mode) {
         fb_console_putc(c);
         return;
     }

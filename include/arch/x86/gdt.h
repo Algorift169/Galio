@@ -24,5 +24,6 @@
 #define GDT_H
 
 void gdt_init(void);
+void gdt_load_current_cpu(void);
 
 #endif /* GDT_H */

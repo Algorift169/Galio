@@ -28,6 +28,7 @@
 #include "display_wrapper.h"
 #include "idt.h"
 #include "irq.h"
+#include "arch/x86/apic.h"
 #include "kprintf.h"
 #include "acpi/acpi.h"
 #include "drivers/hpet.h"
@@ -304,10 +305,13 @@ void kmain(void *multiboot_ptr) {
     kprintf("Initializing paging...\n");
     paging_init();
     irq_apic_init();
+    apic_start_aps();
     acpi_init();
     if (hpet_init(acpi_hpet_base()) != 0)
         kprintf("HPET: unavailable; using PIT clocksource and timer\n");
     fb_init_from_multiboot(multiboot_ptr);
+    /* Route subsequent boot diagnostics to the active framebuffer console. */
+    galio_gui_mode = 1u;
     kprintf("Initializing heap...\n");
     heap_init();
     dma_init();
@@ -510,7 +514,6 @@ void kmain(void *multiboot_ptr) {
     __asm__ volatile("sti");
     irq_unmask(1);
 
-    galio_gui_mode = 1u;
     kprintf("[GUI] Entering desktop mode\n");
     gui_boot();
     kprintf("[GUI] Desktop mode initialized\n");

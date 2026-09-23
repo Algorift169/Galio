@@ -25,8 +25,8 @@
 #include "kprintf.h"
 
 #define FRAME_SIZE 4096
-#define KERNEL_HEAP_START 0x500000u
-#define KERNEL_HEAP_END   0x1500000u
+#define KERNEL_HEAP_START 0x600000u
+#define KERNEL_HEAP_END   0x1600000u
 #define FRAMES_PER_BYTE 8
 #define BITMAP_SIZE (128 * 1024 * 1024 / FRAME_SIZE / 8)  /* For 128MB */
 

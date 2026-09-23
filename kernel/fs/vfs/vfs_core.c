@@ -159,7 +159,7 @@ static u32 vfs_allocate_data(u32 bytes) {
 }
 static u8 vfs_reserve_dirents(vfs_inode_t *inode, u32 required) {
     if (!inode || required <= inode->dirent_capacity) return 1;
-    u32 new_capacity = inode->dirent_capacity ? inode->dirent_capacity * 2 : 8;
+    u32 new_capacity = inode->dirent_capacity ? inode->dirent_capacity * 2 : 32;
     while (new_capacity < required) new_capacity *= 2;
     vfs_core_dirent_t *new_block = krealloc(inode->dirents, new_capacity * sizeof(vfs_core_dirent_t));
     if (!new_block) return 0;
@@ -405,7 +405,9 @@ static vfs_dentry_t *vfs_make_directory_internal(const char *path, u8 force) {
         }
         if (vfs_find_dirent(parent->inode, name)) {
             vfs_inode_t *existing = vfs_find_inode_in_dir(parent->inode, name);
-            if (existing && existing->mode == VFS_TYPE_DIR) return parent;
+            if (existing && (existing->mode & VFS_TYPE_MASK) == VFS_TYPE_DIR) {
+                return vfs_cache_lookup(parent, name);
+            }
             return NULL;
         }
         vfs_inode_t *inode = vfs_alloc_inode();
@@ -467,7 +469,8 @@ static vfs_dentry_t *vfs_make_node_internal(const char *path, u32 mode, const u8
         return NULL;
     } else {
         vfs_dentry_t *parent = vfs_lookup_internal(parent_path);
-        if (!parent || !parent->inode || parent->inode->mode != VFS_TYPE_DIR) return NULL;
+        if (!parent || !parent->inode ||
+            (parent->inode->mode & VFS_TYPE_MASK) != VFS_TYPE_DIR) return NULL;
         vfs_inode_t *existing = vfs_find_inode_in_dir(parent->inode, name);
         if (existing) {
             if (existing->mode == VFS_TYPE_DIR) return NULL;
@@ -555,16 +558,37 @@ static void vfs_init_root(void) {
 static void vfs_build_from_initrd(vfs_header_t *header) {
     if (!header) return;
     if (header->entry_count > VFS_MAX_FILES) return;
+    kprintf("[VFS] InitRD entries=%u data_offset=%u\n",
+            header->entry_count, header->data_offset);
     u32 total_data = 0;
-    for (u32 i = 0; i < header->entry_count; i++) if (!header->entries[i].is_dir) total_data += header->entries[i].size;
+    for (u32 i = 0; i < header->entry_count; i++) {
+        vfs_entry_t *entry = &header->entries[i];
+        if (!entry->is_dir) {
+            if (entry->offset < header->data_offset ||
+                entry->size > 0xFFFFFFFFu - entry->offset) {
+                kprintf("[VFS] ERROR: invalid InitRD entry %u offset=%u size=%u\n",
+                        i, entry->offset, entry->size);
+                return;
+            }
+            if (entry->size > 0xFFFFFFFFu - total_data) {
+                kprintf("[VFS] ERROR: InitRD data size overflow at entry %u\n", i);
+                return;
+            }
+            total_data += entry->size;
+        }
+    }
+    kprintf("[VFS] InitRD data bytes=%u\n", total_data);
     vfs_data_ram_size = total_data + VFS_RAMDISK_EXTRA;
     if (vfs_data_ram_size < header->data_offset + total_data) vfs_data_ram_size = header->data_offset + total_data + VFS_RAMDISK_EXTRA;
+    kprintf("[VFS] Allocating RAM disk bytes=%u\n", vfs_data_ram_size);
     vfs_data_ram = kmalloc(vfs_data_ram_size);
     if (!vfs_data_ram) { kprintf("[VFS] ERROR: Unable to allocate RAM disk buffer\n"); return; }
+    kprintf("[VFS] RAM disk allocated at %p\n", vfs_data_ram);
     vfs_data_top = 0;
     for (u32 i = 0; i < header->entry_count; i++) {
         vfs_entry_t *entry = &header->entries[i];
         if (!entry->path[0]) continue;
+        if ((i % 8u) == 0u) kprintf("[VFS] Building entry %u/%u\n", i, header->entry_count);
         if (entry->is_dir) { vfs_make_directory_internal(entry->path, 1); continue; }
         char parent[VFS_MAX_PATH], name[VFS_MAX_FILENAME];
         vfs_split_parent(entry->path, parent, name);
@@ -601,10 +625,14 @@ void vfs_core_init(void *initrd_addr) {
     if (!initrd_addr) { kprintf("[VFS] ERROR: No initrd address supplied\n"); return; }
     vfs_header_t *header = (vfs_header_t *)initrd_addr;
     if (header->magic != VFS_MAGIC) { kprintf("[VFS] ERROR: Invalid initrd magic %08X\n", header->magic); return; }
+    kprintf("[VFS] InitRD header valid\n");
     vfs_reset_state();
+    kprintf("[VFS] Core state reset\n");
     vfs_init_root();
     if (!vfs_root_dentry) { kprintf("[VFS] ERROR: Root directory initialization failed\n"); return; }
+    kprintf("[VFS] Root initialized\n");
     vfs_build_from_initrd(header);
+    kprintf("[VFS] InitRD entries built\n");
     
     /* Always create system info virtual nodes under /proc */
     vfs_core_create_dir("./proc", 1);
