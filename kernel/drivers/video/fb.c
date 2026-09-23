@@ -263,6 +263,58 @@ u8 fb_init_from_multiboot(const void *multiboot_info) {
     return 1;
 }
 
+u8 fb_init_from_multiboot2(const void *multiboot_info) {
+    const u8 *cursor;
+    const u8 *end;
+
+    if (!multiboot_info || *(const u32 *)multiboot_info < 16u) {
+        kprintf("[FB] No usable Multiboot2 framebuffer information\n");
+        return 0;
+    }
+
+    cursor = (const u8 *)multiboot_info + 8u;
+    end = (const u8 *)multiboot_info + *(const u32 *)multiboot_info;
+    while (cursor + 8u <= end) {
+        u32 type = *(const u32 *)cursor;
+        u32 size = *(const u32 *)(cursor + 4u);
+        if (size < 8u || cursor + size > end) break;
+        if (type == 0u) break;
+        if (type == 8u && size >= 38u) {
+            u64 physical_base = *(const u64 *)(cursor + 8u);
+            u32 pitch = *(const u32 *)(cursor + 16u);
+            u32 width = *(const u32 *)(cursor + 20u);
+            u32 height = *(const u32 *)(cursor + 24u);
+            u8 bpp = *(const u8 *)(cursor + 28u);
+            u8 framebuffer_type = *(const u8 *)(cursor + 29u);
+            if (framebuffer_type != 1u || !fb_attach(physical_base, width, height, pitch, bpp)) {
+                kprintf("[FB] Unsupported Multiboot2 framebuffer descriptor\n");
+                return 0;
+            }
+            g_fb.format.red_position = *(const u8 *)(cursor + 32u);
+            g_fb.format.red_size = *(const u8 *)(cursor + 33u);
+            g_fb.format.green_position = *(const u8 *)(cursor + 34u);
+            g_fb.format.green_size = *(const u8 *)(cursor + 35u);
+            g_fb.format.blue_position = *(const u8 *)(cursor + 36u);
+            g_fb.format.blue_size = *(const u8 *)(cursor + 37u);
+            g_fb.format.reserved_position = 0u;
+            g_fb.format.reserved_size = 0u;
+            if (!fb_mask_valid(g_fb.format.red_position, g_fb.format.red_size, bpp) ||
+                !fb_mask_valid(g_fb.format.green_position, g_fb.format.green_size, bpp) ||
+                !fb_mask_valid(g_fb.format.blue_position, g_fb.format.blue_size, bpp)) {
+                kprintf("[FB] Invalid Multiboot2 framebuffer channel masks\n");
+                return 0;
+            }
+            kprintf("[FB] Multiboot2 framebuffer initialized: %ux%u pitch=%u bpp=%u\n",
+                    width, height, pitch, bpp);
+            fb_console_init();
+            return 1;
+        }
+        cursor += (size + 7u) & ~7u;
+    }
+    kprintf("[FB] No Multiboot2 framebuffer tag\n");
+    return 0;
+}
+
 u8 fb_is_initialized(void) {
     return g_fb.initialized;
 }

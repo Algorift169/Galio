@@ -20,21 +20,21 @@
  * along with Galio. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* boot.S — Multiboot v1 header + long-mode startup */
-.section .multiboot, "a"
-.align 4
-.long 0x1BADB002
-.long 0x00000007
-.long -(0x1BADB002 + 0x00000007)
+/* boot.S — Multiboot2 header + long-mode startup */
+.section .multiboot2, "a"
+.align 8
+.long 0xE85250D6
 .long 0
-.long 0
-.long 0
-.long 0
-.long 0
-.long 0
+.long 48
+.long -(0xE85250D6 + 48)
+.long 5
+.long 20
 .long 1024
 .long 768
 .long 32
+.align 8
+.long 0
+.long 8
 
 .section .bss
 .align 4096
@@ -57,7 +57,8 @@ start:
     cli
     cld
     mov $stack_top, %esp
-    mov %ebx, %esi      /* Save Multiboot info pointer in %esi */
+    mov %eax, %ebp      /* Save Multiboot2 magic. */
+    mov %ebx, %esi      /* Save Multiboot2 info pointer. */
 
     /* Map PML4[0] -> pdpt */
     mov $pml4, %eax
@@ -143,9 +144,10 @@ long_mode:
     mov %ax, %ss
 
     mov $stack_top, %rsp
+    mov %esi, %edi      /* kmain(info, magic) */
+    mov %ebp, %esi
     xor %rbp, %rbp
 
-    mov %esi, %edi
     call kmain
 
 .hang:

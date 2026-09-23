@@ -59,6 +59,7 @@ typedef struct {
 
 void fb_init(void);
 u8 fb_init_from_multiboot(const void *multiboot_info);
+u8 fb_init_from_multiboot2(const void *multiboot_info);
 u8 fb_attach(u64 physical_base, u32 width, u32 height, u32 pitch, u32 bpp);
 u8 fb_validate_geometry(u32 width, u32 height, u32 pitch, u32 bpp, u64 *bytes_out);
 u8 fb_is_initialized(void);

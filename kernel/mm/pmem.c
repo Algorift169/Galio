@@ -36,6 +36,56 @@ static u32 total_frames = 0;
 static u32 used_frames = 0;
 static u32 kernel_frames = 0;
 static u32 allocation_cursor = 0;
+static mmap_entry_t multiboot2_mmap[128];
+
+void pmem_init_multiboot2(const void *multiboot_info) {
+    const u8 *cursor;
+    const u8 *end;
+    u32 count = 0;
+
+    if (!multiboot_info) {
+        pmem_init(0, 0);
+        return;
+    }
+
+    u32 total_size = *(const u32 *)multiboot_info;
+    if (total_size < 16u) {
+        pmem_init(0, 0);
+        return;
+    }
+
+    cursor = (const u8 *)multiboot_info + 8u;
+    end = (const u8 *)multiboot_info + total_size;
+    while (cursor + 8u <= end) {
+        u32 type = *(const u32 *)cursor;
+        u32 size = *(const u32 *)(cursor + 4u);
+        if (size < 8u || cursor + size > end) break;
+        if (type == 0u) break;
+        if (type == 6u && size >= 16u) {
+            u32 entry_size = *(const u32 *)(cursor + 8u);
+            const u8 *entry = cursor + 16u;
+            const u8 *tag_end = cursor + size;
+            if (entry_size >= 24u) {
+                while (entry + entry_size <= tag_end && count < 128u) {
+                    u64 address = *(const u64 *)(entry + 0u);
+                    u64 length = *(const u64 *)(entry + 8u);
+                    multiboot2_mmap[count].size = entry_size - 4u;
+                    multiboot2_mmap[count].addr_low = (u32)address;
+                    multiboot2_mmap[count].addr_high = (u32)(address >> 32);
+                    multiboot2_mmap[count].len_low = (u32)length;
+                    multiboot2_mmap[count].len_high = (u32)(length >> 32);
+                    multiboot2_mmap[count].type = *(const u32 *)(entry + 16u);
+                    count++;
+                    entry += entry_size;
+                }
+            }
+        }
+        cursor += (size + 7u) & ~7u;
+    }
+
+    pmem_init(count ? (u32)(uintptr_t)multiboot2_mmap : 0u,
+              count * sizeof(mmap_entry_t));
+}
 
 #define FRAME_MASK(frame) ((frame) / 8)
 #define BIT_MASK(frame)   (1 << ((frame) % 8))

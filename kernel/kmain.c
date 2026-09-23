@@ -255,8 +255,11 @@ static void register_kernel_services(void) {
     }
 }
 
-/* Entry point from bootloader - receives Multiboot info */
-void kmain(void *multiboot_ptr) {
+/* Multiboot2 bootloader magic passed in EAX by GRUB. */
+#define MULTIBOOT2_BOOTLOADER_MAGIC 0x36D76289u
+
+/* Entry point from GRUB Multiboot2: RDI=info pointer, RSI=magic. */
+void kmain(void *multiboot_ptr, u32 multiboot_magic) {
     serial_init();
     vga_init();
     fb_init();
@@ -276,32 +279,13 @@ void kmain(void *multiboot_ptr) {
 
     kprintf("Initializing physical memory manager...\n");
 
-    typedef struct {
-        u32 flags;
-        u32 mem_lower;
-        u32 mem_upper;
-        u32 boot_device;
-        u32 cmdline;
-        u32 mods_count;
-        u32 mods_addr;
-        u32 syms[4];
-        u32 mmap_length;
-        u32 mmap_addr;
-    } multiboot_info_t;
-
-    multiboot_info_t *mb_info = (multiboot_info_t *)multiboot_ptr;
-    u32 mmap_addr = 0;
-    u32 mmap_length = 0;
-
-    if (mb_info && (mb_info->flags & (1 << 6))) {
-        mmap_addr = mb_info->mmap_addr;
-        mmap_length = mb_info->mmap_length;
-        kprintf("Found Multiboot mmap: addr=%x len=%u\n", mmap_addr, mmap_length);
+    if (multiboot_magic != MULTIBOOT2_BOOTLOADER_MAGIC) {
+        kprintf("Invalid Multiboot2 magic: %x\n", multiboot_magic);
+        pmem_init(0, 0);
     } else {
-        kprintf("No Multiboot mmap available, using fallback\n");
+        kprintf("Valid Multiboot2 information block: %p\n", multiboot_ptr);
+        pmem_init_multiboot2(multiboot_ptr);
     }
-
-    pmem_init(mmap_addr, mmap_length);
 
     kprintf("Initializing paging...\n");
     paging_init();
@@ -310,7 +294,9 @@ void kmain(void *multiboot_ptr) {
     acpi_init();
     if (hpet_init(acpi_hpet_base()) != 0)
         kprintf("HPET: unavailable; using PIT clocksource and timer\n");
-    fb_init_from_multiboot(multiboot_ptr);
+    if (multiboot_magic == MULTIBOOT2_BOOTLOADER_MAGIC) {
+        fb_init_from_multiboot2(multiboot_ptr);
+    }
     /* Route subsequent boot diagnostics to the active framebuffer console. */
     galio_gui_mode = 1u;
     kprintf("Initializing heap...\n");

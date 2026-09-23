@@ -39,6 +39,7 @@ typedef struct {
 #define MMAP_RESERVED 2
 
 void pmem_init(u32 mmap_addr, u32 mmap_length);
+void pmem_init_multiboot2(const void *multiboot_info);
 u32 pmem_alloc(size_t num_frames);
 u32 pmem_alloc_region(size_t num_frames, u32 min_addr, u32 max_addr);
 void pmem_free(u32 addr, size_t num_frames);

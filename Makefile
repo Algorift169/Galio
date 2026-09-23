@@ -449,7 +449,7 @@ $(KERNEL_ISO): $(KERNEL_BIN) $(INITRD_IMAGE) $(DRIFT_BIN)
               'set gfxmode=1280x720,auto' \
 		'set gfxpayload=keep' '' \
 		'menuentry "Galio Kernel" {' \
-		'  multiboot /boot/galio.bin' \
+              '  multiboot2 /boot/galio.bin' \
 		'  boot' \
 		'}' > $(ISO_DIR)/boot/grub/grub.cfg
 	@grub-mkrescue -o $(KERNEL_ISO) $(ISO_DIR) 2>/dev/null

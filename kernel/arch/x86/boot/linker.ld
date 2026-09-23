@@ -1,9 +1,5 @@
-/* boot/linker.ld - Linker script placing the multiboot header into the first PT_LOAD
- *
- * This script ensures the .multiboot section is emitted at the very start of
- * the first loadable segment so GRUB can find the Multiboot v1 magic within
- * the first 8 KiB of the file.
- */
+/* boot/linker.ld - Place the Multiboot2 header in the first PT_LOAD.
+ * GRUB searches the first 32 KiB for the header. */
 
 OUTPUT_FORMAT("elf64-x86-64")
 ENTRY(start)
@@ -13,7 +9,7 @@ SECTIONS
   . = 0x00100000;
 
   .text ALIGN(4K) : {
-    KEEP(*(.multiboot))
+    KEEP(*(.multiboot2))
     KEEP(*(.ap_trampoline))
     *(.text)
     *(.text.*)
