@@ -34,6 +34,12 @@
 #include "pmem.h"
 #include "string.h"
 #include "net/socket.h"
+#include "drivers/msr.h"
+
+/* Values SYSCALL does not leave on the kernel stack. This is currently BSP
+ * storage; AP startup must provide per-CPU copies before enabling user mode. */
+u64 syscall_fast_scratch[3];
+extern void syscall_fast_entry(void);
 
 /* Forward declarations for syscall implementations */
 static u32 syscall_fork(void);
@@ -226,7 +232,7 @@ static u8 copy_user_string(char *dst, const char *src, u32 dst_size) {
  * implementation.  They are dispatched only to preserve stable syscall
  * numbers; they must not be documented or treated as working capabilities.
  */
-static void syscall_handler(registers_t *regs) {
+void syscall_handler(registers_t *regs) {
     if (!process_exception_precheck()) {
         if (regs) {
             regs->rax = (u64)-1;
@@ -242,7 +248,7 @@ static void syscall_handler(registers_t *regs) {
     u64 arg3 = regs->rdx;
     u64 arg4 = regs->rsi;
     u64 arg5 = regs->rdi;
-    u64 arg6 = 0;  /* Would need to come from stack if needed */
+    u64 arg6 = regs->interrupt_number == 0x81 ? regs->r9 : 0;
 
 #if SYSCALL_TRACE
     const char *name = "unknown";
@@ -1114,7 +1120,33 @@ u32 syscall_getpid(void) {
 }
 
 void syscall_init(void) {
-    /* Register INT 0x80 as syscall handler */
+    u32 max_extended;
+    u32 eax;
+    u32 ebx;
+    u32 ecx;
+    u32 edx;
+
+    /* Keep the compatibility interrupt ABI, and additionally configure the
+     * architectural x86_64 syscall/sysret ABI. */
     interrupt_install_handler(0x80, syscall_handler);
+    __asm__ volatile("cpuid" : "=a"(max_extended), "=b"(ebx), "=c"(ecx), "=d"(edx)
+                     : "a"(0x80000000u), "c"(0));
+    if (max_extended >= 0x80000001u) {
+        __asm__ volatile("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+                         : "a"(0x80000001u), "c"(0));
+        if (edx & (1u << 11)) {
+            u64 efer;
+            u64 star = ((u64)(USER64_CS - 16u) << 48) | ((u64)KERNEL_CS << 32);
+            if (msr_read(MSR_IA32_EFER, &efer) == MSR_OK &&
+                msr_write(MSR_IA32_EFER, efer | 1u) == MSR_OK &&
+                msr_write(MSR_IA32_STAR, star) == MSR_OK &&
+                msr_write(MSR_IA32_LSTAR, (u64)(uintptr_t)&syscall_fast_entry) == MSR_OK &&
+                msr_write(MSR_IA32_FMASK, (1u << 9) | (1u << 8) | (1u << 10)) == MSR_OK) {
+                kprintf("Syscall interface initialized (INT 0x80 + SYSCALL/SYSRET)\n");
+                return;
+            }
+            kprintf("SYSCALL MSR initialization failed; using INT 0x80 only\n");
+        }
+    }
     kprintf("Syscall interface initialized\n");
 }

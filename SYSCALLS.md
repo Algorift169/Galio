@@ -2,7 +2,7 @@
 
 ## ABI
 
-Galio uses `int 0x80`. The syscall number is passed in `rax`; arguments are passed in `rbx`, `rcx`, `rdx`, `rsi`, and `rdi`; the return value is returned in `rax`. Negative values indicate failure. The current ABI has no errno storage and no sixth-register argument, so calls requiring six arguments are not currently usable through this entry point.
+Galio supports both compatibility `int 0x80` and native x86_64 `syscall`/`sysret`. The compatibility path passes the syscall number in `rax` and arguments in `rbx`, `rcx`, `rdx`, `rsi`, and `rdi`. The native path uses `rax`, `rdi`, `rsi`, `rdx`, `r10`, `r8`, and `r9`, with `rcx` and `r11` reserved for the architectural return RIP and RFLAGS. The return value is returned in `rax`; negative values indicate failure. The native path switches to the current TSS kernel stack and preserves the complete register frame.
 
 User pointers are checked against the user address boundary and the current process page directory by `validate_user_buffer()`. Strings are checked one byte at a time up to the subsystem path limit.
 

@@ -58,21 +58,23 @@ void enter_userspace(uintptr_t entry_point, uintptr_t user_stack) {
     }
 
     __asm__ volatile(
-        "mov $0x23, %%ax\n"
+        "mov %[user_ds], %%ax\n"
         "mov %%ax, %%ds\n"
         "mov %%ax, %%es\n"
         "mov %%ax, %%fs\n"
         "mov %%ax, %%gs\n"
-        "pushq $0x23\n"
+        "pushq %[user_ds]\n"
         "pushq %[ustack]\n"
         "pushfq\n"
         "orq $0x200, (%%rsp)\n"
-        "pushq $0x1B\n"
+        "pushq %[user_cs]\n"
         "pushq %[entry]\n"
         "iretq\n"
         :
         : [ustack] "r" (user_stack),
-          [entry] "r" (entry_point)
+                    [entry] "r" (entry_point),
+                    [user_ds] "i" (USER_DS),
+                    [user_cs] "i" (USER_CS)
         : "rax", "memory"
     );
 

@@ -6,8 +6,14 @@
 
 BITS 64
 
+%define USER64_DS 0x1B
+%define USER64_CS 0x23
+
 extern isr_handler
 extern irq_handler
+extern syscall_handler
+extern syscall_fast_scratch
+extern tss_entry
 
 %macro ISR_NOERRCODE 1
 global isr%1
@@ -103,6 +109,90 @@ isr_syscall:
     push 0
     push 0x80
     jmp isr_common_stub
+
+; Native x86_64 syscall entry. SYSCALL does not save RSP and only preserves
+; the return RIP/RFLAGS in RCX/R11, so save those values before switching to
+; the current TSS kernel stack. The first 120 bytes below the dispatcher frame
+; preserve the user's registers; the dispatcher frame itself is registers_t.
+global syscall_fast_entry
+syscall_fast_entry:
+    mov [rel syscall_fast_scratch + 0], rsp
+    mov [rel syscall_fast_scratch + 8], rcx
+    mov [rel syscall_fast_scratch + 16], r11
+    mov rsp, [rel tss_entry + 4]
+    and rsp, -16
+
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+
+    ; Preserve every user register before reusing the dispatcher frame for
+    ; the legacy INT 0x80 argument layout.
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push rbp
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+
+    push qword USER64_DS
+    push qword [rel syscall_fast_scratch + 0]
+    push qword [rel syscall_fast_scratch + 16]
+    push qword [rel syscall_fast_scratch + 8]
+    push qword USER64_CS
+    push qword 0
+    push qword 0x81
+    push rax
+    push rdi
+    push rsi
+    push rdx
+    push r10
+    push r8
+    push r9
+    push r9
+    push r10
+    push qword [rel syscall_fast_scratch + 16]
+    push r12
+    push r13
+    push r14
+    push r15
+    mov rdi, rsp
+    call syscall_handler
+
+    ; Return value is owned by the dispatcher frame. Restore the user's
+    ; preserved registers, then use the saved RIP/RFLAGS/RSP for SYSRETQ.
+    mov rax, [rsp + 112]
+    mov rdx, [rsp + 176 + 88]
+    mov rsi, [rsp + 176 + 80]
+    mov rdi, [rsp + 176 + 72]
+    mov rbp, [rsp + 176 + 64]
+    mov r8,  [rsp + 176 + 56]
+    mov r9,  [rsp + 176 + 48]
+    mov r10, [rsp + 176 + 40]
+    mov r12, [rsp + 176 + 24]
+    mov r13, [rsp + 176 + 16]
+    mov r14, [rsp + 176 + 8]
+    mov r15, [rsp + 176]
+    mov rcx, [rsp + 136]
+    mov r11, [rsp + 152]
+    mov rax, [rsp + 112]
+
+    mov rdx, [rsp + 160]
+    mov bx, USER64_DS
+    mov ds, bx
+    mov es, bx
+    mov rbx, [rsp + 176 + 104]
+    mov rsp, rdx
+    db 0x48, 0x0f, 0x07
 
 isr_common_stub:
     push rax

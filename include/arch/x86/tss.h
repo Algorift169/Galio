@@ -27,9 +27,11 @@
 
 #define KERNEL_CS      0x08
 #define KERNEL_DS      0x10
-#define USER_CS        0x1B
-#define USER_DS        0x23
-#define TSS_SELECTOR   0x28
+#define USER_DS        0x1B
+#define USER_CS        0x2B
+#define USER64_CS      0x23
+#define USER64_DS      0x1B
+#define TSS_SELECTOR   0x30
 
 typedef struct {
     u32 reserved0;

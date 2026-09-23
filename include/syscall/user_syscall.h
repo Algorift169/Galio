@@ -25,7 +25,20 @@
 
 #include "syscall.h"
 
-static inline long galio_syscall(long nr, long a1, long a2, long a3, long a4, long a5) {
+static inline long galio_syscall6(long nr, long a1, long a2, long a3, long a4, long a5, long a6) {
+#if defined(__x86_64__)
+    long ret;
+    register long r10 __asm__("r10") = a4;
+    register long r8 __asm__("r8") = a5;
+    register long r9 __asm__("r9") = a6;
+    __asm__ volatile(
+        "syscall"
+        : "=a"(ret)
+        : "a"(nr), "D"(a1), "S"(a2), "d"(a3), "r"(r10), "r"(r8), "r"(r9)
+        : "rcx", "r11", "memory"
+    );
+    return ret;
+#else
     long ret;
     __asm__ volatile(
         "int $0x80\n"
@@ -34,6 +47,11 @@ static inline long galio_syscall(long nr, long a1, long a2, long a3, long a4, lo
         : "memory"
     );
     return ret;
+#endif
+}
+
+static inline long galio_syscall(long nr, long a1, long a2, long a3, long a4, long a5) {
+    return galio_syscall6(nr, a1, a2, a3, a4, a5, 0);
 }
 
 static inline int sys_exit(int status) { return (int)galio_syscall(SYS_EXIT, status, 0, 0, 0, 0); }
