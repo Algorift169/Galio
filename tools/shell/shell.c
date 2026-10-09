@@ -290,7 +290,8 @@ static u8 shell_command_name_known(const char *command)
         return 1;
     }
 
-    while (cursor[len] != '\0' && cursor[len] != ' ' && cursor[len] != '\t' &&
+        while (cursor[len] != '\0' && cursor[len] != '(' &&
+            cursor[len] != ' ' && cursor[len] != '\t' &&
            cursor[len] != '\r' && cursor[len] != '\n') {
         len++;
     }
@@ -316,7 +317,8 @@ static u8 shell_command_name_known(const char *command)
             strcmp(name, "delete") == 0 || strcmp(name, "clean") == 0 ||
             strcmp(name, "net") == 0 || strcmp(name, "ifconfig") == 0 ||
             strcmp(name, "ip") == 0 || strcmp(name, "wifi-list") == 0 ||
-            strcmp(name, "syscall") == 0 || strcmp(name, "sysinfo") == 0 ||
+            strcmp(name, "wait") == 0 || strcmp(name, "syscall") == 0 ||
+            strcmp(name, "sysinfo") == 0 ||
             strcmp(name, "cpu-spike") == 0 || strcmp(name, "gc") == 0 ||
             strcmp(name, "pkg") == 0 ||
             strcmp(name, "run") == 0 || strcmp(name, "source") == 0 ||
@@ -1475,6 +1477,24 @@ static void shell_execute_command(void) {
         SHELL_COLOR_OUT();
         shell_wifi_list_command("", current_dir);
         SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "wait ", 5) == 0 ||
+               strncmp(input.buffer, "wait(", 5) == 0) {
+        SHELL_COLOR_OUT();
+        const char *wait_args = input.buffer + 5;
+        char wait_value[32];
+        u32 wait_length = 0;
+        while (wait_args[wait_length] && wait_args[wait_length] != ')' &&
+               wait_length + 1 < sizeof(wait_value)) {
+            wait_value[wait_length] = wait_args[wait_length];
+            wait_length++;
+        }
+        wait_value[wait_length] = 0;
+        shell_wait_command(wait_value);
+        SHELL_COLOR_RESET();
+    } else if (strcmp(input.buffer, "wait") == 0) {
+        SHELL_COLOR_CMD();
+        shell_wait_command("");
+        SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "syscall ", 8) == 0) {
         SHELL_COLOR_OUT();
         shell_syscall_command(input.buffer + 8, current_dir, shell_rex_command);
@@ -1635,6 +1655,7 @@ static void shell_execute_command(void) {
         kprintf(" | run      - Execute a script (run <file>)               |\n");
         kprintf(" |________________________________________________________|\n");
         kprintf(" | uname    - Show system name                            |\n");
+        kprintf(" | wait     - Wait for seconds (wait <n> or wait(<n>))    |\n");
         kprintf(" | syscall  - Invoke a syscall (mutations require rex)   |\n");
         kprintf(" | wifi-list - Scan and list verified Wi-Fi networks      |\n");
         kprintf(" |___________________________ ____________________________|\n");

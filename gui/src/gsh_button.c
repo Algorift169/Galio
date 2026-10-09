@@ -53,8 +53,8 @@ static void gsh_save_terminal_content(terminal_window_t *terminal) {
 
     if (!terminal || !terminal->visible) return;
     fb_console_get_cursor(&cursor_x, &cursor_y);
-    terminal->console_cursor_x = cursor_x;
-    terminal->console_cursor_y = cursor_y;
+    terminal->console_cursor_x = cursor_x - terminal->console_x;
+    terminal->console_cursor_y = cursor_y - terminal->console_y;
     for (u32 row = 0u; row < terminal->console_height && row < TERMINAL_WINDOW_MAX_ROWS; row++) {
         for (u32 column = 0u; column < terminal->console_width && column < TERMINAL_WINDOW_MAX_COLUMNS; column++) {
             terminal->console_cells[row * TERMINAL_WINDOW_MAX_COLUMNS + column] =
@@ -67,7 +67,8 @@ static void gsh_save_terminal_content(terminal_window_t *terminal) {
 
 static void gsh_restore_terminal_cursor(const terminal_window_t *terminal) {
     if (!terminal || !terminal->visible || !terminal->content_valid) return;
-    fb_console_set_cursor(terminal->console_cursor_x, terminal->console_cursor_y);
+    fb_console_set_cursor(terminal->console_x + terminal->console_cursor_x,
+                          terminal->console_y + terminal->console_cursor_y);
 }
 
 static void gsh_restore_terminal_content(terminal_window_t *terminal) {
@@ -667,6 +668,9 @@ void gsh_button_poll_pointer(int x, int y, u8 buttons) {
                  old_window_y + (int)terminal->window.height :
                  terminal->window.y + (int)terminal->window.height) -
                 (old_window_y < terminal->window.y ? old_window_y : terminal->window.y)));
+            redraw_other_gsh_windows(terminal);
+            gsh_draw_terminal_content(terminal);
+            terminal_window_set_bounds(terminal);
         gsh_restore_terminal_cursor(terminal);
     }
 

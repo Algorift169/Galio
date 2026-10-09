@@ -58,6 +58,16 @@ static inline int sys_exit(int status) { return (int)galio_syscall(SYS_EXIT, sta
 static inline int sys_write(int fd, const void *buf, unsigned long size) { return (int)galio_syscall(SYS_WRITE, fd, (long)buf, (long)size, 0, 0); }
 static inline int sys_getpid(void) { return (int)galio_syscall(SYS_GETPID, 0, 0, 0, 0, 0); }
 static inline int sys_sleep(unsigned int milliseconds) { return (int)galio_syscall(SYS_SLEEP, milliseconds, 0, 0, 0, 0); }
+static inline int sys_wait_time(unsigned int seconds) { return (int)galio_syscall(SYS_WAIT_TIME, seconds, 0, 0, 0, 0); }
+static inline int sys_gui_connect(void) { return (int)galio_syscall(SYS_GUI_CONNECT, 0, 0, 0, 0, 0); }
+static inline int sys_gui_info(galio_gui_info_t *info) { return (int)galio_syscall(SYS_GUI_INFO, (long)info, 0, 0, 0, 0); }
+static inline int sys_gui_window_create(const char *title, int x, int y, unsigned int width, unsigned int height) { return (int)galio_syscall(SYS_GUI_WINDOW_CREATE, (long)title, x, y, width, height); }
+static inline int sys_gui_window_destroy(unsigned int window_id) { return (int)galio_syscall(SYS_GUI_WINDOW_DESTROY, window_id, 0, 0, 0, 0); }
+static inline int sys_gui_window_focus(unsigned int window_id) { return (int)galio_syscall(SYS_GUI_WINDOW_FOCUS, window_id, 0, 0, 0, 0); }
+static inline int sys_gui_window_move(unsigned int window_id, int x, int y) { return (int)galio_syscall(SYS_GUI_WINDOW_MOVE, window_id, x, y, 0, 0); }
+static inline int sys_gui_surface_create(unsigned int window_id, unsigned int width, unsigned int height) { return (int)galio_syscall(SYS_GUI_SURFACE_CREATE, window_id, width, height, 0, 0); }
+static inline int sys_gui_set_background(unsigned int color) { return (int)galio_syscall(SYS_GUI_SET_BACKGROUND, color, 0, 0, 0, 0); }
+static inline int sys_gui_cycle_window(int direction) { return (int)galio_syscall(SYS_GUI_CYCLE_WINDOW, direction, 0, 0, 0, 0); }
 static inline int sys_sched_yield(void) { return (int)galio_syscall(SYS_SCHED_YIELD, 0, 0, 0, 0, 0); }
 static inline int sys_fork(void) { return (int)galio_syscall(SYS_FORK, 0, 0, 0, 0, 0); }
 static inline int sys_exec(const char *path) { return (int)galio_syscall(SYS_EXEC, (long)path, 0, 0, 0, 0); }

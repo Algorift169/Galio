@@ -30,12 +30,34 @@
 #include "paging.h"
 #include "pmem.h"
 #include "security/security.h"
+#include "syscall_catalog.h"
 #include "string.h"
 #include "vfs.h"
 #include "vfs_core.h"
 
 void security_test(void) {
     kprintf("[KTEST] Running security tests...\n");
+
+    if (syscall_wait_time(0) != 0 || syscall_wait_time(0x100000000ULL) != -22) {
+        kprintf("[KTEST][FAIL] wait-time syscall range check failed\n");
+        return;
+    }
+
+    if (syscall_catalog_count() != 122u ||
+        !syscall_catalog_find("getpid") ||
+        syscall_catalog_find("getpid")->status != SYSCALL_STATUS_IMPLEMENTED ||
+        syscall_catalog_find("lstat")->status != SYSCALL_STATUS_ENOSYS ||
+        syscall_catalog_find("ioctl2")->status != SYSCALL_STATUS_UNDISPATCHED) {
+        kprintf("[KTEST][FAIL] Syscall catalog is incomplete or misclassified\n");
+        return;
+    }
+    for (u32 i = 0; i < syscall_catalog_count(); i++) {
+        const syscall_catalog_entry_t *entry = syscall_catalog_at(i);
+        if (!entry || !entry->name[0] || syscall_catalog_find(entry->name) != entry) {
+            kprintf("[KTEST][FAIL] Syscall catalog lookup mismatch at %u\n", i);
+            return;
+        }
+    }
 
     /* PID allocator uniqueness (allocate few PIDs and ensure no duplicates) */
     u32 seen[8] = {0};

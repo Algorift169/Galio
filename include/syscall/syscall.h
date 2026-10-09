@@ -121,6 +121,23 @@
 #define SYS_RENAME      263
 #define SYS_CHMOD       264
 #define SYS_FSYNC       265
+#define SYS_WAIT_TIME   266
+#define SYS_GUI_CONNECT 267
+#define SYS_GUI_INFO 268
+#define SYS_GUI_WINDOW_CREATE 269
+#define SYS_GUI_WINDOW_DESTROY 270
+#define SYS_GUI_WINDOW_FOCUS 271
+#define SYS_GUI_WINDOW_MOVE 272
+#define SYS_GUI_SURFACE_CREATE 273
+#define SYS_GUI_SET_BACKGROUND 274
+#define SYS_GUI_CYCLE_WINDOW 275
+
+typedef struct {
+    u32 width;
+    u32 height;
+    u32 running;
+    u32 frame_count;
+} galio_gui_info_t;
 
 /* Legacy Galio compatibility aliases retained for older code paths. */
 #define SYS_GALIO_EXIT         1
@@ -207,6 +224,7 @@ void syscall_init(void);
 /* Syscall wrapper functions for internal use */
 u32 syscall_getpid(void);
 void syscall_sleep(u32 ms);
+i32 syscall_wait_time(u64 seconds);
 
 /* User pointer validation for syscall entry points */
 u8 validate_user_ptr(const void *ptr, u8 write);

@@ -123,6 +123,7 @@ typedef struct process {
     u32 uid;
     u32 gid;
     u64 capabilities;
+    u32 gui_client_id;
     u32 pending_signals;
     u32 exit_code;
     u8 accounting_idle;

@@ -40,6 +40,7 @@
 #include "info.h"
 #include "process/pcb.h"
 #include "arch/x86/apic.h"
+#include "srver/server.h"
 
 #define PAGE_SIZE 4096
 #define PROCESS_MAX_CPUS 16u
@@ -630,6 +631,10 @@ static void process_cleanup(process_t *proc) {
     /* Protect process table state while cleaning up */
     spin_lock(&process_table_lock);
     socket_process_cleanup(proc->pid, proc->fd_table, PROCESS_MAX_FDS);
+    if (proc->gui_client_id) {
+        display_server_disconnect_client(proc->gui_client_id);
+        proc->gui_client_id = 0;
+    }
     process_free_address_space(proc);
     if (proc->stack) {
         /* If stack was allocated from physical pages, unmap and free; otherwise kfree */

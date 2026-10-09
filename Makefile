@@ -143,6 +143,7 @@ SRCS = kernel/kmain.c \
        kernel/pcb/list.c \
        kernel/cpu/scheduler.c \
        kernel/process/elf.c \
+       kernel/syscall/catalog.c \
        kernel/syscall/syscall.c \
        kernel/syscall/syscall_extra.c \
        kernel/syscall/shmem.c \

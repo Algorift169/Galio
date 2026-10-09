@@ -30,6 +30,9 @@
 #include "security/security.h"
 #include "vfs.h"
 #include "vfs_core.h"
+#include "srver/server.h"
+#include "srver/client.h"
+#include "srver/security.h"
 #include "elf.h"
 #include "heap.h"
 #include "paging.h"
@@ -108,6 +111,7 @@ extern i32 syscall_unlink(const char *path);
 extern i32 syscall_rename(const char *old_path, const char *new_path);
 extern i32 syscall_chmod(const char *path, u32 mode);
 extern i32 syscall_fsync(u32 fd);
+extern display_server_state_t g_display_server_state;
 
 extern int socket_create(u32 owner_pid, i32 domain, i32 type, i32 protocol);
 extern int socket_connect_fd(u32 handle, const struct galio_sockaddr_in *address);
@@ -325,6 +329,7 @@ void syscall_handler(registers_t *regs) {
         case SYS_VFORK: name = "vfork"; break;
         case SYS_WAIT4: name = "wait4"; break;
         case SYS_WAIT: name = "wait"; break;
+        case SYS_WAIT_TIME: name = "wait_time"; break;
         case SYS_SEMGET: name = "semget"; break;
         case SYS_SEMOP: name = "semop"; break;
         case SYS_SEMCTL: name = "semctl"; break;
@@ -337,6 +342,15 @@ void syscall_handler(registers_t *regs) {
         case SYS_RT_SIGRETURN: name = "rt_sigreturn"; break;
         case SYS_SYSINFO: name = "sysinfo"; break;
         case SYS_MMAP2: name = "mmap2"; break;
+        case SYS_GUI_CONNECT: name = "gui_connect"; break;
+        case SYS_GUI_INFO: name = "gui_info"; break;
+        case SYS_GUI_WINDOW_CREATE: name = "gui_window_create"; break;
+        case SYS_GUI_WINDOW_DESTROY: name = "gui_window_destroy"; break;
+        case SYS_GUI_WINDOW_FOCUS: name = "gui_window_focus"; break;
+        case SYS_GUI_WINDOW_MOVE: name = "gui_window_move"; break;
+        case SYS_GUI_SURFACE_CREATE: name = "gui_surface_create"; break;
+        case SYS_GUI_SET_BACKGROUND: name = "gui_set_background"; break;
+        case SYS_GUI_CYCLE_WINDOW: name = "gui_cycle_window"; break;
     }
     kprintf("[SYSCALL] pid=%u nr=%llu %s()\n", process_current() ? process_current()->pid : 0, (unsigned long long)syscall_num, name);
 #endif
@@ -385,6 +399,137 @@ void syscall_handler(registers_t *regs) {
             syscall_sleep((u32)arg1);
             regs->rax = 0;
             break;
+
+        case SYS_WAIT_TIME:
+            regs->rax = syscall_wait_time(arg1);
+            break;
+
+        case SYS_GUI_CONNECT: {
+            process_t *proc = process_current();
+            if (!proc) {
+                regs->rax = (u64)-1;
+            } else if (proc->gui_client_id) {
+                regs->rax = proc->gui_client_id;
+            } else if (!display_server_is_running()) {
+                regs->rax = (u64)-19;
+            } else {
+                proc->gui_client_id = display_server_client_connect();
+                regs->rax = proc->gui_client_id ? proc->gui_client_id : (u64)-12;
+            }
+            break;
+        }
+
+        case SYS_GUI_INFO: {
+            if (!validate_user_buffer((void *)arg1, sizeof(galio_gui_info_t), 1)) {
+                regs->rax = (u64)-14;
+                break;
+            }
+            galio_gui_info_t info = {
+                .width = g_display_server_state.screen_width,
+                .height = g_display_server_state.screen_height,
+                .running = g_display_server_state.running,
+                .frame_count = g_display_server_state.frame_count
+            };
+            memcpy((void *)arg1, &info, sizeof(info));
+            regs->rax = 0;
+            break;
+        }
+
+        case SYS_GUI_WINDOW_CREATE: {
+            process_t *proc = process_current();
+            char title[DISPLAY_SERVER_TITLE_LEN];
+            if (!proc || !proc->gui_client_id || !display_server_is_running()) {
+                regs->rax = (u64)-107;
+                break;
+            }
+            if (!validate_user_string((const char *)arg1, sizeof(title))) {
+                regs->rax = (u64)-14;
+                break;
+            }
+            strncpy(title, (const char *)arg1, sizeof(title) - 1);
+            title[sizeof(title) - 1] = 0;
+            if (!display_server_security_check_client(proc->gui_client_id)) {
+                regs->rax = (u64)-13;
+                break;
+            }
+            u32 window_id = display_server_client_create_window(
+                proc->gui_client_id, title, (int)arg2, (int)arg3,
+                (u32)arg4, (u32)arg5);
+            regs->rax = window_id ? window_id : (u64)-12;
+            break;
+        }
+
+        case SYS_GUI_WINDOW_DESTROY:
+        case SYS_GUI_WINDOW_FOCUS: {
+            process_t *proc = process_current();
+            u32 window_id = (u32)arg1;
+            if (!proc || !proc->gui_client_id ||
+                !display_server_security_check_window(proc->gui_client_id, window_id)) {
+                regs->rax = (u64)-13;
+                break;
+            }
+            if (syscall_num == SYS_GUI_WINDOW_DESTROY) {
+                display_server_client_destroy_window(proc->gui_client_id, window_id);
+            } else {
+                display_server_focus_window(window_id);
+            }
+            regs->rax = 0;
+            break;
+        }
+
+        case SYS_GUI_WINDOW_MOVE: {
+            process_t *proc = process_current();
+            u32 window_id = (u32)arg1;
+            if (!proc || !proc->gui_client_id ||
+                !display_server_security_check_window(proc->gui_client_id, window_id)) {
+                regs->rax = (u64)-13;
+                break;
+            }
+            display_server_client_move_window(proc->gui_client_id, window_id,
+                                              (int)arg2, (int)arg3);
+            regs->rax = 0;
+            break;
+        }
+
+        case SYS_GUI_SURFACE_CREATE: {
+            process_t *proc = process_current();
+            u32 window_id = (u32)arg1;
+            if (!proc || !proc->gui_client_id ||
+                !display_server_security_check_window(proc->gui_client_id, window_id)) {
+                regs->rax = (u64)-13;
+                break;
+            }
+            u32 surface_id = display_server_client_create_surface(
+                proc->gui_client_id, window_id, (u32)arg2, (u32)arg3);
+            regs->rax = surface_id ? surface_id : (u64)-12;
+            break;
+        }
+
+        case SYS_GUI_SET_BACKGROUND: {
+            process_t *proc = process_current();
+            if (!proc || !security_capable(proc, SECURITY_CAP_SYS_ADMIN)) {
+                regs->rax = (u64)-1;
+                break;
+            }
+            if (!display_server_is_running()) {
+                regs->rax = (u64)-19;
+                break;
+            }
+            display_server_set_desktop_background((u32)arg1);
+            regs->rax = 0;
+            break;
+        }
+
+        case SYS_GUI_CYCLE_WINDOW: {
+            process_t *proc = process_current();
+            if (!proc || !proc->gui_client_id || !display_server_is_running()) {
+                regs->rax = (u64)-107;
+                break;
+            }
+            display_server_cycle_window((int)arg1);
+            regs->rax = 0;
+            break;
+        }
 
         case SYS_WAITPID:
             regs->rax = syscall_waitpid((i32)arg1);
