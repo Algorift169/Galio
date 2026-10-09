@@ -90,7 +90,7 @@ static vfs_entry_t *build_compat_entry_for_disk(u32 inode_num, const char *path)
     entry->size = inode.size;
     entry->is_dir = (inode.mode & 0x4000) ? 1 : 0;
     entry->offset = inode.block[0];
-    entry->permissions = entry->is_dir ? 0755 : 0644;
+    entry->permissions = inode.mode & VFS_PERM_MASK;
     return entry;
 }
 
@@ -99,6 +99,11 @@ vfs_entry_t *vfs_find(const char *path) {
     char norm_path[VFS_MAX_PATH];
     path_normalize(path, norm_path, sizeof(norm_path));
     if (vfs_core_is_disk_mode()) {
+        vfs_dentry_t *overlay = vfs_core_lookup(norm_path, 0);
+        if (overlay && overlay->inode &&
+            (overlay->inode->mode & VFS_TYPE_MASK) == VFS_TYPE_CHARDEV) {
+            return build_compat_entry(overlay, norm_path);
+        }
         u32 inode_num = ext2_find_inode(norm_path);
         return build_compat_entry_for_disk(inode_num, norm_path);
     }

@@ -4,8 +4,8 @@
 
 static void sound_print_device_summary(sound_device_t *device) {
     if (!device) return;
-    kprintf("Controller: %s\n", device->controller ? device->controller->name : "virtual");
-    kprintf("Codec: %s\n", device->codec ? device->codec->name : "generic");
+    kprintf("Controller: %s\n", device->controller ? device->controller->name : "not detected");
+    kprintf("Codec: %s\n", device->codec ? device->codec->name : "not detected");
     kprintf("Channels: %u\n", device->channels);
     kprintf("Sample Rates: ");
     for (u32 i = 0; i < device->sample_rate_count; i++) {

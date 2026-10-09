@@ -51,7 +51,8 @@ void usb_init(void) {
     /* Iterate discovered PCI devices and find the first USB controller */
     pci_device_t *p = pci_device_first();
     while (p) {
-        if (p->class_id == 0x0C && p->subclass == 0x03) {
+        if (p->class_id == 0x0C && p->subclass == 0x03 && p->prog_if == 0x00 &&
+            !p->bar_is_mem[0] && (p->bars[0] & 0x1)) {
             dev = p; break;
         }
         p = pci_device_next(p);
@@ -62,14 +63,17 @@ void usb_init(void) {
         return;
     }
 
+    uhci_io_base = (u16)(dev->bars[0] & 0xFFFC);
+    if (!uhci_io_base) {
+        kprintf("USB: UHCI controller has an invalid I/O BAR; helper remains unavailable\n");
+        return;
+    }
+
     /* Enable I/O space and bus mastering if possible */
     u16 cmd = pci_read_config_u16(dev->bus, dev->device, dev->function, 0x04);
     cmd |= 0x1; /* I/O space */
     cmd |= 0x4; /* bus master */
     pci_write_config_u16(dev->bus, dev->device, dev->function, 0x04, cmd);
-
-    uhci_io_base = (u16)(dev->bars[0] & 0xFFFF);
-    if (!uhci_io_base) uhci_io_base = 0xFEC0; /* fallback guess */
 
     kprintf("USB: UHCI I/O base 0x%x\n", uhci_io_base);
 

@@ -160,6 +160,7 @@ static void vfs_populate_disk_from_initrd(void) {
                 u32 inode = ext2_find_inode(entry->path);
                 if (inode) {
                     ext2_write_data(inode, content, entry->size);
+                    vfs_core_chmod(entry->path, entry->permissions);
                 } else {
                     kprintf("  Created but inode lookup failed: %s\n", entry->path);
                 }
@@ -437,6 +438,7 @@ void kmain(void *multiboot_ptr, u32 multiboot_magic) {
             kprintf("[VFS] Warning: failed to reload disk root (shell may still work with disk mode)\n");
         }
         vfs_populate_disk_from_initrd();  /* copy initrd contents into disk only when missing */
+        device_manager_populate_dev();
         vfs_verify_disk_write();          /* verify disk write/read */
     } else {
         kprintf("No EXT2 partition found, using RAM filesystem only\n");

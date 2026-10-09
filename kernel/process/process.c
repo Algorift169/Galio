@@ -301,6 +301,7 @@ static void process_user_elf_entry(void) {
     image = (u8 *)kmalloc(65536);
     if (!image) process_exit(1);
     paging_load_directory(proc->pagedir);
+    if (!security_check_file_access(proc, proc->path, 1u)) process_exit(1);
     size = vfs_read(proc->path, image, 65536);
     entry = size ? elf_load(image, size) : 0;
     kfree(image);
@@ -424,12 +425,15 @@ u32 process_create(void (*entry)(void), u32 priority) {
     if (!current_process) {
         proc->uid = UID_ROOT;
         proc->gid = UID_ROOT;
+        proc->capabilities = SECURITY_CAP_ALL;
     } else if (current_process->pid == 1 && current_process->uid == UID_ROOT && session_current() && session_current()->authenticated) {
         proc->uid = session_current()->uid;
         proc->gid = session_current()->gid;
+        proc->capabilities = proc->uid == UID_ROOT ? SECURITY_CAP_ALL : 0;
     } else {
         proc->uid = current_process->uid;
         proc->gid = current_process->gid;
+        proc->capabilities = current_process->capabilities;
     }
     proc->pending_signals = 0;
     proc->exit_code = 0;

@@ -178,9 +178,6 @@ int sound_set_mute(sound_device_t *device, u8 muted);
 u8 sound_get_mute(sound_device_t *device);
 void sound_register_pci_driver(void);
 
-int sound_register_device_node(sound_device_t *device);
-int sound_unregister_device_node(sound_device_t *device);
-
 void sound_run_self_test(void);
 
 #endif /* GALIO_SOUND_H */

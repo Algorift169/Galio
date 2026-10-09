@@ -4,87 +4,16 @@
 #include "kernel/dma/dma.h"
 #include "mm/dma.h"
 #include "mm/heap.h"
-#include "dev/device_manager.h"
-#include "vfs_core.h"
-
-#define SOUND_DEVICE_MAJOR 0x0D
 
 static sound_device_t *sound_devices[SOUND_MAX_DEVICES];
 u32 sound_device_count;
 static bool sound_core_ready;
 
-static void galio_snprintf(char *buffer, size_t buffer_size, const char *fmt, u32 value) {
-    char temp[32];
-    u32 index = 0;
-    u32 digits = 0;
-    if (!buffer || buffer_size == 0u || !fmt) return;
-    while (value > 0u) {
-        temp[index++] = (char)('0' + (value % 10u));
-        value /= 10u;
-        digits++;
-    }
-    if (digits == 0u) {
-        temp[index++] = '0';
-        digits = 1u;
-    }
-    for (u32 i = 0; i < digits; i++) {
-        if ((size_t)(i + 1u) >= buffer_size) break;
-        buffer[i] = temp[digits - 1u - i];
-    }
-    buffer[digits] = 0;
-    (void)fmt;
-}
-
-static sound_device_t *sound_alloc_device(void) {
-    for (u32 i = 0; i < SOUND_MAX_DEVICES; i++) {
-        if (!sound_devices[i]) return sound_devices[i] = kmalloc(sizeof(sound_device_t));
-    }
-    return NULL;
-}
-
-static void sound_free_device(sound_device_t *device) {
-    if (!device) return;
-    for (u32 i = 0; i < SOUND_MAX_DEVICES; i++) {
-        if (sound_devices[i] == device) {
-            sound_devices[i] = NULL;
-            break;
-        }
-    }
-    kfree(device);
-}
-
-static void sound_init_default_codec(sound_codec_t *codec) {
-    if (!codec) return;
-    memset(codec, 0, sizeof(*codec));
-    strcpy(codec->name, "galio-generic-codec");
-    codec->channels = 2u;
-    codec->sample_rates[0] = 8000u;
-    codec->sample_rates[1] = 11025u;
-    codec->sample_rates[2] = 22050u;
-    codec->sample_rates[3] = 44100u;
-    codec->sample_rates[4] = 48000u;
-    codec->sample_rate_count = 5u;
-    codec->formats[0] = SOUND_FORMAT_S16_LE;
-    codec->format_count = 1u;
-    codec->playback_capable = 1u;
-    codec->capture_capable = 1u;
-}
-
-static void sound_init_default_controller(sound_controller_t *controller) {
-    if (!controller) return;
-    memset(controller, 0, sizeof(*controller));
-    strcpy(controller->name, "galio-virtual-controller");
-    controller->irq = 0u;
-    controller->dma_channel = 0u;
-    controller->supports_playback = 1u;
-    controller->supports_capture = 1u;
-}
-
 int sound_core_init(void) {
     if (sound_core_ready) return 0;
     memset(sound_devices, 0, sizeof(sound_devices));
     sound_core_ready = true;
-    kprintf("[SOUND] core init: native Galio audio subsystem ready\n");
+    kprintf("[SOUND] audio framework initialized; hardware will be probed by PCI\n");
     return 0;
 }
 
@@ -138,10 +67,6 @@ int sound_device_register(sound_device_t *device) {
             if (device->controller && !device->controller->initialized) {
                 device->controller->initialized = 1u;
             }
-            if (device->codec == NULL) {
-                device->codec = kmalloc(sizeof(sound_codec_t));
-                if (device->codec) sound_init_default_codec(device->codec);
-            }
             kprintf("[SOUND] registered device %s\n", device->name);
             return 0;
         }
@@ -161,7 +86,6 @@ int sound_device_unregister(sound_device_t *device) {
                     device->active_stream = NULL;
                 }
             }
-            (void)sound_unregister_device_node(device);
             sound_devices[i] = NULL;
             if (sound_device_count > 0) sound_device_count--;
             if (device->codec) {
@@ -174,27 +98,6 @@ int sound_device_unregister(sound_device_t *device) {
         }
     }
     return -1;
-}
-
-int sound_register_device_node(sound_device_t *device) {
-    char path[64];
-    char numbuf[16];
-    if (!device || !device->name[0]) return -1;
-    galio_snprintf(numbuf, sizeof(numbuf), "%u", device->index);
-    strcpy(path, "./dev/audio");
-    strcat(path, numbuf);
-    if (vfs_core_lookup(path, 0)) return 0;
-    return vfs_core_create_device_ex(path, 0666, SOUND_DEVICE_MAJOR, device->index);
-}
-
-int sound_unregister_device_node(sound_device_t *device) {
-    char path[64];
-    char numbuf[16];
-    if (!device) return -1;
-    galio_snprintf(numbuf, sizeof(numbuf), "%u", device->index);
-    strcpy(path, "./dev/audio");
-    strcat(path, numbuf);
-    return vfs_core_unlink(path);
 }
 
 int sound_stream_open(sound_stream_t *stream,

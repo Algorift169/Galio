@@ -1,5 +1,6 @@
 #include "syscall.h"
 #include "process.h"
+#include "security/security.h"
 #include "string.h"
 #include "vfs.h"
 
@@ -15,6 +16,9 @@ i32 syscall_chmod(const char *path, u32 mode) {
     user_path[sizeof(user_path) - 1] = 0;
     if (!process_resolve_path(proc->cwd, user_path, resolved, sizeof(resolved))) {
         return -22;
+    }
+    if (!security_may_chmod(proc, resolved)) {
+        return -1;
     }
     return vfs_chmod(resolved, mode);
 }

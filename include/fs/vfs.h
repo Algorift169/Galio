@@ -50,6 +50,7 @@
 #define VFS_O_RDONLY 0
 #define VFS_O_WRONLY 1
 #define VFS_O_RDWR   2
+#define VFS_O_ACCMODE 0x3
 #define VFS_O_CREAT  0x100
 #define VFS_O_TRUNC  0x200
 

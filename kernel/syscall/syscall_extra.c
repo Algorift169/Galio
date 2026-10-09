@@ -23,6 +23,7 @@
 /* syscall_extra.c - Extended syscall implementations */
 #include "syscall.h"
 #include "process.h"
+#include "security/security.h"
 #include "signals.h"
 #include "pit.h"
 #include "kernel_time.h"
@@ -293,6 +294,7 @@ uintptr_t syscall_execve(const char *path, char *const argv[], char *const envp[
     if (!process_resolve_path(proc->cwd, kpath, resolved, PROCESS_PATH_MAX)) {
         return (uintptr_t)-1;
     }
+    if (!security_check_file_access(proc, resolved, 1u)) return (uintptr_t)-1;
 
     void *elf_data = kmalloc(65536);
     if (!elf_data) {
@@ -488,8 +490,9 @@ i32 syscall_getppid(void) {
 }
 
 i32 syscall_kill(u32 pid, i32 sig) {
-    (void)sig;
-    if (!pid) {
+    process_t *actor = process_current();
+    process_t *target = process_get(pid);
+    if (!pid || !actor || !target || !security_may_signal(actor, target)) {
         return -1;
     }
     return process_kill(pid, (u8)sig) ? 0 : -1;
@@ -530,17 +533,8 @@ i32 syscall_access(const char *path, i32 mode) {
         return -1;
     }
 
-    if (mode & 2) {
-        if (!vfs_find(resolved)) {
-            return -1;
-        }
-    }
-
-    if (vfs_find(resolved) == NULL) {
-        return -1;
-    }
-
-    return 0;
+    if (mode & ~7) return -1;
+    return security_check_file_access(proc, resolved, (u32)mode) ? 0 : -1;
 }
 
 i32 syscall_fstat(int fd, struct stat *statbuf) {

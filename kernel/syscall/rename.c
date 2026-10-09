@@ -1,5 +1,6 @@
 #include "syscall.h"
 #include "process.h"
+#include "security/security.h"
 #include "string.h"
 #include "vfs.h"
 
@@ -23,5 +24,7 @@ i32 syscall_rename(const char *old_path, const char *new_path) {
         !process_resolve_path(proc->cwd, new_user_path, new_resolved, sizeof(new_resolved))) {
         return -22;
     }
+    if (!security_check_parent_access(proc, old_resolved, 3u) ||
+        !security_check_parent_access(proc, new_resolved, 3u)) return -1;
     return vfs_move(old_resolved, new_resolved) ? 0 : -2;
 }

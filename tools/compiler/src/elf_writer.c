@@ -36,5 +36,6 @@ int elf_write(const char *path, const u8 *code, u32 code_size, const u8 *data, u
     i = vfs_write(fd, image, image_size);
     vfs_close(fd); kfree(image);
     if (i != image_size) return -1;
+    if (!vfs_chmod(path, 0755)) return -1;
     return 0;
 }

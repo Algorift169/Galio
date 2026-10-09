@@ -286,7 +286,6 @@ int hda_probe(pci_device_t *device) {
     sound->private_data = state;
     if (hda_init(sound) != 0 || sound_device_register(sound) != 0) return -1;
     if (device->irq_line < 16u) hda_irq_devices[device->irq_line] = sound;
-    sound_register_device_node(sound);
     kprintf("[SOUND] Intel HDA codec registered as %s\n", sound->name);
     if (device->irq_line < 16u) irq_register_handler(device->irq_line,
                                                        hda_irq_handler);

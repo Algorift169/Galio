@@ -1,5 +1,6 @@
 #include "syscall.h"
 #include "process.h"
+#include "security/security.h"
 #include "string.h"
 #include "vfs.h"
 
@@ -16,5 +17,6 @@ i32 syscall_rmdir(const char *path) {
     if (!process_resolve_path(proc->cwd, user_path, resolved, sizeof(resolved))) {
         return -22;
     }
+    if (!security_check_parent_access(proc, resolved, 3u)) return -1;
     return vfs_rmdir(resolved) ? 0 : -2;
 }

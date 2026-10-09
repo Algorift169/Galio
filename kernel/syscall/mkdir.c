@@ -1,5 +1,6 @@
 #include "syscall.h"
 #include "process.h"
+#include "security/security.h"
 #include "string.h"
 #include "vfs.h"
 
@@ -17,5 +18,6 @@ i32 syscall_mkdir(const char *path, u32 mode) {
     if (!process_resolve_path(proc->cwd, user_path, resolved, sizeof(resolved))) {
         return -22;
     }
+    if (!security_check_parent_access(proc, resolved, 3u)) return -1;
     return vfs_mkdir(resolved, 0) ? 0 : -17;
 }

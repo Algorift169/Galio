@@ -303,23 +303,11 @@ static void read_line(char *buffer, u32 max_len, u8 echo) {
     if (max_len > 0) buffer[(max_len - 1) < len ? (max_len - 1) : len] = 0;
 }
 
-/* Simple password verification - using boot-time registration or hardcoded defaults */
+/* Password verification uses only the active registered account. */
 u8 auth_verify_password(const char *username, const char *password) {
-    if (kernel_auth.registered) {
-        return strcmp(username, kernel_auth.username) == 0 && strcmp(password, kernel_auth.password) == 0;
-    }
-
-    /* Default credentials for testing - change in production */
-    if (strcmp(username, "galio") == 0 && strcmp(password, "galio") == 0) {
-        return 1;
-    }
-    if (strcmp(username, "root") == 0 && strcmp(password, "root") == 0) {
-        return 1;
-    }
-    if (strcmp(username, "admin") == 0 && strcmp(password, "admin123") == 0) {
-        return 1;
-    }
-    return 0;
+    if (!username || !password || !kernel_auth.registered) return 0;
+    return strcmp(username, kernel_auth.username) == 0 &&
+           strcmp(password, kernel_auth.password) == 0;
 }
 
 void auth_show_login_prompt(void) {

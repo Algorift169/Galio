@@ -48,6 +48,24 @@
 #define VFS_LOOKUP_NO_DISK 0x2
 #define VFS_INVALID_FD 0xFFFFFFFFu
 
+typedef enum {
+    VFS_CONTENT_UNKNOWN = 0,
+    VFS_CONTENT_TEXT,
+    VFS_CONTENT_BINARY,
+    VFS_CONTENT_ELF,
+    VFS_CONTENT_PNG,
+    VFS_CONTENT_JPEG,
+    VFS_CONTENT_GIF,
+    VFS_CONTENT_BMP,
+    VFS_CONTENT_PDF,
+    VFS_CONTENT_MP3,
+    VFS_CONTENT_WAV,
+    VFS_CONTENT_OGG,
+    VFS_CONTENT_MP4,
+    VFS_CONTENT_ZIP,
+    VFS_CONTENT_OLE
+} vfs_content_type_t;
+
 typedef struct vfs_core_dirent {
     u32 inode_number;
     char name[VFS_MAX_FILENAME];
@@ -97,6 +115,7 @@ void vfs_core_build_path(vfs_dentry_t *dentry, char *buffer);
 u8 vfs_core_reload_root_from_disk(void);
 vfs_inode_t *vfs_core_inode_by_number(u32 inode_number);
 u32 vfs_core_open(const char *path);
+u32 vfs_core_open_flags(const char *path, u32 flags);
 u32 vfs_core_open_nodisk(const char *path);
 u32 vfs_core_retain(u32 fd);
 u32 vfs_core_close(u32 fd);
@@ -105,6 +124,7 @@ u32 vfs_core_read(u32 fd, void *buffer, u32 size);
 u32 vfs_core_lseek(u32 fd, i32 offset, i32 whence);
 u32 vfs_core_stat(const char *path, void *statbuf);
 u32 vfs_core_stat_nodisk(const char *path, void *statbuf);
+vfs_content_type_t vfs_core_content_type(const char *path);
 u32 vfs_core_read_path(const char *path, void *buffer, u32 size);
 u32 vfs_core_read_path_nodisk(const char *path, void *buffer, u32 size);
 u32 vfs_core_create_file(const char *path, u8 force);

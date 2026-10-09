@@ -122,6 +122,7 @@ typedef struct process {
     i32 waiting_for_pid;
     u32 uid;
     u32 gid;
+    u64 capabilities;
     u32 pending_signals;
     u32 exit_code;
     u8 accounting_idle;

@@ -433,7 +433,7 @@ static vfs_dentry_t *vfs_make_directory_internal(const char *path, u8 force) {
 }
 
 // Core function to create a file or symlink, with optional data and disk mode support
-static vfs_dentry_t *vfs_make_node_internal(const char *path, u32 mode, const u8 *data, u32 size, u32 dev_id, u8 force) {
+static vfs_dentry_t *vfs_make_node_internal(const char *path, u32 mode, const u8 *data, u32 size, u8 force) {
     if (!path) return NULL;
     char normalized[VFS_MAX_PATH];
     vfs_normalize(path, normalized);
@@ -487,7 +487,6 @@ static vfs_dentry_t *vfs_make_node_internal(const char *path, u32 mode, const u8
                 existing->block_count = 1;
                 existing->size = size;
             } else if ((mode & VFS_TYPE_MASK) == VFS_TYPE_CHARDEV) {
-                existing->blocks[0] = dev_id;
                 existing->block_count = 0;
                 existing->size = 0;
             }
@@ -527,7 +526,6 @@ static vfs_dentry_t *vfs_make_node_internal(const char *path, u32 mode, const u8
                 inode->block_count = 1;
             }
         } else if ((mode & VFS_TYPE_MASK) == VFS_TYPE_CHARDEV) {
-            inode->blocks[0] = dev_id;
             inode->block_count = 0;
             inode->size = 0;
         }
@@ -539,7 +537,7 @@ static vfs_dentry_t *vfs_make_node_internal(const char *path, u32 mode, const u8
 
 // Convenience wrappers for common node types
 static vfs_dentry_t *vfs_make_file_internal(const char *path, u8 force, const u8 *data, u32 size) {
-    return vfs_make_node_internal(path, VFS_TYPE_FILE | VFS_PERM_FILE_DEFAULT, data, size, 0, force);
+    return vfs_make_node_internal(path, VFS_TYPE_FILE | VFS_PERM_FILE_DEFAULT, data, size, force);
 }
 static void vfs_init_root(void) {
     vfs_root_inode = vfs_alloc_inode();
@@ -589,35 +587,22 @@ static void vfs_build_from_initrd(vfs_header_t *header) {
         vfs_entry_t *entry = &header->entries[i];
         if (!entry->path[0]) continue;
         if ((i % 8u) == 0u) kprintf("[VFS] Building entry %u/%u\n", i, header->entry_count);
-        if (entry->is_dir) { vfs_make_directory_internal(entry->path, 1); continue; }
+        if (entry->is_dir) {
+            vfs_dentry_t *directory = vfs_make_directory_internal(entry->path, 1);
+            if (directory && directory->inode) {
+                directory->inode->mode = VFS_TYPE_DIR | (entry->permissions & VFS_PERM_MASK);
+            }
+            continue;
+        }
         char parent[VFS_MAX_PATH], name[VFS_MAX_FILENAME];
         vfs_split_parent(entry->path, parent, name);
         if (parent[0] != 0 && strcmp(parent,".")!=0) vfs_make_directory_internal(parent, 1);
         u32 size = entry->size;
         u8 *source = (u8 *)header + entry->offset;
-        vfs_make_file_internal(entry->path, 1, source, size);
+        vfs_make_node_internal(entry->path,
+                       VFS_TYPE_FILE | (entry->permissions & VFS_PERM_MASK),
+                       source, size, 1);
     }
-}
-
-static int simple_itoa(u32 num, char *buf, int max_len) {
-    if (max_len < 2) return 0;
-    char temp[16];
-    int i = 0;
-    if (num == 0) {
-        buf[0] = '0';
-        buf[1] = '\0';
-        return 1;
-    }
-    while (num > 0 && i < 15) {
-        temp[i++] = '0' + (num % 10);
-        num /= 10;
-    }
-    int j = 0;
-    for (int k = i - 1; k >= 0; k--) {
-        if (j < max_len - 1) buf[j++] = temp[k];
-    }
-    buf[j] = '\0';
-    return j;
 }
 
 // Public API implementations 
@@ -647,7 +632,7 @@ vfs_dentry_t *vfs_core_lookup(const char *path, u32 flags) {
 vfs_dentry_t *vfs_core_root(void) { return vfs_root_dentry; }
 void vfs_core_build_path(vfs_dentry_t *dentry, char *buffer) { vfs_build_path_from_dentry(dentry, buffer); }
 
-static u32 vfs_core_open_internal(const char *path) {
+static u32 vfs_core_open_internal(const char *path, u32 flags) {
     vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
     if (!dentry || !dentry->inode) return VFS_INVALID_FD;
     u32 type = dentry->inode->mode & VFS_TYPE_MASK;
@@ -655,14 +640,18 @@ static u32 vfs_core_open_internal(const char *path) {
     if (type == VFS_TYPE_SYMLINK) {
         char target[VFS_MAX_PATH];
         if (!vfs_core_readlink(path, target, sizeof(target))) return VFS_INVALID_FD;
-        return vfs_core_open_internal(target);
+        return vfs_core_open_internal(target, flags);
+    }
+    device_t *device = NULL;
+    if (type == VFS_TYPE_CHARDEV) {
+        device = device_lookup_id(dentry->inode->device_major, dentry->inode->device_minor);
+        if (!device) return VFS_INVALID_FD;
     }
     for (u32 i = 0; i < VFS_MAX_FILE_HANDLES; i++) {
         if (vfs_files[i].ref_count == 0) {
             vfs_files[i].inode = dentry->inode;
-            vfs_files[i].pos = 0; vfs_files[i].flags = 0; vfs_files[i].ref_count = 1;
-            vfs_files[i].device = (type == VFS_TYPE_CHARDEV) ?
-                device_lookup_id(dentry->inode->device_major, dentry->inode->device_minor) : NULL;
+            vfs_files[i].pos = 0; vfs_files[i].flags = flags; vfs_files[i].ref_count = 1;
+            vfs_files[i].device = device;
             if (vfs_files[i].device && vfs_files[i].device->ops->open &&
                 vfs_files[i].device->ops->open(vfs_files[i].device) != 0) {
                 vfs_files[i].inode = NULL;
@@ -677,7 +666,13 @@ static u32 vfs_core_open_internal(const char *path) {
 }
 
 u32 vfs_core_open(const char *path) {
-    return vfs_core_open_internal(path);
+    return vfs_core_open_internal(path, VFS_O_RDWR);
+}
+u32 vfs_core_open_flags(const char *path, u32 flags) {
+    if ((flags & ~VFS_O_ACCMODE) || (flags & VFS_O_ACCMODE) > VFS_O_RDWR) {
+        return VFS_INVALID_FD;
+    }
+    return vfs_core_open_internal(path, flags);
 }
 u32 vfs_core_retain(u32 fd) {
     if (fd >= VFS_MAX_FILE_HANDLES) return 0;
@@ -701,6 +696,7 @@ u32 vfs_core_write(u32 fd, const void *buffer, u32 size) {
     if (fd >= VFS_MAX_FILE_HANDLES) return 0;
     vfs_file_t *fh = &vfs_files[fd];
     if (!fh->inode || fh->ref_count == 0) return 0;
+    if ((fh->flags & VFS_O_ACCMODE) == VFS_O_RDONLY) return (u32)-1;
     u32 type = fh->inode->mode & VFS_TYPE_MASK;
     if (type == VFS_TYPE_CHARDEV) {
         if (!fh->device || !fh->device->ops->write) return 0;
@@ -737,73 +733,7 @@ u32 vfs_core_write(u32 fd, const void *buffer, u32 size) {
 }
 u32 vfs_core_read_path(const char *path, void *buffer, u32 size) {
     if (!path || !buffer) return 0;
-    
-    /* Pre-check for our virtual proc nodes to work in both disk/non-disk modes */
     vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
-    if (dentry && dentry->inode && (dentry->inode->mode & VFS_TYPE_MASK) == VFS_TYPE_CHARDEV) {
-        u32 dev_id = dentry->inode->blocks[0];
-        if (dev_id >= 10 && dev_id <= 12) {
-            if (dev_id == 10) {
-                /* /proc/cpu */
-                extern u8 process_get_cpu_usage(void);
-                u8 usage = process_get_cpu_usage();
-                char temp[16];
-                int len = simple_itoa(usage, temp, sizeof(temp));
-                if (len < 14) {
-                    temp[len++] = '%';
-                    temp[len++] = '\n';
-                    temp[len] = '\0';
-                }
-                if (size > (u32)len) size = len;
-                memcpy(buffer, temp, size);
-                return size;
-            } else if (dev_id == 11) {
-                /* /proc/mem */
-                extern u32 heap_get_used_memory(void);
-                extern u32 heap_get_total_memory(void);
-                u32 used = heap_get_used_memory();
-                u32 total = heap_get_total_memory();
-                if (total == 0) total = 1;
-                u32 usage = (used * 100) / total;
-                char temp[16];
-                int len = simple_itoa(usage, temp, sizeof(temp));
-                if (len < 14) {
-                    temp[len++] = '%';
-                    temp[len++] = '\n';
-                    temp[len] = '\0';
-                }
-                if (size > (u32)len) size = len;
-                memcpy(buffer, temp, size);
-                return size;
-            } else if (dev_id == 12) {
-                /* /proc/battery */
-                char temp[16];
-                int len = simple_itoa(85, temp, sizeof(temp));
-                if (len < 14) {
-                    temp[len++] = '%';
-                    temp[len++] = '\n';
-                    temp[len] = '\0';
-                }
-                if (size > (u32)len) size = len;
-                memcpy(buffer, temp, size);
-                return size;
-            }
-        }
-    }
-
-    if (vfs_disk_mode) {
-        vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
-        if (!dentry || !dentry->inode) return 0;
-        if ((dentry->inode->mode & VFS_TYPE_MASK) == VFS_TYPE_SYMLINK) {
-            char target[VFS_MAX_PATH];
-            if (!vfs_core_readlink(path, target, sizeof(target))) return 0;
-            return vfs_core_read_path(target, buffer, size);
-        }
-        if ((dentry->inode->mode & VFS_TYPE_MASK) != VFS_TYPE_FILE) return 0;
-        i32 result = ext2_read_data(dentry->inode->number, buffer, size, 0);
-        return result > 0 ? (u32)result : 0;
-    }
-    dentry = vfs_core_lookup(path, 0);
     if (!dentry || !dentry->inode) return 0;
     u32 type = dentry->inode->mode & VFS_TYPE_MASK;
     if (type == VFS_TYPE_SYMLINK) {
@@ -812,23 +742,18 @@ u32 vfs_core_read_path(const char *path, void *buffer, u32 size) {
         return vfs_core_read_path(target, buffer, size);
     }
     if (type == VFS_TYPE_CHARDEV) {
-        u32 dev_id = dentry->inode->blocks[0];
-        if (dev_id == 1) {
-            /* /dev/null reads EOF */
-            return 0;
-        } else if (dev_id == 2) {
-            memset(buffer, 0, size);
-            return size;
-        } else if (dev_id == 3) {
-            u8 *out = buffer;
-            for (u32 i = 0; i < size; i++) {
-                out[i] = (u8)((i * 37) ^ 0xA5);
-            }
-            return size;
-        }
-        return 0;
+        u32 fd = vfs_core_open(path);
+        if (fd == VFS_INVALID_FD) return 0;
+        u32 result = vfs_core_read(fd, buffer, size);
+        vfs_core_close(fd);
+        return result;
     }
     if (type != VFS_TYPE_FILE) return 0;
+
+    if (vfs_disk_mode) {
+        i32 result = ext2_read_data(dentry->inode->number, buffer, size, 0);
+        return result > 0 ? (u32)result : 0;
+    }
     u32 to_read = size;
     if (to_read > dentry->inode->size) to_read = dentry->inode->size;
     if (to_read == 0) return 0;
@@ -902,7 +827,7 @@ u32 vfs_core_create_symlink(const char *target, const char *linkpath, u8 force) 
     if (vfs_disk_mode) return 0;
     u32 len = strlen(target) + 1;
     u32 mode = VFS_TYPE_SYMLINK | VFS_PERM_SYMLINK;
-    vfs_dentry_t *created = vfs_make_node_internal(linkpath, mode, (const u8 *)target, len, 0, force);
+    vfs_dentry_t *created = vfs_make_node_internal(linkpath, mode, (const u8 *)target, len, force);
     return created != NULL;
 }
 
@@ -925,10 +850,38 @@ u32 vfs_core_readlink(const char *path, char *buffer, u32 size) {
 
 u32 vfs_core_create_device_ex(const char *path, u32 mode, u32 major, u32 minor) {
     if (!path) return 0;
-    if (vfs_disk_mode) return 0;
     u32 full_mode = VFS_TYPE_CHARDEV | (mode & VFS_PERM_MASK);
-    vfs_dentry_t *created = vfs_make_node_internal(path, full_mode, NULL, 0, (major << 16) | minor, 1);
+    vfs_dentry_t *created;
+    if (vfs_disk_mode) {
+        char normalized[VFS_MAX_PATH];
+        char parent_path[VFS_MAX_PATH];
+        char name[VFS_MAX_FILENAME];
+        vfs_normalize(path, normalized);
+        vfs_split_parent(normalized, parent_path, name);
+        created = vfs_core_lookup(normalized, 0);
+        if (created && created->inode) {
+            if ((created->inode->mode & VFS_TYPE_MASK) != VFS_TYPE_CHARDEV) return 0;
+        } else {
+            vfs_dentry_t *parent = vfs_core_lookup(parent_path, 0);
+            if (!parent || !parent->inode ||
+                (parent->inode->mode & VFS_TYPE_MASK) != VFS_TYPE_DIR) return 0;
+            vfs_inode_t *inode = vfs_alloc_inode();
+            if (!inode) return 0;
+            inode->mode = full_mode;
+            inode->size = 0;
+            inode->device_major = major;
+            inode->device_minor = minor;
+            inode->device = device_lookup_id(major, minor);
+            inode->block_count = 0;
+            for (u32 i = 0; i < VFS_MAX_BLOCKS; i++) inode->blocks[i] = VFS_INVALID_OFFSET;
+            created = vfs_create_dentry(parent, name, inode);
+            if (!created) return 0;
+        }
+    } else {
+        created = vfs_make_node_internal(path, full_mode, NULL, 0, 1);
+    }
     if (created && created->inode) {
+        created->inode->mode = full_mode;
         created->inode->device_major = major;
         created->inode->device_minor = minor;
         created->inode->device = device_lookup_id(major, minor);
@@ -942,7 +895,19 @@ u32 vfs_core_create_device(const char *path, u32 mode, u32 dev_id) {
 
 u32 vfs_core_chmod(const char *path, u32 mode) {
     if (!path) return 0;
-    if (vfs_disk_mode) return 0;
+    if (vfs_disk_mode) {
+        vfs_dentry_t *overlay = vfs_core_lookup(path, 0);
+        if (overlay && overlay->inode &&
+            (overlay->inode->mode & VFS_TYPE_MASK) == VFS_TYPE_CHARDEV) {
+            overlay->inode->mode = VFS_TYPE_CHARDEV | (mode & VFS_PERM_MASK);
+            return 1;
+        }
+        u32 inode_number = ext2_find_inode(path);
+        ext2_inode_t inode;
+        if (!inode_number || ext2_read_inode(inode_number, &inode) != 0) return 0;
+        inode.mode = (u16)((inode.mode & ~VFS_PERM_MASK) | (mode & VFS_PERM_MASK));
+        return ext2_write_inode(inode_number, &inode) == 0;
+    }
     vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
     if (!dentry || !dentry->inode) return 0;
     u32 type = dentry->inode->mode & VFS_TYPE_MASK;
@@ -1053,24 +1018,12 @@ u32 vfs_core_read(u32 fd, void *buffer, u32 size) {
     if (!buffer) return 0;
     vfs_file_t *fh = &vfs_files[fd];
     if (!fh->inode || fh->ref_count == 0) return 0;
+    if ((fh->flags & VFS_O_ACCMODE) == VFS_O_WRONLY) return (u32)-1;
     u32 type = fh->inode->mode & VFS_TYPE_MASK;
     if (type == VFS_TYPE_CHARDEV) {
         if (fh->device && fh->device->ops->read) {
             device_ssize_t result = fh->device->ops->read(fh->device, buffer, size);
             return result < 0 ? 0 : (u32)result;
-        }
-        u32 dev_id = fh->inode->blocks[0];
-        if (dev_id == 1) {
-            return 0;
-        } else if (dev_id == 2) {
-            memset(buffer, 0, size);
-            return size;
-        } else if (dev_id == 3) {
-            u8 *out = buffer;
-            for (u32 i = 0; i < size; i++) {
-                out[i] = (u8)((i * 37) ^ 0xA5);
-            }
-            return size;
         }
         return 0;
     }
@@ -1106,9 +1059,29 @@ u32 vfs_core_lseek(u32 fd, i32 offset, i32 whence) {
     fh->pos = new_pos;
     return new_pos;
 }
+static u8 vfs_signature_matches(const u8 *data, const char *signature, u32 size) {
+    for (u32 i = 0; i < size; i++) {
+        if (data[i] != (u8)signature[i]) return 0;
+    }
+    return 1;
+}
+
 u32 vfs_core_stat(const char *path, void *statbuf) {
     if (!path || !statbuf) return 0;
     if (vfs_disk_mode) {
+        vfs_dentry_t *overlay = vfs_core_lookup(path, 0);
+        if (overlay && overlay->inode &&
+            (overlay->inode->mode & VFS_TYPE_MASK) == VFS_TYPE_CHARDEV) {
+            typedef struct { u32 mode; u32 size; u32 blocks; u32 atime; u32 mtime; u32 ctime; } simple_stat_t;
+            simple_stat_t *stat = (simple_stat_t *)statbuf;
+            stat->mode = overlay->inode->mode;
+            stat->size = overlay->inode->size;
+            stat->blocks = 0;
+            stat->atime = overlay->inode->atime;
+            stat->mtime = overlay->inode->mtime;
+            stat->ctime = overlay->inode->ctime;
+            return 1;
+        }
         u32 inode_num = ext2_find_inode(path);
         if (inode_num == 0) return 0;
         ext2_inode_t inode;
@@ -1127,6 +1100,55 @@ u32 vfs_core_stat(const char *path, void *statbuf) {
     stat->mode = dentry->inode->mode; stat->size = dentry->inode->size; stat->blocks = dentry->inode->block_count;
     stat->atime = dentry->inode->atime; stat->mtime = dentry->inode->mtime; stat->ctime = dentry->inode->ctime;
     return 1;
+}
+
+vfs_content_type_t vfs_core_content_type(const char *path) {
+    if (!path) return VFS_CONTENT_UNKNOWN;
+    vfs_dentry_t *dentry = vfs_core_lookup(path, 0);
+    if (!dentry || !dentry->inode ||
+        (dentry->inode->mode & VFS_TYPE_MASK) != VFS_TYPE_FILE) {
+        return VFS_CONTENT_UNKNOWN;
+    }
+
+    u8 signature[12];
+    u32 fd = vfs_core_open(path);
+    if (fd == VFS_INVALID_FD) return VFS_CONTENT_UNKNOWN;
+    u32 size = vfs_core_read(fd, signature, sizeof(signature));
+    vfs_core_close(fd);
+    if (size == 0) return VFS_CONTENT_UNKNOWN;
+
+    if (size >= 4 && signature[0] == 0x7F && signature[1] == 'E' &&
+        signature[2] == 'L' && signature[3] == 'F') return VFS_CONTENT_ELF;
+    if (size >= 8 && signature[0] == 0x89 && signature[1] == 'P' &&
+        signature[2] == 'N' && signature[3] == 'G' && signature[4] == 0x0D &&
+        signature[5] == 0x0A && signature[6] == 0x1A && signature[7] == 0x0A)
+        return VFS_CONTENT_PNG;
+    if (size >= 3 && signature[0] == 0xFF && signature[1] == 0xD8 &&
+        signature[2] == 0xFF) return VFS_CONTENT_JPEG;
+    if (size >= 6 && (vfs_signature_matches(signature, "GIF87a", 6) ||
+        vfs_signature_matches(signature, "GIF89a", 6))) return VFS_CONTENT_GIF;
+    if (size >= 2 && signature[0] == 'B' && signature[1] == 'M') return VFS_CONTENT_BMP;
+    if (size >= 5 && vfs_signature_matches(signature, "%PDF-", 5)) return VFS_CONTENT_PDF;
+    if (size >= 3 && vfs_signature_matches(signature, "ID3", 3)) return VFS_CONTENT_MP3;
+    if (size >= 2 && signature[0] == 0xFF && (signature[1] & 0xE0) == 0xE0)
+        return VFS_CONTENT_MP3;
+    if (size >= 12 && vfs_signature_matches(signature, "RIFF", 4) &&
+        vfs_signature_matches(signature + 8, "WAVE", 4)) return VFS_CONTENT_WAV;
+    if (size >= 4 && vfs_signature_matches(signature, "OggS", 4)) return VFS_CONTENT_OGG;
+    if (size >= 8 && vfs_signature_matches(signature + 4, "ftyp", 4)) return VFS_CONTENT_MP4;
+    if (size >= 4 && signature[0] == 'P' && signature[1] == 'K' &&
+        signature[2] == 0x03 && signature[3] == 0x04) return VFS_CONTENT_ZIP;
+    if (size >= 8 && signature[0] == 0xD0 && signature[1] == 0xCF &&
+        signature[2] == 0x11 && signature[3] == 0xE0 && signature[4] == 0xA1 &&
+        signature[5] == 0xB1 && signature[6] == 0x1A && signature[7] == 0xE1)
+        return VFS_CONTENT_OLE;
+
+    for (u32 i = 0; i < size; i++) {
+        u8 byte = signature[i];
+        if (byte != '\n' && byte != '\r' && byte != '\t' &&
+            (byte < 0x20 || byte > 0x7E)) return VFS_CONTENT_BINARY;
+    }
+    return VFS_CONTENT_TEXT;
 }
 
 /* Reload root dentry from disk when switching to disk mode */

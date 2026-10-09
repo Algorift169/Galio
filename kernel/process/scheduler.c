@@ -84,8 +84,8 @@ void process_accounting_tick(void) {
     accounting_total_ticks += elapsed_tsc;
     if (current) {
         current->runtime_ticks += elapsed_tsc;
-        if (current->accounting_idle) accounting_idle_ticks += elapsed_tsc;
     }
+    if (!current || current->accounting_idle) accounting_idle_ticks += elapsed_tsc;
 }
 
 void process_accounting_set_idle(u8 idle) {
@@ -102,8 +102,8 @@ void scheduler_tick(registers_t *regs) {
     // Poll wait queues for timeouts and update accounting
     process_wait_queue_poll_timeouts(pit_get_ticks());
     process_balance_runqueues();
+    process_accounting_tick();
     if (current) {
-        process_accounting_tick();
         pcb_accounting_tick(current);
 
         if (regs && (regs->cs & 3) == 3 && current->time_slice == 0 &&
@@ -141,8 +141,8 @@ u8 process_get_cpu_usage(void) {
 
     u32 now = pit_get_ticks();
     if (last_update_ticks == 0 || (now - last_update_ticks) >= 100) {
-        u32 total = process_get_total_ticks();
-        u32 idle = process_get_idle_ticks();
+        u64 total = process_get_total_ticks();
+        u64 idle = process_get_idle_ticks();
         
         u64 delta_total = total - last_total;
         u64 delta_idle = idle - last_idle;

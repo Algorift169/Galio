@@ -27,7 +27,9 @@
 #include "vga.h"
 #include "kprintf.h"
 #include "process.h"
+#include "security/security.h"
 #include "vfs.h"
+#include "vfs_core.h"
 #include "elf.h"
 #include "heap.h"
 #include "paging.h"
@@ -810,6 +812,7 @@ static i32 syscall_exec(const char *path) {
     if (!process_resolve_path(proc->cwd, kpath, resolved, PROCESS_PATH_MAX)) {
         return -1;
     }
+    if (!security_check_file_access(proc, resolved, 1u)) return -1;
 
     /* Load ELF from VFS */
     void *elf_data = kmalloc(65536);  /* Temporary buffer */
@@ -895,9 +898,15 @@ static u32 syscall_open(const char *path, i32 flags) {
     if (!process_resolve_path(proc->cwd, kpath, resolved, PROCESS_PATH_MAX)) {
         return -1;
     }
+
+    if (flags < 0 || ((u32)flags & ~VFS_O_ACCMODE) != 0 ||
+        ((u32)flags & VFS_O_ACCMODE) > VFS_O_RDWR) return (u32)-1;
+    u32 access = ((u32)flags & VFS_O_ACCMODE) == VFS_O_WRONLY ? 2u :
+                 ((u32)flags & VFS_O_ACCMODE) == VFS_O_RDWR ? 6u : 4u;
+    if (!security_check_file_access(proc, resolved, access)) return (u32)-1;
     
     /* Open file in VFS */
-    u32 vfs_fd = vfs_open(resolved);
+    u32 vfs_fd = vfs_core_open_flags(resolved, (u32)flags);
     if (vfs_fd == VFS_INVALID_FD) return -1;
     
     /* Find a free entry in process FD table */

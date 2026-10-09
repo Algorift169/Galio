@@ -33,6 +33,7 @@
 #define DEV_MAJOR_INPUT 2
 #define DEV_NULL_MINOR 0
 #define DEV_CONSOLE_MINOR 1
+#define DEV_ZERO_MINOR 2
 #define DEV_KEYBOARD_MINOR 0
 #define DEV_MOUSE_MINOR 1
 
@@ -46,6 +47,13 @@ static device_ssize_t null_read(device_t *device, void *buffer, size_t count) {
 }
 static device_ssize_t null_write(device_t *device, const void *buffer, size_t count) {
     (void)device; (void)buffer; return (device_ssize_t)count;
+}
+
+static device_ssize_t zero_read(device_t *device, void *buffer, size_t count) {
+    (void)device;
+    if (!buffer && count) return -1;
+    memset(buffer, 0, count);
+    return (device_ssize_t)count;
 }
 
 static device_ssize_t console_write(device_t *device, const void *buffer, size_t count) {
@@ -77,11 +85,13 @@ static device_ssize_t mouse_read(device_t *device, void *buffer, size_t count) {
 }
 
 static const device_ops_t null_ops = { null_open, null_close, null_read, null_write, NULL, NULL };
+static const device_ops_t zero_ops = { null_open, null_close, zero_read, null_write, NULL, NULL };
 static const device_ops_t console_ops = { null_open, null_close, NULL, console_write, NULL, NULL };
 static const device_ops_t keyboard_ops = { null_open, null_close, keyboard_read, NULL, NULL, NULL };
 static const device_ops_t mouse_ops = { null_open, null_close, mouse_read, NULL, NULL, NULL };
 
 static device_t null_device = { "null", DEVICE_CHAR, DEV_MAJOR_CORE, DEV_NULL_MINOR, &null_ops, NULL, 0 };
+static device_t zero_device = { "zero", DEVICE_CHAR, DEV_MAJOR_CORE, DEV_ZERO_MINOR, &zero_ops, NULL, 0 };
 static device_t console_device = { "console", DEVICE_TTY, DEV_MAJOR_CORE, DEV_CONSOLE_MINOR, &console_ops, NULL, 0 };
 static device_t keyboard_device = { "keyboard0", DEVICE_INPUT, DEV_MAJOR_INPUT, DEV_KEYBOARD_MINOR, &keyboard_ops, NULL, 0 };
 static device_t mouse_device = { "mouse0", DEVICE_INPUT, DEV_MAJOR_INPUT, DEV_MOUSE_MINOR, &mouse_ops, NULL, 0 };
@@ -137,6 +147,7 @@ int device_manager_populate_dev(void) {
     if (!vfs_core_lookup("./dev", 0)) vfs_core_create_dir("./dev", 1);
     create_dev_node("./dev/null", DEV_MAJOR_CORE, DEV_NULL_MINOR, 0666);
     create_dev_node("./dev/console", DEV_MAJOR_CORE, DEV_CONSOLE_MINOR, 0622);
+    create_dev_node("./dev/zero", DEV_MAJOR_CORE, DEV_ZERO_MINOR, 0444);
     create_dev_node("./dev/keyboard", DEV_MAJOR_INPUT, DEV_KEYBOARD_MINOR, 0444);
     create_dev_node("./dev/mouse", DEV_MAJOR_INPUT, DEV_MOUSE_MINOR, 0444);
     return 0;
@@ -144,7 +155,7 @@ int device_manager_populate_dev(void) {
 
 int device_manager_init(void) {
     if (device_manager_ready) return 0;
-    if (device_register(&null_device) || device_register(&console_device) ||
+    if (device_register(&null_device) || device_register(&zero_device) || device_register(&console_device) ||
         device_register(&keyboard_device) || device_register(&mouse_device)) return -1;
     device_manager_ready = 1;
     kprintf("[DEV] Device subsystem initialized\n");

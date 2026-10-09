@@ -288,7 +288,6 @@ int ac97_probe(pci_device_t *device) {
     sound->private_data = state;
     if (ac97_init(sound) != 0 || sound_device_register(sound) != 0) return -1;
     if (device->irq_line < 16u) ac97_irq_devices[device->irq_line] = sound;
-    sound_register_device_node(sound);
     kprintf("[SOUND] AC97 codec registered as %s\n", sound->name);
     if (device->irq_line < 16u) irq_register_handler(device->irq_line,
                                                        ac97_irq_handler);

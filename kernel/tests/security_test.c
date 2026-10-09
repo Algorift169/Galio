@@ -29,6 +29,10 @@
 #include "syscall.h"
 #include "paging.h"
 #include "pmem.h"
+#include "security/security.h"
+#include "string.h"
+#include "vfs.h"
+#include "vfs_core.h"
 
 void security_test(void) {
     kprintf("[KTEST] Running security tests...\n");
@@ -52,6 +56,88 @@ void security_test(void) {
         kprintf("[KTEST][FAIL] Kernel address accepted as user pointer\n");
         return;
     }
+
+    process_t user_actor;
+    process_t other_user;
+    process_t root_actor;
+    memset(&user_actor, 0, sizeof(user_actor));
+    memset(&other_user, 0, sizeof(other_user));
+    memset(&root_actor, 0, sizeof(root_actor));
+    user_actor.pid = 20;
+    user_actor.uid = 1000;
+    other_user.pid = 21;
+    other_user.uid = 2000;
+    root_actor.pid = 22;
+    root_actor.uid = UID_ROOT;
+    root_actor.capabilities = SECURITY_CAP_ALL;
+    u64 audit_start = security_audit_count();
+    if (security_may_signal(&user_actor, &other_user)) {
+        kprintf("[KTEST][FAIL] Cross-UID signal was allowed\n");
+        return;
+    }
+    process_t idle_target;
+    memset(&idle_target, 0, sizeof(idle_target));
+    idle_target.pid = 1;
+    idle_target.uid = UID_ROOT;
+    if (security_may_signal(&root_actor, &idle_target)) {
+        kprintf("[KTEST][FAIL] Kernel idle process signal was allowed\n");
+        return;
+    }
+    if (!security_may_signal(&root_actor, &other_user) ||
+        security_audit_count() != audit_start + 2) {
+        kprintf("[KTEST][FAIL] Capability signal policy/audit failed\n");
+        return;
+    }
+
+    const char *chmod_test_path = "./security-test-file";
+    if (!vfs_create(chmod_test_path, 1)) {
+        kprintf("[KTEST FAIL] security_test: unable to create chmod fixture\n");
+        return;
+    }
+    if (security_may_chmod(&user_actor, chmod_test_path) ||
+        !security_may_chmod(&root_actor, chmod_test_path)) {
+        kprintf("[KTEST][FAIL] chmod owner/capability policy failed\n");
+        vfs_unlink(chmod_test_path);
+        return;
+    }
+    if (!security_check_file_access(&user_actor, chmod_test_path, 4u) ||
+        security_check_file_access(&user_actor, chmod_test_path, 2u)) {
+        kprintf("[KTEST][FAIL] file DAC read/write policy failed\n");
+        vfs_unlink(chmod_test_path);
+        return;
+    }
+    if (security_check_file_access(&user_actor, chmod_test_path, 1u) ||
+        !vfs_chmod(chmod_test_path, 0755) ||
+        !security_check_file_access(&user_actor, chmod_test_path, 1u)) {
+        kprintf("[KTEST][FAIL] execute-bit enforcement or chmod failed\n");
+        vfs_unlink(chmod_test_path);
+        return;
+    }
+    if (security_check_parent_access(&user_actor, chmod_test_path, 3u) ||
+        !security_check_parent_access(&root_actor, chmod_test_path, 3u)) {
+        kprintf("[KTEST][FAIL] parent directory write/search policy failed\n");
+        vfs_unlink(chmod_test_path);
+        return;
+    }
+    u32 read_only_fd = vfs_core_open_flags(chmod_test_path, VFS_O_RDONLY);
+    if (read_only_fd == VFS_INVALID_FD ||
+        vfs_core_write(read_only_fd, "x", 1) != (u32)-1) {
+        kprintf("[KTEST][FAIL] read-only file descriptor allowed write\n");
+        if (read_only_fd != VFS_INVALID_FD) vfs_core_close(read_only_fd);
+        vfs_unlink(chmod_test_path);
+        return;
+    }
+    vfs_core_close(read_only_fd);
+    u32 write_only_fd = vfs_core_open_flags(chmod_test_path, VFS_O_WRONLY);
+    if (write_only_fd == VFS_INVALID_FD ||
+        vfs_core_read(write_only_fd, "x", 1) != (u32)-1) {
+        kprintf("[KTEST][FAIL] write-only file descriptor allowed read\n");
+        if (write_only_fd != VFS_INVALID_FD) vfs_core_close(write_only_fd);
+        vfs_unlink(chmod_test_path);
+        return;
+    }
+    vfs_core_close(write_only_fd);
+    vfs_unlink(chmod_test_path);
 
     /* Basic paging checks: create a temporary page directory and map a user page */
     page_directory_t *pd = paging_create_directory();
