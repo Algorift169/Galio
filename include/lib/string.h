@@ -36,4 +36,8 @@ char *strcat(char *dest, const char *src);
 char *strchr(const char *text, int character);
 char *strstr(const char *text, const char *needle);
 
+/* Required by lwIP and standard C: */
+int   memcmp(const void *a, const void *b, size_t n);
+long  strtol(const char *nptr, char **endptr, int base);
+
 #endif /* STRING_H */

@@ -31,7 +31,7 @@
 #endif
 
 #define HEAP_START      0x600000
-#define HEAP_MAX_SIZE   0x1000000   /* 16 MB */
+#define HEAP_MAX_SIZE   0x4000000   /* 64 MB */
 #define MIN_BLOCK_SIZE  32
 
 

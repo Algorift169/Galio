@@ -65,7 +65,7 @@
 #define STATUS_LU      (1 << 1)
 #define STATUS_SPEED_100    (1 << 3)
 #define STATUS_SPEED_1000   (1 << 4)
-#define E1000_LINK_DEBOUNCE_SAMPLES 8u
+#define E1000_LINK_DEBOUNCE_SAMPLES 3u
 
 /* RX */
 #define REG_RCTL    0x00100
@@ -182,6 +182,7 @@ static inline void mmio_write32(void *base, u32 offset, u32 val) {
 }
 
 static inline u32 mmio_read32(void *base, u32 offset) {
+    __asm__ volatile("mfence" ::: "memory");
     volatile u32 *r = (volatile u32 *)((uintptr_t)base + offset);
     u32 value = *r;
     __asm__ volatile("mfence" ::: "memory");
@@ -391,8 +392,8 @@ static int e1000_link_status(struct net_device *dev) {
         if (p->link_state != raw_link) {
             p->link_state = raw_link;
             p->link_samples = 0u;
-            if (!galio_gui_mode)
-                kprintf("e1000: link became %s\n", raw_link ? "active" : "inactive");
+            kprintf("e1000: link became %s (STATUS=0x%08x)\n",
+                    raw_link ? "active" : "inactive", status);
         } else {
             p->link_samples = 0u;
         }
@@ -429,17 +430,33 @@ static int e1000_open(struct net_device *dev) {
         return -1;
     }
 
-    /* Allow the PHY enough time to settle and update carrier state. */
-    for (int i = 0; i < 100; i++) {
-        if (e1000_link_status(dev)) break;
+    /* Allow the PHY enough time to settle and update carrier state.
+     * QEMU's e1000 can take a few milliseconds to report link-up after
+     * the CTRL register is programmed.  Read the raw STATUS register
+     * directly (bypassing the debounce filter) so we don't miss it. */
+    {
+        u32 status = 0;
+        for (int i = 0; i < 500; i++) {
+            status = mmio_read32(p->mmio, REG_STATUS);
+            if (status & STATUS_LU) break;
+            /* Tiny busy-loop delay (~1 µs per iteration on modern CPUs) */
+            for (volatile int d = 0; d < 1000; d++) (void)d;
+        }
+        /* Initialise debounce state from the settled hardware value */
+        u8 hw_link = (status & STATUS_LU) ? 1u : 0u;
+        p->link_state = hw_link;
+        p->link_candidate = hw_link;
+        p->link_samples = 0u;
+        kprintf("e1000: PHY STATUS=0x%08x link=%s\n",
+            status, hw_link ? "up" : "down");
     }
 
     dev->flags |= NETIF_UP;
-    if (e1000_link_status(dev)) {
+    if (p->link_state) {
         dev->flags |= NETIF_RUNNING;
     } else {
         dev->flags &= ~NETIF_RUNNING;
-        kprintf("e1000: link down or unsupported in the current VM; Ethernet interface disabled\n");
+        kprintf("e1000: link down after PHY settle; will retry via periodic poll\n");
     }
     return 0;
 }

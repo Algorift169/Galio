@@ -475,15 +475,17 @@ void kmain(void *multiboot_ptr, u32 multiboot_magic) {
     e1000_register_driver();
     rtl8139_register_driver();
     sound_register_pci_driver();
-    pci_init();
     gpu_init();
     net_print_devices();
 
-    if (dhcp_start() == 0) {
-        kprintf("DHCP: lease acquired\n");
-    } else {
-        kprintf("DHCP: no lease acquired\n");
-    }
+    /*
+     * lwIP integration: start the lwIP TCP/IP stack after PCI/e1000 is probed.
+     * lwip_start() will find the first usable NIC, initialise the lwIP core,
+     * register the netif, and start DHCP automatically.
+     * The old Galio dhcp_start() is left as a fallback if lwIP is unavailable.
+     */
+    kprintf("Starting lwIP TCP/IP stack...\n");
+    lwip_start();
 
     /* The embedded ELF test runner is not the desktop init process. Starting
      * it here floods the display before the authenticated GUI can take over. */

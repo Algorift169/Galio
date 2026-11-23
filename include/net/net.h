@@ -33,4 +33,8 @@ void net_print_devices(void);
 void net_configure_routes(void);
 u32 netdev_ipv4_broadcast(u32 addr, u32 netmask);
 
+/* Initialise the lwIP stack and register the primary NIC interface.
+ * Must be called AFTER PCI/e1000 registration (i.e. after pci_init()). */
+void lwip_start(void);
+
 #endif

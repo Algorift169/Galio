@@ -316,6 +316,7 @@ static u8 shell_command_name_known(const char *command)
             strcmp(name, "show") == 0 || strcmp(name, "recycle") == 0 ||
             strcmp(name, "delete") == 0 || strcmp(name, "clean") == 0 ||
             strcmp(name, "net") == 0 || strcmp(name, "ifconfig") == 0 ||
+            strcmp(name, "ping") == 0 || strcmp(name, "nslookup") == 0 ||
             strcmp(name, "ip") == 0 || strcmp(name, "wifi-list") == 0 ||
             strcmp(name, "wait") == 0 || strcmp(name, "syscall") == 0 ||
             strcmp(name, "sysinfo") == 0 ||
@@ -1457,13 +1458,38 @@ static void shell_execute_command(void) {
         char *argv_sound[] = { "sound", "info" };
         cmd_sound(2, argv_sound);
     } else if (strcmp(input.buffer, "net") == 0) {
-        SHELL_COLOR_CMD();
-        kprintf("Usage: net <stat|scan|list|devices>\n");
+        SHELL_COLOR_OUT();
+        shell_net_command("", current_dir);
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "ifconfig", 8) == 0 &&
                (input.buffer[8] == ' ' || input.buffer[8] == '\0')) {
         SHELL_COLOR_OUT();
         shell_ifconfig_command(input.buffer + 8, current_dir);
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "ping ", 5) == 0 ||
+               strcmp(input.buffer, "ping") == 0) {
+        /* Forward: "ping <args>" → shell_net_command("ping <args>", dir) */
+        SHELL_COLOR_OUT();
+        const char *ping_args = (input.buffer[4] == ' ') ? input.buffer + 5 : "";
+        if (!*ping_args) {
+            kprintf("Usage: ping <IP|hostname> [count]\n");
+        } else {
+            /* Build "ping <args>" for shell_net_command which checks strncmp("ping",4) */
+            shell_net_command(input.buffer /* "ping ..." */, current_dir);
+        }
+        SHELL_COLOR_RESET();
+    } else if (strncmp(input.buffer, "nslookup ", 9) == 0) {
+        /* Forward: "nslookup <host>" → shell_net_command("dns <host>", dir) */
+        SHELL_COLOR_OUT();
+        static char nslookup_buf[320];
+        const char *host = input.buffer + 9;
+        nslookup_buf[0] = 'd'; nslookup_buf[1] = 'n'; nslookup_buf[2] = 's';
+        nslookup_buf[3] = ' ';
+        u32 ni = 4;
+        while (*host && ni < sizeof(nslookup_buf) - 1)
+            nslookup_buf[ni++] = *host++;
+        nslookup_buf[ni] = '\0';
+        shell_net_command(nslookup_buf, current_dir);
         SHELL_COLOR_RESET();
     } else if (strncmp(input.buffer, "ip ", 3) == 0) {
         SHELL_COLOR_OUT();

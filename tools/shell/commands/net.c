@@ -28,6 +28,16 @@
 #include "net/wifi.h"
 #include "net/arp.h"
 #include "net/http.h"
+#include "net/lwip/lwip_state.h"
+#include "net/lwip/lwip_netif.h"
+#include "net/dhcp.h"
+
+/* Forward declarations for sub-command handlers defined later in this file */
+static u8 cmd_net_interfaces(void);
+static u8 cmd_net_config(void);
+static u8 cmd_net_dhcp(const char *subcmd);
+static u8 cmd_net_dns(const char *hostname);
+static u8 cmd_net_ping(const char *args);
 
 static void print_mac(uint8_t mac[6]) {
     kprintf("%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -114,10 +124,29 @@ static u32 parse_timeout(const char *args, const char **command_args) {
     return seconds;
 }
 
+static void print_net_usage(void) {
+    kprintf("Galio Networking Subsystem (lwIP Integrated)\n");
+    kprintf("Usage: net <command> [options]\n\n");
+    kprintf("lwIP Protocol Commands:\n");
+    kprintf("  dhcp [renew|release]   - Show DHCP lease status, renew, or release lease\n");
+    kprintf("  dns <hostname>         - Resolve domain name using lwIP DNS client\n");
+    kprintf("  ping <ip|host> [count] - Send ICMP Echo requests via lwIP raw API\n");
+    kprintf("  http <ip> [path]       - Make HTTP GET request over lwIP TCP\n\n");
+    kprintf("Galio Network Device & Native Commands:\n");
+    kprintf("  stat                   - Display primary network interface stats & state\n");
+    kprintf("  interfaces             - List all network interfaces with MAC & flags\n");
+    kprintf("  config                 - Display current IP configuration & routes\n");
+    kprintf("  devices                - Display list of detected network devices\n");
+    kprintf("  arp [IP | flush]       - Query ARP table or flush ARP cache\n");
+    kprintf("  setip <dev> <ip> <mask> [gw] - Configure static IPv4 address\n");
+    kprintf("  scan [--timeout <sec>] - Scan for Wi-Fi access points\n");
+    kprintf("  list                   - List detected Wi-Fi networks\n");
+}
+
 u8 shell_net_command(const char *args, const char *current_dir) {
     (void)current_dir;
     if (!args || *args == 0) {
-        kprintf("Usage: net <stat|arp|scan|list|devices|setip|http>\n");
+        print_net_usage();
         return 0;
     }
 
@@ -129,23 +158,73 @@ u8 shell_net_command(const char *args, const char *current_dir) {
         kprintf("Interface : %s\n", dev->name);
         kprintf("Status    : %s\n", (dev->flags & NETIF_UP) ? "UP" : "DOWN");
         kprintf("Link      : %s\n", netdev_get_link(dev) ? "UP" : "DOWN");
-        kprintf("MAC       : "); print_mac(dev->mac); kprintf("\n");
+        kprintf("lwIP      : %s\n", lwip_is_ready() ? "running" : "not initialised");
+        kprintf("MAC       : %02x:%02x:%02x:%02x:%02x:%02x\n",
+                dev->mac[0], dev->mac[1], dev->mac[2],
+                dev->mac[3], dev->mac[4], dev->mac[5]);
         if (dev->ip_addr) {
-            kprintf("IPv4      : "); print_ipv4(dev->ip_addr); kprintf("\n");
-            kprintf("Netmask   : "); print_ipv4(dev->netmask); kprintf("\n");
-            kprintf("Gateway   : "); print_ipv4(dev->gateway); kprintf("\n");
+            kprintf("IPv4      : %u.%u.%u.%u\n",
+                    (dev->ip_addr  >> 24) & 0xFF,
+                    (dev->ip_addr  >> 16) & 0xFF,
+                    (dev->ip_addr  >>  8) & 0xFF,
+                     dev->ip_addr         & 0xFF);
+            kprintf("Netmask   : %u.%u.%u.%u\n",
+                    (dev->netmask  >> 24) & 0xFF,
+                    (dev->netmask  >> 16) & 0xFF,
+                    (dev->netmask  >>  8) & 0xFF,
+                     dev->netmask         & 0xFF);
+            kprintf("Gateway   : %u.%u.%u.%u\n",
+                    (dev->gateway  >> 24) & 0xFF,
+                    (dev->gateway  >> 16) & 0xFF,
+                    (dev->gateway  >>  8) & 0xFF,
+                     dev->gateway         & 0xFF);
+            if (dev->dns_servers[0])
+                kprintf("DNS[0]    : %u.%u.%u.%u\n",
+                        (dev->dns_servers[0] >> 24) & 0xFF,
+                        (dev->dns_servers[0] >> 16) & 0xFF,
+                        (dev->dns_servers[0] >>  8) & 0xFF,
+                         dev->dns_servers[0]         & 0xFF);
+            if (dev->dns_servers[1])
+                kprintf("DNS[1]    : %u.%u.%u.%u\n",
+                        (dev->dns_servers[1] >> 24) & 0xFF,
+                        (dev->dns_servers[1] >> 16) & 0xFF,
+                        (dev->dns_servers[1] >>  8) & 0xFF,
+                         dev->dns_servers[1]         & 0xFF);
+        } else {
+            kprintf("IPv4      : (not assigned)\n");
         }
-        kprintf("TX Packets: %u\n", dev->tx_packets);
+        const char *dhcp_str = dhcp_state_name(dev->dhcp_state);
+        kprintf("DHCP      : %s\n", dhcp_str ? dhcp_str : "unknown");
+        kprintf("RX Pkts   : %u\n", dev->rx_packets);
+        kprintf("TX Pkts   : %u\n", dev->tx_packets);
         kprintf("RX Bytes  : %u\n", dev->rx_bytes);
         kprintf("TX Bytes  : %u\n", dev->tx_bytes);
+        kprintf("RX Drop   : %u  RX Err: %u\n", dev->rx_dropped, dev->rx_errors);
+        kprintf("TX Drop   : %u  TX Err: %u\n", dev->tx_dropped, dev->tx_errors);
         return 1;
     }
+
+    if (strncmp(args, "interfaces", 10) == 0 && (args[10] == ' ' || args[10] == '\0'))
+        return cmd_net_interfaces();
+
+    if (strncmp(args, "config", 6) == 0 && (args[6] == ' ' || args[6] == '\0'))
+        return cmd_net_config();
+
+    if (strncmp(args, "dhcp", 4) == 0 && (args[4] == ' ' || args[4] == '\0'))
+        return cmd_net_dhcp(skip_spaces(args + 4));
+
+    if (strncmp(args, "dns", 3) == 0 && (args[3] == ' ' || args[3] == '\0'))
+        return cmd_net_dns(skip_spaces(args + 3));
+
+    if (strncmp(args, "ping", 4) == 0 && (args[4] == ' ' || args[4] == '\0'))
+        return cmd_net_ping(skip_spaces(args + 4));
 
     if (strncmp(args, "arp", 3) == 0 && (args[3] == ' ' || args[3] == '\0')) {
         const char *subcmd = skip_spaces(args + 3);
 
         if (strncmp(subcmd, "flush", 5) == 0 && (subcmd[5] == ' ' || subcmd[5] == '\0')) {
             arp_cache_flush();
+            lwip_arp_flush(netdev_get_by_name("eth0"));
             kprintf("ARP cache flushed\n");
             return 1;
         }
@@ -170,10 +249,16 @@ u8 shell_net_command(const char *args, const char *current_dir) {
         }
 
         uint8_t mac[6];
-        if (arp_resolve(dev, ip_addr, mac) == 0) {
+        int arp_status = lwip_arp_resolve(dev, ip_addr, mac);
+        if (arp_status == 0) {
             kprintf("ARP resolved "); print_ipv4(ip_addr); kprintf(" -> ");
             print_mac(mac); kprintf("\n");
             return 1;
+        }
+
+        if (arp_status < 0) {
+            kprintf("Unable to send ARP request\n");
+            return 0;
         }
 
         kprintf("ARP request sent for "); print_ipv4(ip_addr); kprintf(" (may take a moment)\n");
@@ -305,6 +390,10 @@ u8 shell_net_command(const char *args, const char *current_dir) {
             return 0;
         }
 
+        if (lwip_netif_set_ipv4(dev, addr, mask, gateway) != 0) {
+            kprintf("Unable to configure the active lwIP interface\n");
+            return 0;
+        }
         netdev_set_ipv4(dev, addr, mask, gateway);
         kprintf("Assigned %s to %s\n", ipstr, ifname);
         return 1;
@@ -346,6 +435,246 @@ u8 shell_net_command(const char *args, const char *current_dir) {
         return 1;
     }
 
-    kprintf("Usage: net <stat|arp|scan|list|devices|setip|http>\n");
+    kprintf("Unknown net command: '%s'\n\n", args);
+    print_net_usage();
     return 0;
+}
+
+/* =========================================================================
+ * net interfaces — list all registered network devices with full details
+ * ========================================================================= */
+
+static u8 cmd_net_interfaces(void)
+{
+    net_device_t *it = netdev_first();
+    if (!it) {
+        kprintf("No network devices registered\n");
+        return 0;
+    }
+    while (it) {
+        kprintf("%-8s %s  link=%s  mtu=%u\n",
+                it->name,
+                (it->flags & NETIF_UP) ? "UP" : "DOWN",
+                netdev_get_link(it) ? "UP" : "DOWN",
+                it->mtu);
+        kprintf("  MAC      : %02x:%02x:%02x:%02x:%02x:%02x\n",
+                it->mac[0], it->mac[1], it->mac[2],
+                it->mac[3], it->mac[4], it->mac[5]);
+        if (it->ip_addr) {
+            kprintf("  IPv4     : %u.%u.%u.%u\n",
+                    (it->ip_addr  >> 24) & 0xFF,
+                    (it->ip_addr  >> 16) & 0xFF,
+                    (it->ip_addr  >>  8) & 0xFF,
+                     it->ip_addr         & 0xFF);
+            kprintf("  Netmask  : %u.%u.%u.%u\n",
+                    (it->netmask  >> 24) & 0xFF,
+                    (it->netmask  >> 16) & 0xFF,
+                    (it->netmask  >>  8) & 0xFF,
+                     it->netmask         & 0xFF);
+            kprintf("  Gateway  : %u.%u.%u.%u\n",
+                    (it->gateway  >> 24) & 0xFF,
+                    (it->gateway  >> 16) & 0xFF,
+                    (it->gateway  >>  8) & 0xFF,
+                     it->gateway         & 0xFF);
+            if (it->dns_servers[0]) {
+                kprintf("  DNS[0]   : %u.%u.%u.%u\n",
+                        (it->dns_servers[0] >> 24) & 0xFF,
+                        (it->dns_servers[0] >> 16) & 0xFF,
+                        (it->dns_servers[0] >>  8) & 0xFF,
+                         it->dns_servers[0]         & 0xFF);
+            }
+            if (it->dns_servers[1]) {
+                kprintf("  DNS[1]   : %u.%u.%u.%u\n",
+                        (it->dns_servers[1] >> 24) & 0xFF,
+                        (it->dns_servers[1] >> 16) & 0xFF,
+                        (it->dns_servers[1] >>  8) & 0xFF,
+                         it->dns_servers[1]         & 0xFF);
+            }
+        } else {
+            kprintf("  IPv4     : (not assigned)\n");
+        }
+        const char *dhcp_state_str = "unknown";
+        switch (it->dhcp_state) {
+        case NET_DHCP_INIT:       dhcp_state_str = "init";       break;
+        case NET_DHCP_SELECTING:  dhcp_state_str = "selecting";  break;
+        case NET_DHCP_REQUESTING: dhcp_state_str = "requesting"; break;
+        case NET_DHCP_BOUND:      dhcp_state_str = "bound";      break;
+        case NET_DHCP_RENEWING:   dhcp_state_str = "renewing";   break;
+        case NET_DHCP_REBINDING:  dhcp_state_str = "rebinding";  break;
+        case NET_DHCP_EXPIRED:    dhcp_state_str = "expired";    break;
+        case NET_DHCP_ERROR:      dhcp_state_str = "error";      break;
+        }
+        kprintf("  DHCP     : %s\n", dhcp_state_str);
+        kprintf("  RX pkts  : %u  RX bytes: %u  RX drop: %u  RX err: %u\n",
+                it->rx_packets, it->rx_bytes, it->rx_dropped, it->rx_errors);
+        kprintf("  TX pkts  : %u  TX bytes: %u  TX drop: %u  TX err: %u\n",
+                it->tx_packets, it->tx_bytes, it->tx_dropped, it->tx_errors);
+        kprintf("\n");
+        it = it->next;
+    }
+    return 1;
+}
+
+/* =========================================================================
+ * net config — show lwIP + Galio networking configuration summary
+ * ========================================================================= */
+
+static u8 cmd_net_config(void)
+{
+    kprintf("lwIP status : %s\n", lwip_is_ready() ? "initialized" : "not running");
+    net_device_t *dev = netdev_first();
+    while (dev) {
+        kprintf("Interface   : %s  (%s)\n",
+                dev->name,
+                (dev->flags & NETIF_UP) ? "up" : "down");
+        if (dev->ip_addr) {
+            kprintf("  IP/mask   : %u.%u.%u.%u / %u.%u.%u.%u\n",
+                    (dev->ip_addr  >> 24) & 0xFF,
+                    (dev->ip_addr  >> 16) & 0xFF,
+                    (dev->ip_addr  >>  8) & 0xFF,
+                     dev->ip_addr         & 0xFF,
+                    (dev->netmask  >> 24) & 0xFF,
+                    (dev->netmask  >> 16) & 0xFF,
+                    (dev->netmask  >>  8) & 0xFF,
+                     dev->netmask         & 0xFF);
+            kprintf("  Gateway   : %u.%u.%u.%u\n",
+                    (dev->gateway  >> 24) & 0xFF,
+                    (dev->gateway  >> 16) & 0xFF,
+                    (dev->gateway  >>  8) & 0xFF,
+                     dev->gateway         & 0xFF);
+            if (dev->dns_servers[0])
+                kprintf("  DNS       : %u.%u.%u.%u\n",
+                        (dev->dns_servers[0] >> 24) & 0xFF,
+                        (dev->dns_servers[0] >> 16) & 0xFF,
+                        (dev->dns_servers[0] >>  8) & 0xFF,
+                         dev->dns_servers[0]         & 0xFF);
+        } else {
+            kprintf("  IP        : (not configured)\n");
+        }
+        dev = dev->next;
+    }
+    return 1;
+}
+
+/* =========================================================================
+ * net dhcp — show DHCP state or force renew
+ * ========================================================================= */
+
+static u8 cmd_net_dhcp(const char *subcmd)
+{
+    net_device_t *dev = netdev_first();
+    if (!dev) {
+        kprintf("No network device\n");
+        return 0;
+    }
+
+    if (subcmd && strncmp(subcmd, "renew", 5) == 0 && (subcmd[5] == ' ' || !subcmd[5])) {
+        kprintf("Requesting DHCP renewal on %s ...\n", dev->name);
+        int rc = dhcp_renew(dev);
+        kprintf("DHCP renew: %s\n", (rc == 0) ? "sent" : "failed");
+        return (rc == 0) ? 1u : 0u;
+    }
+
+    if (subcmd && strncmp(subcmd, "release", 7) == 0 && (subcmd[7] == ' ' || !subcmd[7])) {
+        kprintf("Releasing DHCP lease on %s ...\n", dev->name);
+        int rc = dhcp_release(dev);
+        kprintf("DHCP release: %s\n", (rc == 0) ? "sent" : "failed");
+        return (rc == 0) ? 1u : 0u;
+    }
+
+    /* Default: show state */
+    const char *state = dhcp_state_name(dev->dhcp_state);
+    kprintf("DHCP state  : %s\n", state ? state : "unknown");
+    if (dev->ip_addr) {
+        kprintf("Assigned IP : %u.%u.%u.%u\n",
+                (dev->ip_addr >> 24) & 0xFF,
+                (dev->ip_addr >> 16) & 0xFF,
+                (dev->ip_addr >>  8) & 0xFF,
+                 dev->ip_addr        & 0xFF);
+        kprintf("Lease time  : %u s\n", dev->lease_duration);
+    } else {
+        kprintf("No IP assigned\n");
+    }
+    return 1;
+}
+
+/* =========================================================================
+ * net dns <hostname> — resolve a name via lwIP DNS
+ * ========================================================================= */
+
+static u8 cmd_net_dns(const char *hostname)
+{
+    if (!hostname || !*hostname) {
+        kprintf("Usage: net dns <hostname>\n");
+        return 0;
+    }
+    if (!lwip_is_ready()) {
+        kprintf("lwIP not running\n");
+        return 0;
+    }
+    kprintf("Resolving '%s' ...\n", hostname);
+    u32 ip = 0;
+    if (lwip_dns_resolve(hostname, &ip) == 0) {
+        kprintf("%s -> %u.%u.%u.%u\n",
+                hostname,
+                (ip >> 24) & 0xFF,
+                (ip >> 16) & 0xFF,
+                (ip >>  8) & 0xFF,
+                 ip        & 0xFF);
+        return 1;
+    }
+    kprintf("Failed to resolve '%s'\n", hostname);
+    return 0;
+}
+
+/* =========================================================================
+ * net ping <ip|hostname> [count] — ICMP echo via lwIP raw API
+ * ========================================================================= */
+
+static u8 cmd_net_ping(const char *args)
+{
+    if (!args || !*args) {
+        kprintf("Usage: net ping <IP|hostname> [count]\n");
+        return 0;
+    }
+    if (!lwip_is_ready()) {
+        kprintf("lwIP not running\n");
+        return 0;
+    }
+
+    char target[256];
+    u32  count = 4;
+
+    const char *p = copy_token(args, target, sizeof(target));
+    p = skip_spaces(p);
+    if (*p >= '1' && *p <= '9') {
+        count = 0;
+        while (*p >= '0' && *p <= '9') count = count * 10u + (u32)(*p++ - '0');
+        if (count == 0 || count > 64u) count = 4;
+    }
+
+    u32 dest = 0;
+    if (!parse_ipv4(target, &dest)) {
+        /* Try DNS resolution */
+        kprintf("Resolving '%s'...\n", target);
+        if (lwip_dns_resolve(target, &dest) != 0) {
+            kprintf("Cannot resolve '%s'\n", target);
+            return 0;
+        }
+        kprintf("Resolved to %u.%u.%u.%u\n",
+                (dest >> 24) & 0xFF,
+                (dest >> 16) & 0xFF,
+                (dest >>  8) & 0xFF,
+                 dest        & 0xFF);
+    }
+
+    kprintf("PING %u.%u.%u.%u: %u packets\n",
+            (dest >> 24) & 0xFF,
+            (dest >> 16) & 0xFF,
+            (dest >>  8) & 0xFF,
+             dest        & 0xFF,
+            count);
+
+    int rx = lwip_ping(dest, count, 2000);
+    return (rx > 0) ? 1u : 0u;
 }

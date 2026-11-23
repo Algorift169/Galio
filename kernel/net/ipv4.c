@@ -27,7 +27,6 @@
 #include "net/ethernet.h"
 #include "net/netdev.h"
 #include "net/packet.h"
-#include "net/udp.h"
 #include "net/tcp.h"
 #include "net/arp.h"
 #include "net/icmp.h"
@@ -221,9 +220,15 @@ static void ipv4_dispatch(net_buf_t *buffer, struct ipv4_hdr *ip) {
     if (ip->protocol == IPV4_PROTO_ICMP) {
         icmpv4_input(buffer, ip);
     } else if (ip->protocol == IPV4_PROTO_UDP) {
-        udp_input(buffer, ip);
+        /* NOTE: udp_input() is now owned by lwIP (core/udp.c) with an
+         * incompatible signature.  When lwIP is running, all UDP packets
+         * arrive via lwip_netif_input() → lwIP's own dispatcher.
+         * This path is only reached before lwIP starts (boot) — drop. */
+        (void)buffer;
     } else if (ip->protocol == IPV4_PROTO_TCP) {
-        tcp_input(buffer, ip);
+        /* NOTE: TCP is now processed by lwIP via lwip_netif_input().
+         * Any pre-lwIP boot frames are dropped. */
+        (void)buffer;
     }
 }
 

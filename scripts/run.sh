@@ -21,11 +21,14 @@ NOGRAPHIC=false
 GUI_DISPLAY_ARGS="-display gtk,zoom-to-fit=on"
 QEMU_DISPLAY_ARGS="-device VGA,edid=on,xres=1280,yres=720"
 
-# Use a full 4 GB guest by default so networking and userland services have
-# enough memory in QEMU. Override GALIO_RAM_MB if a different guest size is desired.
-HOST_RAM_MB=$(awk '/MemTotal:/ { printf "%d", $2 / 1024 }' /proc/meminfo)
-GALIO_RAM_MB="${GALIO_RAM_MB:-4096}"
-if [ "${GALIO_RAM_MB}" -lt 4096 ]; then GALIO_RAM_MB=4096; fi
+# Galio's physical-memory bitmap currently supports at most 128 MiB. Keep the
+# guest within that limit instead of advertising unmanaged memory to the kernel.
+GALIO_RAM_MB="${GALIO_RAM_MB:-128}"
+if [[ ! "${GALIO_RAM_MB}" =~ ^[0-9]+$ ]] ||
+   (( GALIO_RAM_MB < 96 || GALIO_RAM_MB > 128 )); then
+    echo "Error: GALIO_RAM_MB must be between 96 and 128 (kernel limit: 128 MB)"
+    exit 1
+fi
 QEMU_ACCEL_ARGS=""
 QEMU_CPU_ARGS="-cpu max"
 if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
@@ -106,14 +109,12 @@ if [ ! -f "${DISK}" ]; then
     echo "Disk image created and formatted."
 fi
 
-# QEMU user networking provides outbound NAT through the host's real network.
-# The guest still needs DHCP or static IP configuration before kernel sockets
-# can use the interface. The disk remains Galio's image; no host disk is used.
-# This uses an explicit user-mode netdev with an e1000 NIC so the guest sees a
-# standard Ethernet interface while QEMU provides real host Internet access via NAT.
-NETDEV_ARGS="-netdev user,id=net0,restrict=off,ipv6=on -device e1000,netdev=net0"
+# QEMU user networking provides outbound NAT through the host's network.
+# Its standard gateway, DHCP range, and DNS proxy are pinned for repeatable tests.
+# Galio currently starts one CPU; its AP/SMP startup is not enabled yet.
+NETDEV_ARGS="-netdev user,id=net0,restrict=off,host=10.0.2.2,dhcpstart=10.0.2.15,dns=10.0.2.3,ipv6=off -device e1000,netdev=net0"
 COMMON_ARGS="${QEMU_ACCEL_ARGS} ${QEMU_CPU_ARGS} -smp 1 ${QEMU_DISPLAY_ARGS} -cdrom ${ISO} -drive file=${DISK},format=raw,if=ide,cache=none,index=0,media=disk -m ${GALIO_RAM_MB}M ${NETDEV_ARGS}"
-echo "Using ${QEMU_CPU_ARGS}, ${GALIO_RAM_MB} MB guest RAM, Galio disk image ${DISK}, and explicit e1000 user networking (NAT)"
+echo "Using ${QEMU_CPU_ARGS}, 1 CPU, ${GALIO_RAM_MB} MB guest RAM, Galio disk image ${DISK}, and e1000 user networking (NAT)"
 
 # Run QEMU
 if [ "${NOGRAPHIC}" = true ]; then

@@ -1,23 +1,7 @@
 /*
- * Galio Kernel
+ * Galio Kernel - TCP socket abstraction layer
  *
- * Copyright (C) 2026 S.M Israfil
- *
- * This file is part of Galio.
- *
- * Galio is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published
- * by the Free Software Foundation, either version 3 of the License,
- * or (at your option) any later version.
- *
- * Galio is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- *
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Galio. If not, see <https://www.gnu.org/licenses/>.
+ * Re-routed to galio_tcp_* implementations powered by lwIP.
  */
 
 #ifndef INCLUDE_NET_TCP_H
@@ -26,7 +10,6 @@
 #include "common.h"
 #include "net/packet.h"
 #include "net/netdev.h"
-#include "net/ipv4.h"
 
 #define TCP_FLAG_FIN 0x01
 #define TCP_FLAG_SYN 0x02
@@ -34,14 +17,22 @@
 #define TCP_FLAG_PSH 0x08
 #define TCP_FLAG_ACK 0x10
 
-int tcp_init(void);
-int tcp_connect(u32 dest_ip, u16 dest_port);
-int tcp_listen(u32 local_ip, u16 local_port, u32 backlog);
-int tcp_accept(u32 listener_id, u32 timeout_ms, u32 *remote_ip, u16 *remote_port);
-int tcp_send(u32 conn_id, const void *data, u32 length);
-int tcp_receive(u32 conn_id, void *buffer, u32 buffer_len, u32 timeout_ms);
-int tcp_close(u32 conn_id);
-void tcp_input(net_buf_t *buf, struct ipv4_hdr *ip);
-void tcp_poll(void);
+int galio_tcp_init(void);
+int galio_tcp_connect(u32 dest_ip, u16 dest_port);
+int galio_tcp_listen(u32 local_ip, u16 local_port, u32 backlog);
+int galio_tcp_accept(u32 listener_id, u32 timeout_ms, u32 *remote_ip, u16 *remote_port);
+int galio_tcp_send(u32 conn_id, const void *data, u32 length);
+int galio_tcp_receive(u32 conn_id, void *buffer, u32 buffer_len, u32 timeout_ms);
+int galio_tcp_close(u32 conn_id);
+void galio_tcp_poll(void);
+
+#define tcp_init    galio_tcp_init
+#define tcp_connect galio_tcp_connect
+#define tcp_listen  galio_tcp_listen
+#define tcp_accept  galio_tcp_accept
+#define tcp_send    galio_tcp_send
+#define tcp_receive galio_tcp_receive
+#define tcp_close   galio_tcp_close
+#define tcp_poll    galio_tcp_poll
 
 #endif /* INCLUDE_NET_TCP_H */

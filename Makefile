@@ -26,7 +26,10 @@ INCLUDES = -Iinclude \
            -Itools/compiler/include \
            -Igui/include \
            -Igui/src/display \
-           -Idrift/include
+           -Idrift/include \
+           -Ikernel/net/lwip/include \
+           -Ikernel/net/iwip/lwip/src/include \
+           -Ikernel/net/iwip/lwip/src/include/compat/posix
 
 # Drift is built for both the hosted companion executable and the kernel shell.
 DRIFT_SRCS = drift/main.c \
@@ -91,14 +94,10 @@ SRCS = kernel/kmain.c \
        kernel/net/loopback.c \
        kernel/net/packet.c \
        kernel/net/util.c \
-       kernel/net/ethernet.c \
        kernel/net/arp.c \
        kernel/net/ipv4.c \
        kernel/net/icmp.c \
-       kernel/net/udp.c \
-       kernel/net/dhcp.c \
        kernel/net/dns.c \
-       kernel/net/tcp.c \
        kernel/net/socket.c \
        kernel/net/route.c \
        kernel/net/http.c \
@@ -285,6 +284,71 @@ SRCS = kernel/kmain.c \
        tools/shell/commands/where.c \
        tools/shell/editor/editor.c
 
+# ============================================================================
+# lwIP TCP/IP Stack integration
+# ============================================================================
+# lwIP source directory (cloned at kernel/net/iwip/lwip)
+LWIP_SRC = kernel/net/iwip/lwip/src
+
+# Galio lwIP CFLAGS: same freestanding flags as the kernel, plus lwIP headers.
+# Suppress warnings in upstream code that we don't own.
+LWIP_CFLAGS = -m64 -mno-sse -mno-sse2 -mno-mmx -mno-3dnow -mno-avx \
+              -mcmodel=kernel -mno-red-zone -ffreestanding -fno-pie -no-pie \
+              -O2 \
+              -Ikernel/net/lwip/include \
+              -Ikernel/net/iwip/lwip/src/include \
+              -Ikernel/net/iwip/lwip/src/include/compat/posix \
+              -Iinclude \
+              -Iinclude/arch/x86 \
+              -Iinclude/cpu \
+              -Iinclude/drivers \
+              -Iinclude/fs \
+              -Iinclude/lib \
+              -Iinclude/mm \
+              -Iinclude/net \
+              -Iinclude/process \
+              -Iinclude/syscall \
+              -w
+
+LWIP_SRCS = \
+    $(LWIP_SRC)/core/init.c \
+    $(LWIP_SRC)/core/def.c \
+    $(LWIP_SRC)/core/dns.c \
+    $(LWIP_SRC)/core/inet_chksum.c \
+    $(LWIP_SRC)/core/ip.c \
+    $(LWIP_SRC)/core/mem.c \
+    $(LWIP_SRC)/core/memp.c \
+    $(LWIP_SRC)/core/netif.c \
+    $(LWIP_SRC)/core/pbuf.c \
+    $(LWIP_SRC)/core/raw.c \
+    $(LWIP_SRC)/core/stats.c \
+    $(LWIP_SRC)/core/sys.c \
+    $(LWIP_SRC)/core/tcp.c \
+    $(LWIP_SRC)/core/tcp_in.c \
+    $(LWIP_SRC)/core/tcp_out.c \
+    $(LWIP_SRC)/core/timeouts.c \
+    $(LWIP_SRC)/core/udp.c \
+    $(LWIP_SRC)/core/ipv4/acd.c \
+    $(LWIP_SRC)/core/ipv4/autoip.c \
+    $(LWIP_SRC)/core/ipv4/dhcp.c \
+    $(LWIP_SRC)/core/ipv4/etharp.c \
+    $(LWIP_SRC)/core/ipv4/icmp.c \
+    $(LWIP_SRC)/core/ipv4/igmp.c \
+    $(LWIP_SRC)/core/ipv4/ip4.c \
+    $(LWIP_SRC)/core/ipv4/ip4_addr.c \
+    $(LWIP_SRC)/core/ipv4/ip4_frag.c \
+    $(LWIP_SRC)/netif/ethernet.c \
+    kernel/net/lwip/sys_arch.c \
+    kernel/net/lwip/lwip_netif.c \
+    kernel/net/lwip/lwip_ping.c \
+    kernel/net/lwip/lwip_dns.c \
+    kernel/net/lwip/lwip_udp_compat.c \
+    kernel/net/lwip/lwip_tcp_compat.c
+
+LWIP_OBJS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(LWIP_SRCS))
+
+# ============================================================================
+
 # Link the real Drift runtime into the kernel so gsh uses the same grammar.
 SRCS += $(filter-out drift/main.c drift/platform_host.c,$(DRIFT_SRCS))
 
@@ -305,7 +369,7 @@ ASM_OBJS = $(OBJ_DIR)/kernel/arch/x86/cpu/asm.o \
 EMBEDDED_OBJS = $(OBJ_DIR)/src/embedded_test.o \
                 $(OBJ_DIR)/src/embedded_initrd.o
 
-OBJS = $(C_OBJS) $(GAS_OBJS) $(ASM_OBJS) $(EMBEDDED_OBJS)
+OBJS = $(C_OBJS) $(GAS_OBJS) $(ASM_OBJS) $(EMBEDDED_OBJS) $(LWIP_OBJS)
 
 # Binary targets
 TEST_ELF = $(BUILD_DIR)/test_elf.bin
@@ -321,7 +385,7 @@ WALLPAPER_ASSET = assets/wallpapers/wal1.png
 all: $(OBJS) $(KERNEL_BIN) $(KERNEL_ISO) $(DISK_IMAGE) $(DRIFT_BIN)
 	@echo "Build complete!"
 	@echo "Network stack: Ethernet, ARP, IPv4, ICMP"
-       @echo "Wi-Fi: no wireless hardware supported"
+	@echo "Wi-Fi: no wireless hardware supported"
 
 drift-source:
 	@test -n "$(DRIFT_SRCS)" || { echo "Drift sources missing"; exit 1; }
@@ -356,6 +420,15 @@ $(OBJ_DIR)/kernel/shell/%.o: kernel/shell/%.c
 $(OBJ_DIR)/kernel/net/%.o: kernel/net/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# lwIP upstream sources — compiled with LWIP_CFLAGS (suppresses upstream warnings)
+$(OBJ_DIR)/kernel/net/lwip/%.o: kernel/net/lwip/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(LWIP_CFLAGS) -Wno-unused-parameter -Wno-sign-compare -c $< -o $@
+
+$(OBJ_DIR)/kernel/net/iwip/lwip/src/%.o: kernel/net/iwip/lwip/src/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(LWIP_CFLAGS) -Wno-unused-parameter -Wno-sign-compare -Wno-unused-but-set-variable -c $< -o $@
 
 $(OBJ_DIR)/kernel/pci/%.o: kernel/pci/%.c
 	@mkdir -p $(dir $@)
